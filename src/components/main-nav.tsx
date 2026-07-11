@@ -4,6 +4,9 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { logout } from "@/app/login/actions"
+import type { CurrentProfile } from "@/lib/auth"
 
 const LINKS = [
   { href: "/candidates", label: "Candidates" },
@@ -11,7 +14,7 @@ const LINKS = [
   { href: "/search", label: "Search" },
 ]
 
-export function MainNav() {
+export function MainNav({ user }: { user: CurrentProfile | null }) {
   const pathname = usePathname()
 
   return (
@@ -40,6 +43,18 @@ export function MainNav() {
             )
           })}
         </nav>
+        {user ? (
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              {user.email} <span className="text-xs">({user.role})</span>
+            </span>
+            <form action={logout}>
+              <Button type="submit" variant="outline" size="sm">
+                Sign out
+              </Button>
+            </form>
+          </div>
+        ) : null}
       </div>
     </header>
   )

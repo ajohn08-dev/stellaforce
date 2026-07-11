@@ -37,6 +37,7 @@ export type ApplicationStage =
 export type PlacementStatus = "active" | "completed" | "fell_through"
 export type InteractionType = "call" | "email" | "interview" | "note"
 export type NurtureStatus = "active" | "dormant" | "re_engaging"
+export type UserRole = "recruiter" | "manager" | "admin"
 
 // ── Domain JSON shapes (advisory; columns are jsonb) ─────────────────────────
 export type ContactInfo = {
@@ -172,6 +173,15 @@ export type CandidateClientFitRow = {
   updated_at: string
 }
 
+export type ProfileRow = {
+  id: string
+  email: string
+  full_name: string | null
+  role: UserRole
+  created_at: string
+  updated_at: string
+}
+
 // Helper: an Insert shape — everything optional except the truly-required
 // (NOT NULL, no default) columns listed in Req.
 type Insert<T, Req extends keyof T> = Partial<T> & Pick<T, Req>
@@ -227,6 +237,12 @@ export type Database = {
         Update: Partial<CandidateClientFitRow>
         Relationships: []
       }
+      profiles: {
+        Row: ProfileRow
+        Insert: Insert<ProfileRow, "id" | "email">
+        Update: Partial<ProfileRow>
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -241,6 +257,7 @@ export type Database = {
       placement_status: PlacementStatus
       interaction_type: InteractionType
       nurture_status: NurtureStatus
+      user_role: UserRole
     }
     CompositeTypes: Record<string, never>
   }

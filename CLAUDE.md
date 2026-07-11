@@ -16,11 +16,14 @@ file wins and the others must be corrected.
 ## Stack conventions (follow these)
 - **Reads → Server Components** via helpers in `src/lib/data.ts` (request-scoped
   anon client, RLS applies).
-- **Writes → Server Actions** (`src/app/**/actions.ts`). During the demo, writes
-  use the **service-role** admin client (`src/lib/supabase/admin.ts`) so they work
-  before Auth is wired. Once Auth exists, switch writes to the RLS server client.
+- **Writes → Server Actions** (`src/app/**/actions.ts`) use the request-scoped
+  server client (`src/lib/supabase/server.ts`) so they run as the signed-in
+  user's session and respect RLS. The service-role admin client
+  (`src/lib/supabase/admin.ts`) is reserved for privileged operations with no
+  acting user (seeding, backfills) — not regular CRUD writes.
 - **Service-role key + `ANTHROPIC_API_KEY` are server-only.** Guarded by
-  `import "server-only"` in `admin.ts`, `ai/*`, `env.ts`(serverEnv), `data.ts`.
+  `import "server-only"` in `admin.ts`, `ai/*`, `env.ts`(serverEnv), `data.ts`,
+  `auth.ts`.
 - **PII never sent to the client** beyond what a Server Component renders. Never
   expose the service-role key or raw Claude keys to the browser.
 - Supabase clients: `client.ts` (browser, anon), `server.ts` (server, anon +
@@ -55,6 +58,7 @@ Postgres enum types. snake_case throughout.
 - `placement_status`: **active | completed | fell_through**
 - `interaction_type`: **call | email | interview | note**
 - `nurture_status`: **active | dormant | re_engaging**
+- `user_role`: **recruiter | manager | admin**
 
 ### Tables
 
@@ -100,6 +104,15 @@ _redeployment_fit lives in the `candidate_client_fit` join table (below)._
 `id` (uuid pk), `candidate_id` (fk), `client_id` (fk), `fit_score` (numeric),
 `rationale` (text). Unique(candidate_id, client_id). Decouples a candidate from a
 single role so one candidate can be scored against many clients → redeployment.
+
+**profiles** (auth — one row per `auth.users` row, auto-created by trigger)
+`id` (uuid pk, fk → `auth.users.id`), `email` (not null), `full_name`,
+`role` (enum, default `recruiter`), `created_at`, `updated_at`. No public
+sign-up: users are created manually in the Supabase dashboard (Auth → Users,
+Auto Confirm on); `handle_new_user()` inserts the matching profile row;
+`role` is hand-promoted afterward via SQL. Role is stored but **not yet
+enforced** — every authenticated user has full CRUD via the existing
+permissive RLS policies. Role-based restriction is a future pass.
 
 ### Indexes
 FK indexes on every fk column; filter indexes on `candidates.candidate_tier`,
@@ -154,7 +167,16 @@ table; for now it seeds filters and steers AI parsing.
 
 ## Migrations
 SQL lives in `supabase/migrations/` (0001 extensions+enums → 0002 tables →
-0003 indexes → 0004 RLS). Apply via the Supabase MCP or the Supabase SQL editor /
-CLI once the project is connected. RLS is minimal: authenticated recruiters
-read/write all tables; anonymous users get nothing (PII not public); the
-service-role key bypasses RLS for server actions + seeding.
+0003 indexes → 0004 RLS → 0005 auth roles). Apply via the Supabase CLI
+(`supabase db push`) or the SQL editor. RLS is minimal: authenticated users
+read/write all core tables; anonymous users get nothing (PII not public); the
+service-role key bypasses RLS for privileged operations (seeding, backfills).
+
+## Auth
+Supabase Auth, email/password only, no public sign-up — recruiters/managers/
+admins are created manually in the dashboard. `src/middleware.ts` +
+`src/lib/supabase/middleware.ts` refresh the session and redirect signed-out
+requests to `/login`. `src/lib/auth.ts` (`getCurrentProfile`) resolves the
+signed-in user's `profiles` row server-side; `src/app/login/` holds the login
+page and the `login`/`logout` Server Actions. See the **profiles** table above
+for role provisioning.

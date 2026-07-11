@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import {
   candidateEmbeddingText,
   generateEmbedding,
@@ -15,10 +15,8 @@ import type { CandidateTier } from "@/lib/supabase/types"
 /**
  * Server Actions for the two foundational candidate workflows.
  *
- * Writes use the SERVICE-ROLE admin client so they work in the demo before auth
- * is wired. Once Supabase Auth is added, switch these to the request-scoped
- * server client (src/lib/supabase/server.ts) so writes respect RLS + capture
- * the acting recruiter. Reads already use the RLS client.
+ * Writes use the request-scoped, RLS-respecting server client so they run as
+ * the signed-in recruiter's session.
  */
 
 export type ActionResult = { ok: true } | { ok: false; error: string }
@@ -50,7 +48,7 @@ export async function addCandidate(formData: FormData): Promise<void> {
     })
   )
 
-  const supabase = createAdminClient()
+  const supabase = await createClient()
   const { error } = await supabase.from("candidates").insert({
     full_name,
     contact_info,
@@ -98,7 +96,7 @@ export async function createCandidateFromParsed(
   const full_name = parsed.full_name?.trim()
   if (!full_name) return { ok: false, error: "Full name is required." }
 
-  const supabase = createAdminClient()
+  const supabase = await createClient()
 
   const embedding = await generateEmbedding(
     candidateEmbeddingText({
