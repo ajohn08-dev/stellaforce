@@ -6,6 +6,7 @@ import type { UserRole } from "@/lib/supabase/types"
 export type CurrentProfile = {
   id: string
   email: string
+  full_name: string | null
   role: UserRole
 }
 
@@ -25,11 +26,16 @@ export async function getCurrentProfile(): Promise<CurrentProfile | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, email, role")
+    .select("id, email, full_name, role")
     .eq("id", user.id)
     .single()
 
   if (!profile) return null
 
-  return { id: profile.id, email: profile.email, role: profile.role }
+  return {
+    id: profile.id,
+    email: profile.email,
+    full_name: profile.full_name,
+    role: profile.role,
+  }
 }
