@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
-import { MainNav } from "@/components/main-nav";
-import { getCurrentProfile } from "@/lib/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,23 +18,18 @@ export const metadata: Metadata = {
   description: "Recruiter-facing platform for candidate intelligence.",
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const profile = await getCurrentProfile();
-
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">
-        <MainNav user={profile} />
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
-          {children}
-        </main>
+      <body className="h-full bg-background text-foreground">
+        {children}
         <Toaster richColors position="top-right" />
       </body>
     </html>

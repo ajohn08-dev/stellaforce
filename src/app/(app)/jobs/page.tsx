@@ -21,13 +21,13 @@ function formatSalary(range: SalaryRange | null): string {
   return `${fmt(range.min)} – ${fmt(range.max)}`
 }
 
-export default async function JobOrdersPage() {
+export default async function JobsPage() {
   const jobs = await getJobOrders()
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Job Orders</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
         <p className="text-sm text-muted-foreground">
           {jobs.length} order{jobs.length === 1 ? "" : "s"}
         </p>
@@ -52,7 +52,7 @@ export default async function JobOrdersPage() {
                 <TableRow key={j.job_id}>
                   <TableCell>
                     <Link
-                      href={`/job-orders/${j.job_id}`}
+                      href={`/jobs/${j.job_id}`}
                       className="font-medium hover:underline"
                     >
                       {j.title}
@@ -76,7 +76,7 @@ export default async function JobOrdersPage() {
                   colSpan={5}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  No job orders yet.
+                  No jobs yet.
                 </TableCell>
               </TableRow>
             )}

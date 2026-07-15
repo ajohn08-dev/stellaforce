@@ -15,7 +15,7 @@ import { TierBadge } from "@/components/tier-badge"
 import { getJobOrder } from "@/lib/data"
 import { titleCase } from "@/lib/constants"
 
-export default async function JobOrderDetailPage({
+export default async function JobDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>
@@ -38,7 +38,7 @@ export default async function JobOrderDetailPage({
             {job.client?.client_name ?? "Unassigned client"}
           </p>
         </div>
-        <Link href="/job-orders" className={buttonVariants({ variant: "outline" })}>
+        <Link href="/jobs" className={buttonVariants({ variant: "outline" })}>
           Back
         </Link>
       </div>

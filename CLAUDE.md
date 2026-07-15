@@ -142,7 +142,7 @@ table; for now it seeds filters and steers AI parsing.
 
 3. **ADD-TO-ORDER / REFER & UPDATE** — attach a candidate to a `job_order` as an
    `application`; advance `stage`; log `interactions`; maintain `candidate_client_fit`
-   for redeployment. _TODO stub — see `/candidates/[id]` and `/job-orders/[id]`._
+   for redeployment. _TODO stub — see `/candidates/[id]` and `/jobs/[id]`._
 
 4. **SEARCH** — two modes: **structured filters** (tier/skill/location, implemented
    on `/candidates` and `/search` → Filters) and **semantic** (embedding similarity,
@@ -152,12 +152,22 @@ table; for now it seeds filters and steers AI parsing.
 ---
 
 ## Routes
+- `/home` — dashboard: candidate/job/client counts, links into each list
 - `/candidates` — TanStack Table list + structured filters
 - `/candidates/[id]` — profile view
 - `/candidates/new` — ingestion flow (manual + AI)
-- `/job-orders` — list
-- `/job-orders/[id]` — detail with attached candidates (applications)
-- `/search` — Filters (structured) + Semantic (stub) tabs
+- `/jobs` — list (was `/job-orders`)
+- `/jobs/[id]` — detail with attached candidates (applications)
+- `/clients` — list
+- `/settings` — signed-in user's email/role
+- `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)
+- `/login` — email/password sign-in
+
+## App shell
+Left sidebar (`src/components/app-sidebar.tsx`) + top header
+(`src/components/app-header.tsx`), both driven by the shared nav config in
+`src/lib/nav.ts` (`NAV_ITEMS`, `SETTINGS_ITEM`). Icons are **lucide-react**
+(project default icon library). Root layout: `src/app/layout.tsx`.
 
 ## Build order
 1. **CRUD spine + structured search** ✅ (this scaffold)

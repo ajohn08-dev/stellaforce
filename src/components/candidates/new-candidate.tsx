@@ -22,7 +22,7 @@ import {
   addCandidate,
   createCandidateFromParsed,
   parseCandidate,
-} from "@/app/candidates/actions"
+} from "@/app/(app)/candidates/actions"
 import type { ParsedCandidate } from "@/lib/ai/parse"
 
 type Mode = "manual" | "ingest"
