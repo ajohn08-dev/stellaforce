@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 
 import { cn } from "@/lib/utils"
 import { NAV_ITEMS, SETTINGS_ITEM } from "@/lib/nav"
+import { Wordmark } from "@/components/brand-wordmark"
 
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/")
@@ -22,8 +23,8 @@ function NavLink({ href, label, icon: Icon, active }: {
       className={cn(
         "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
         active
-          ? "bg-muted text-foreground font-medium"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+          : "text-muted-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent"
       )}
     >
       <Icon className="size-4 shrink-0" />
@@ -37,11 +38,8 @@ export function AppSidebar() {
 
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border px-3 py-4">
-      <Link
-        href="/home"
-        className="px-2.5 py-1.5 font-semibold tracking-tight"
-      >
-        Stella<span className="text-muted-foreground">Force</span>
+      <Link href="/home" className="px-2.5 py-1.5 font-semibold tracking-tight">
+        <Wordmark />
       </Link>
 
       <nav className="mt-4 flex flex-col gap-1">
