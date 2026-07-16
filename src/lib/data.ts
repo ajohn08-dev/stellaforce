@@ -18,7 +18,7 @@ import type {
  */
 
 export type CandidateFilters = {
-  tier?: string
+  tiers?: string[]
   skill?: string
   location?: string
   q?: string
@@ -35,8 +35,11 @@ export async function getCandidates(
     .select("*")
     .order("date_added", { ascending: false })
 
-  if (filters.tier)
-    query = query.eq("candidate_tier", filters.tier as NonNullable<CandidateRow["candidate_tier"]>)
+  if (filters.tiers && filters.tiers.length > 0)
+    query = query.in(
+      "candidate_tier",
+      filters.tiers as NonNullable<CandidateRow["candidate_tier"]>[]
+    )
   if (filters.q) query = query.ilike("full_name", `%${filters.q}%`)
   if (filters.location)
     query = query.ilike("contact_info->>location", `%${filters.location}%`)

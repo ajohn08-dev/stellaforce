@@ -3,43 +3,48 @@
 import { useRouter, useSearchParams } from "next/navigation"
 import { ChevronDown, X } from "lucide-react"
 
-import { TierFilterMenu, ALL_TIER } from "@/components/candidates/tier-filter-menu"
+import { TierFilterMenu } from "@/components/candidates/tier-filter-menu"
+import { TIER_OPTIONS, parseTiersParam, tiersToParam } from "@/lib/candidate-tiers"
 import { titleCase } from "@/lib/constants"
 
 /** Row of removable/editable pills for currently active filters, shown above the list. */
 export function CandidateActiveFilters() {
   const router = useRouter()
   const params = useSearchParams()
-  const tier = params.get("tier") ?? ALL_TIER
+  const tiers = parseTiersParam(params.get("tiers"))
 
-  if (tier === ALL_TIER) return null
+  if (tiers.length === 0) return null
 
-  function apply(next: string) {
+  function setTiers(next: string[]) {
     const sp = new URLSearchParams(params.toString())
-    if (next !== ALL_TIER) sp.set("tier", next)
-    else sp.delete("tier")
+    sp.set("tiers", tiersToParam(next))
     router.push(`/candidates?${sp.toString()}`)
   }
 
+  const label = TIER_OPTIONS.filter((t) => tiers.includes(t))
+    .map(titleCase)
+    .join(", ")
+
   return (
     <div className="flex items-center gap-2">
-      <div className="inline-flex items-center gap-1 rounded-full border border-border bg-muted py-1 pr-1 pl-3 text-xs font-medium">
+      <div className="inline-flex items-center gap-1 rounded-full bg-accent py-1 pr-1 pl-3 text-xs font-medium text-accent-foreground">
         <TierFilterMenu
-          tier={tier}
-          onSelect={apply}
+          selected={tiers}
           align="start"
+          onChange={setTiers}
           trigger={
             <button type="button" className="flex items-center gap-1">
-              Tier: {titleCase(tier)}
+              Tiers: {label}
               <ChevronDown className="size-3" />
             </button>
           }
         />
+        <span className="h-4 w-px bg-accent-foreground/20" aria-hidden />
         <button
           type="button"
-          aria-label="Clear tier filter"
-          onClick={() => apply(ALL_TIER)}
-          className="rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+          aria-label="Remove tier filter"
+          onClick={() => setTiers([])}
+          className="rounded-full p-1 hover:bg-accent-foreground/10"
         >
           <X className="size-3" />
         </button>

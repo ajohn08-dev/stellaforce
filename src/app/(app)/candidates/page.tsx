@@ -8,6 +8,7 @@ import { CandidateFilterButton } from "@/components/candidates/candidate-filter-
 import { CandidateActiveFilters } from "@/components/candidates/candidate-active-filters"
 import { ViewToggle } from "@/components/candidates/view-toggle"
 import { SupabaseNotice } from "@/components/supabase-notice"
+import { parseTiersParam } from "@/lib/candidate-tiers"
 import { getCandidates } from "@/lib/data"
 
 export default async function CandidatesPage({
@@ -19,7 +20,7 @@ export default async function CandidatesPage({
   const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined)
 
   const candidates = await getCandidates({
-    tier: get("tier"),
+    tiers: parseTiersParam(get("tiers") ?? null),
     q: get("q"),
   })
   const view = get("view") === "grid" ? "grid" : "list"

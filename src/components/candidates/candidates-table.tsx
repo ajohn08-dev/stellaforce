@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { TierBadge } from "@/components/tier-badge"
-import { titleCase } from "@/lib/constants"
+import { CandidateSocialLinks } from "@/components/candidates/candidate-social-links"
+import { CandidateActions } from "@/components/candidates/candidate-actions"
 import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
 
 function sortHeader(label: string) {
@@ -81,12 +82,13 @@ const columns: ColumnDef<CandidateRow>[] = [
     cell: ({ getValue }) => (getValue<string>() || "—"),
   },
   {
-    accessorKey: "data_provenance",
-    header: "Provenance",
+    id: "actions",
+    header: "",
     cell: ({ row }) => (
-      <span className="text-xs text-muted-foreground">
-        {titleCase(row.original.data_provenance)}
-      </span>
+      <div className="flex items-center justify-end gap-3">
+        <CandidateSocialLinks candidate={row.original} />
+        <CandidateActions candidate={row.original} />
+      </div>
     ),
   },
 ]

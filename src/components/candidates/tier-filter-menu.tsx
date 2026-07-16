@@ -1,31 +1,64 @@
 "use client"
 
-import * as React from "react"
-import { Check } from "lucide-react"
+import type { ReactElement } from "react"
+import { ChevronLeft } from "lucide-react"
 
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { titleCase } from "@/lib/constants"
+import { TIER_OPTIONS } from "@/lib/candidate-tiers"
 
-export const ALL_TIER = "all"
-export const TIER_OPTIONS = ["gold", "silver"] as const
+/** All, Gold, Silver, None — the actual selectable options, reused by both call sites below. */
+function TierOptionsList({
+  selected,
+  onChange,
+}: {
+  selected: string[]
+  onChange: (tiers: string[]) => void
+}) {
+  return (
+    <>
+      <DropdownMenuItem onClick={() => onChange([...TIER_OPTIONS])}>
+        All
+      </DropdownMenuItem>
+      {TIER_OPTIONS.map((t) => (
+        <DropdownMenuCheckboxItem
+          key={t}
+          checked={selected.includes(t)}
+          onCheckedChange={(checked) =>
+            onChange(
+              checked ? [...selected, t] : selected.filter((x) => x !== t)
+            )
+          }
+        >
+          {titleCase(t)}
+        </DropdownMenuCheckboxItem>
+      ))}
+      <DropdownMenuItem onClick={() => onChange([])}>None</DropdownMenuItem>
+    </>
+  )
+}
 
-/** Shared All/Gold/Silver dropdown content, opened from any trigger element. */
+/** Standalone Tier dropdown — used by the active-filter pill, which is already scoped to tier. */
 export function TierFilterMenu({
-  tier,
-  onSelect,
+  selected,
+  onChange,
   trigger,
   align = "end",
 }: {
-  tier: string
-  onSelect: (tier: string) => void
-  trigger: React.ReactElement
+  selected: string[]
+  onChange: (tiers: string[]) => void
+  trigger: ReactElement
   align?: "start" | "end"
 }) {
   return (
@@ -34,15 +67,29 @@ export function TierFilterMenu({
       <DropdownMenuContent align={align}>
         <DropdownMenuLabel>Tier</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {[ALL_TIER, ...TIER_OPTIONS].map((t) => (
-          <DropdownMenuItem key={t} onClick={() => onSelect(t)}>
-            <span className="flex-1">
-              {t === ALL_TIER ? "All tiers" : titleCase(t)}
-            </span>
-            {tier === t && <Check className="size-4" />}
-          </DropdownMenuItem>
-        ))}
+        <TierOptionsList selected={selected} onChange={onChange} />
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+/** "Tiers" entry inside the general Filter menu — cascades a submenu to the left. */
+export function TierFilterSubmenuItem({
+  selected,
+  onChange,
+}: {
+  selected: string[]
+  onChange: (tiers: string[]) => void
+}) {
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <ChevronLeft className="size-4" />
+        <span className="flex-1">Tiers</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <TierOptionsList selected={selected} onChange={onChange} />
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   )
 }
