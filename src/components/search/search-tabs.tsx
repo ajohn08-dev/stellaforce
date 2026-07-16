@@ -6,7 +6,8 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { CandidateFilters } from "@/components/candidates/candidate-filters"
+import { CandidateSearch } from "@/components/candidates/candidate-search"
+import { CandidateFilterButton } from "@/components/candidates/candidate-filter-button"
 import { cn } from "@/lib/utils"
 
 type Tab = "filters" | "semantic"
@@ -61,10 +62,13 @@ function FiltersTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Structured search by tier, skill, and location. Applying filters takes
-        you to the full candidate list.
+        Structured search by name and tier. Applying takes you to the full
+        candidate list.
       </p>
-      <CandidateFilters />
+      <div className="flex items-center gap-2">
+        <CandidateSearch />
+        <CandidateFilterButton />
+      </div>
     </div>
   )
 }

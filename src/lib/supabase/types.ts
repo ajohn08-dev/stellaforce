@@ -60,6 +60,13 @@ export type SalaryRange = {
   period?: "year" | "hour" | "month"
 }
 
+export type EducationEntry = {
+  degree?: string
+  field_of_study?: string
+  institution?: string
+  end_date?: string
+}
+
 // ── Table row types ──────────────────────────────────────────────────────────
 export type CandidateRow = {
   candidate_id: string

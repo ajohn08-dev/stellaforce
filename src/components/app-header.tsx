@@ -52,7 +52,9 @@ export function AppHeader({ user }: { user: CurrentProfile | null }) {
           <DropdownMenu>
             <DropdownMenuTrigger className="rounded-full focus-visible:ring-3 focus-visible:ring-ring/50">
               <Avatar>
-                <AvatarFallback>{getInitials(user)}</AvatarFallback>
+                <AvatarFallback className="bg-brand-purple-600 text-white dark:bg-brand-purple-500">
+                  {getInitials(user)}
+                </AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>
             <DropdownMenuContent>

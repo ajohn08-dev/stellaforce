@@ -40,9 +40,9 @@ export default async function HomePage() {
           <Link
             key={href}
             href={href}
-            className="flex items-center gap-4 rounded-lg border border-border p-5 transition-colors hover:bg-muted/50"
+            className="group flex items-center gap-4 rounded-lg border border-border p-5 transition-colors hover:border-primary/40 hover:bg-muted/50"
           >
-            <Icon className="size-5 text-muted-foreground" />
+            <Icon className="size-5 text-muted-foreground transition-colors group-hover:text-primary" />
             <div>
               <p className="text-2xl font-semibold tracking-tight">{count}</p>
               <p className="text-sm text-muted-foreground">{label}</p>
