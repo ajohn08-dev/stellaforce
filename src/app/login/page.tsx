@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Wordmark } from "@/components/brand-wordmark"
+import { Logo } from "@/components/brand-logo"
 
 import { login } from "./actions"
 
@@ -14,11 +14,9 @@ export default async function LoginPage({
 
   return (
     <div className="mx-auto flex max-w-sm flex-col gap-6 pt-16">
-      <div className="text-center">
-        <h1 className="text-xl font-semibold tracking-tight">
-          <Wordmark />
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <div className="flex flex-col items-center text-center">
+        <Logo height={28} />
+        <p className="mt-2 text-sm text-muted-foreground">
           Sign in to continue
         </p>
       </div>

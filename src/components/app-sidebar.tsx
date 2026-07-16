@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 
 import { cn } from "@/lib/utils"
 import { NAV_ITEMS, SETTINGS_ITEM } from "@/lib/nav"
-import { Wordmark } from "@/components/brand-wordmark"
+import { Logo } from "@/components/brand-logo"
 
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/")
@@ -37,9 +37,9 @@ export function AppSidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border px-3 py-4">
-      <Link href="/home" className="px-2.5 py-1.5 font-semibold tracking-tight">
-        <Wordmark />
+    <aside className="flex h-full w-[200px] shrink-0 flex-col border-r border-border px-3 py-4">
+      <Link href="/home" className="px-2.5 py-1.5">
+        <Logo />
       </Link>
 
       <nav className="mt-4 flex flex-col gap-1">

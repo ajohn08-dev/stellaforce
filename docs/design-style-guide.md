@@ -145,9 +145,12 @@ No change needed — already aligned with the Figma spec:
   orange focus border in the S2.0 reference.
 - **User avatar**: solid `brand-purple-600` fill, white initials — identity
   marker, echoes the S2.0 avatar treatment.
-- **Wordmark**: full "Stellaforce" set in `brand-purple-700` (`brand-purple-300`
-  in dark mode) — see `src/components/brand-wordmark.tsx`, shared by the
-  sidebar and the login page so the brand color lives in one place.
+- **Logo**: the real mark + wordmark lockup from Figma (`S2.0` node 3:1076),
+  not styled text — assets at `public/brand/logo-mark.svg` (orange, `#FF5001`)
+  and `public/brand/logo-wordmark.svg` (purple, `#3F0B79`), rendered by
+  `src/components/brand-logo.tsx`'s `<Logo />`, shared by the sidebar and the
+  login page. Colors are baked into the SVGs, so the logo doesn't re-theme
+  with light/dark mode — that matches the single logo variant Figma provides.
 
 ## 6. Do / don't
 
