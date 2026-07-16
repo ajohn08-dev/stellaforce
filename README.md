@@ -113,3 +113,9 @@ CLAUDE.md              frozen schema + conventions (source of truth)
 Set the four env vars in the Vercel project settings, connect the repo, and
 deploy. The service-role key and Anthropic key must be **server-side only** env
 vars (not prefixed `NEXT_PUBLIC_`).
+
+Env vars are scoped per environment in Vercel — adding them under Production
+does **not** make them available to Preview deployments. Make sure all four
+are checked for **Preview** too (Production, and Development if you use
+`vercel dev`), or every request will 500: `src/proxy.ts` runs on every route
+and throws immediately if the Supabase URL/anon key are missing.
