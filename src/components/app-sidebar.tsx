@@ -4,8 +4,9 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 import { cn } from "@/lib/utils"
-import { NAV_ITEMS, SETTINGS_ITEM } from "@/lib/nav"
+import { NAV_ITEMS, AGENTS_NAV_LABEL, AGENTS_NAV_ITEMS, SETTINGS_ITEM } from "@/lib/nav"
 import { Logo } from "@/components/brand-logo"
+import { Separator } from "@/components/ui/separator"
 
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/")
@@ -51,6 +52,23 @@ export function AppSidebar() {
           />
         ))}
       </nav>
+
+      <Separator className="my-4" />
+
+      <div className="flex flex-col gap-1">
+        <span className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+          {AGENTS_NAV_LABEL}
+        </span>
+        <nav className="flex flex-col gap-1">
+          {AGENTS_NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.href}
+              {...item}
+              active={isActive(pathname, item.href)}
+            />
+          ))}
+        </nav>
+      </div>
 
       <div className="mt-auto flex flex-col gap-1">
         <NavLink

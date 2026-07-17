@@ -17,7 +17,7 @@ export default async function CandidateProfilePage({
   const result = await getCandidate(id)
   if (!result) notFound()
 
-  const { candidate: c, skills } = result
+  const { candidate: c, skills, addedBy } = result
   const contact = (c.contact_info as ContactInfo | null) ?? {}
 
   return (
@@ -52,6 +52,7 @@ export default async function CandidateProfilePage({
           }
         />
         <Field label="Source" value={c.source} />
+        <Field label="Added by" value={addedBy?.full_name ?? addedBy?.email} />
         <Field
           label="LinkedIn"
           value={c.linkedin_url}

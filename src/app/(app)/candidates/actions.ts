@@ -49,6 +49,10 @@ export async function addCandidate(formData: FormData): Promise<void> {
   )
 
   const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   const { error } = await supabase.from("candidates").insert({
     full_name,
     contact_info,
@@ -62,6 +66,7 @@ export async function addCandidate(formData: FormData): Promise<void> {
     freshness_score: 1.0,
     last_verified: new Date().toISOString(),
     embedding_vector: toPgVector(embedding),
+    added_by: user?.id ?? null,
   })
 
   if (error) throw new Error(error.message)
@@ -97,6 +102,9 @@ export async function createCandidateFromParsed(
   if (!full_name) return { ok: false, error: "Full name is required." }
 
   const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   const embedding = await generateEmbedding(
     candidateEmbeddingText({
@@ -127,6 +135,7 @@ export async function createCandidateFromParsed(
       freshness_score: 1.0,
       last_verified: new Date().toISOString(),
       embedding_vector: toPgVector(embedding),
+      added_by: user?.id ?? null,
     })
     .select("candidate_id")
     .single()

@@ -66,26 +66,34 @@ export async function getCandidates(
   return rows
 }
 
-export async function getCandidate(
-  id: string
-): Promise<{ candidate: CandidateRow; skills: SkillRow[] } | null> {
+export type AddedByProfile = { full_name: string | null; email: string }
+
+export async function getCandidate(id: string): Promise<{
+  candidate: CandidateRow
+  skills: SkillRow[]
+  addedBy: AddedByProfile | null
+} | null> {
   if (!isSupabaseConfigured) return null
   const supabase = await createClient()
 
   const { data: candidate, error } = await supabase
     .from("candidates")
-    .select("*")
+    .select("*, added_by_profile:profiles(full_name, email)")
     .eq("candidate_id", id)
     .single()
 
   if (error || !candidate) return null
+
+  const { added_by_profile: addedBy, ...candidateFields } = candidate as CandidateRow & {
+    added_by_profile: AddedByProfile | null
+  }
 
   const { data: skills } = await supabase
     .from("skills")
     .select("*")
     .eq("candidate_id", id)
 
-  return { candidate, skills: skills ?? [] }
+  return { candidate: candidateFields, skills: skills ?? [], addedBy }
 }
 
 export async function getClients(): Promise<ClientRow[]> {

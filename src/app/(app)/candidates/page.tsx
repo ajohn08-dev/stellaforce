@@ -1,11 +1,9 @@
-import Link from "next/link"
-
-import { buttonVariants } from "@/components/ui/button"
 import { CandidatesTable } from "@/components/candidates/candidates-table"
 import { CandidatesGrid } from "@/components/candidates/candidates-grid"
 import { CandidateSearch } from "@/components/candidates/candidate-search"
 import { CandidateFilterButton } from "@/components/candidates/candidate-filter-button"
 import { CandidateActiveFilters } from "@/components/candidates/candidate-active-filters"
+import { AddCandidateDialog } from "@/components/candidates/add-candidate-dialog"
 import { ViewToggle } from "@/components/candidates/view-toggle"
 import { SupabaseNotice } from "@/components/supabase-notice"
 import { parseTiersParam } from "@/lib/candidate-tiers"
@@ -38,9 +36,7 @@ export default async function CandidatesPage({
           <CandidateSearch />
           <CandidateFilterButton />
           <ViewToggle />
-          <Link href="/candidates/new" className={buttonVariants()}>
-            Add candidate
-          </Link>
+          <AddCandidateDialog />
         </div>
       </div>
 

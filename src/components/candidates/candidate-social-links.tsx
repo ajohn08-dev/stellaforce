@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { ExternalLink, Mail, Phone, Globe } from "lucide-react"
+import { Mail, Phone, Globe } from "lucide-react"
 
 import { GithubIcon, LinkedinIcon } from "@/components/icons/brand-icons"
 import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
@@ -42,13 +42,6 @@ export function CandidateSocialLinks({ candidate }: { candidate: CandidateRow })
 
   return (
     <div className="flex items-center gap-2">
-      <IconLink
-        href={`/candidates/${candidate.candidate_id}`}
-        label="Open profile in new tab"
-        newTab
-      >
-        <ExternalLink className="size-3.5" />
-      </IconLink>
       {candidate.linkedin_url && (
         <IconLink href={candidate.linkedin_url} label="LinkedIn" newTab>
           <LinkedinIcon className="size-3.5" />
