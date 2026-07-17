@@ -56,11 +56,6 @@ const columns: ColumnDef<CandidateRow>[] = [
     ),
   },
   {
-    accessorKey: "candidate_tier",
-    header: sortHeader("Tier"),
-    cell: ({ row }) => <TierBadge tier={row.original.candidate_tier} />,
-  },
-  {
     accessorKey: "current_title",
     header: "Title",
     cell: ({ row }) => row.original.current_title ?? "—",
@@ -69,6 +64,11 @@ const columns: ColumnDef<CandidateRow>[] = [
     accessorKey: "current_company",
     header: "Company",
     cell: ({ row }) => row.original.current_company ?? "—",
+  },
+  {
+    accessorKey: "candidate_tier",
+    header: sortHeader("Tier"),
+    cell: ({ row }) => <TierBadge tier={row.original.candidate_tier} />,
   },
   {
     accessorKey: "years_experience",

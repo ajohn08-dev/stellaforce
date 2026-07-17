@@ -70,6 +70,7 @@ export const SKILL_TAXONOMY: string[] = [
   "Go",
   "Rust",
   "Java",
+  "Swift",
   "React",
   "Next.js",
   "Node.js",
@@ -101,6 +102,57 @@ export const SKILL_TAXONOMY: string[] = [
   "Stakeholder Management",
   "Mentorship",
 ]
+
+/**
+ * Groups SKILL_TAXONOMY into display categories for the candidate profile's
+ * Skill Map tab. Code-level only — not a DB concept, so a skill can move
+ * categories without a migration.
+ */
+export const SKILL_CATEGORIES: Record<string, string[]> = {
+  Engineering: [
+    "TypeScript",
+    "JavaScript",
+    "Python",
+    "Go",
+    "Rust",
+    "Java",
+    "Swift",
+    "React",
+    "Next.js",
+    "Node.js",
+    "PostgreSQL",
+    "GraphQL",
+    "AWS",
+    "Kubernetes",
+    "Terraform",
+  ],
+  "Data & AI": [
+    "Machine Learning",
+    "LLM Prompt Engineering",
+    "RAG Systems",
+    "Data Engineering",
+    "SQL",
+    "pandas",
+  ],
+  "Product & Design": [
+    "Product Management",
+    "UX Research",
+    "Figma",
+    "Design Systems",
+  ],
+  "Go-to-Market": [
+    "Sales",
+    "Account Management",
+    "Recruiting",
+    "Technical Recruiting",
+  ],
+  "Soft Skills": [
+    "Communication",
+    "Leadership",
+    "Stakeholder Management",
+    "Mentorship",
+  ],
+}
 
 /** Tailwind classes for tier badges (used across list + profile views). */
 export const TIER_BADGE_CLASS: Record<CandidateTier, string> = {

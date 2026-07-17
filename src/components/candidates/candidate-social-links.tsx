@@ -2,15 +2,8 @@ import type { ReactNode } from "react"
 import { Mail, Phone, Globe } from "lucide-react"
 
 import { GithubIcon, LinkedinIcon } from "@/components/icons/brand-icons"
+import { isGithubUrl } from "@/lib/utils"
 import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
-
-function isGithubUrl(url: string): boolean {
-  try {
-    return new URL(url).hostname.includes("github.com")
-  } catch {
-    return false
-  }
-}
 
 function IconLink({
   href,
