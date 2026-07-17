@@ -1,10 +1,19 @@
 "use client"
 
+import { Fragment } from "react"
 import { usePathname } from "next/navigation"
 import { Bell, LogOut } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { logout } from "@/app/login/actions"
 import { NAV_ITEMS, SETTINGS_ITEM } from "@/lib/nav"
+import { useBreadcrumbItems } from "@/lib/breadcrumb-context"
 import type { CurrentProfile } from "@/lib/auth"
 
 function currentTitle(pathname: string): string {
@@ -38,10 +48,35 @@ function getInitials({ full_name, email }: CurrentProfile): string {
 
 export function AppHeader({ user }: { user: CurrentProfile | null }) {
   const pathname = usePathname()
+  const breadcrumbItems = useBreadcrumbItems()
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-6">
-      <span className="text-sm font-medium">{currentTitle(pathname)}</span>
+      {breadcrumbItems ? (
+        <Breadcrumb>
+          <BreadcrumbList>
+            {breadcrumbItems.map((item, i) => {
+              const isLast = i === breadcrumbItems.length - 1
+              return (
+                <Fragment key={i}>
+                  <BreadcrumbItem>
+                    {isLast || !item.href ? (
+                      <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                    ) : (
+                      <BreadcrumbLink href={item.href}>
+                        {item.label}
+                      </BreadcrumbLink>
+                    )}
+                  </BreadcrumbItem>
+                  {!isLast && <BreadcrumbSeparator />}
+                </Fragment>
+              )
+            })}
+          </BreadcrumbList>
+        </Breadcrumb>
+      ) : (
+        <span className="text-sm font-medium">{currentTitle(pathname)}</span>
+      )}
 
       {user ? (
         <div className="flex items-center gap-2">

@@ -9,25 +9,22 @@ import { OverviewTab } from "@/components/candidates/profile/overview-tab"
 import { ExperienceTab } from "@/components/candidates/profile/experience-tab"
 import { EducationTab } from "@/components/candidates/profile/education-tab"
 import { SkillMapTab } from "@/components/candidates/profile/skill-map-tab"
-import type { AddedByProfile } from "@/lib/data"
 import type { WorkHistoryEntry } from "@/lib/work-history"
 import type { CandidateRow, SkillRow } from "@/lib/supabase/types"
 
 export function ProfileTabs({
   candidate,
   skills,
-  addedBy,
   workHistory,
 }: {
   candidate: CandidateRow
   skills: SkillRow[]
-  addedBy: AddedByProfile | null
   workHistory: WorkHistoryEntry[]
 }) {
   return (
     <Tabs defaultValue="overview">
-      <div className="flex items-center justify-between">
-        <TabsList>
+      <div className="flex items-center justify-between border-b border-border">
+        <TabsList className="border-b-0">
           <TabsTab value="overview">Overview</TabsTab>
           <TabsTab value="experience">Experience</TabsTab>
           <TabsTab value="education">Education</TabsTab>
@@ -47,7 +44,11 @@ export function ProfileTabs({
       </div>
 
       <TabsPanel value="overview">
-        <OverviewTab candidate={candidate} addedBy={addedBy} />
+        <OverviewTab
+          candidate={candidate}
+          skills={skills}
+          workHistory={workHistory}
+        />
       </TabsPanel>
       <TabsPanel value="experience">
         <ExperienceTab workHistory={workHistory} />

@@ -1,17 +1,41 @@
 import { Badge } from "@/components/ui/badge"
 import { TierBadge } from "@/components/tier-badge"
+import { HighlightCallout } from "@/components/candidates/profile/highlight-callout"
+import { TenureStatTiles } from "@/components/candidates/profile/tenure-stat-tiles"
+import { ExperienceEntry } from "@/components/candidates/profile/experience-entry"
+import { ProficiencyBadge } from "@/components/candidates/profile/proficiency-badge"
 import { titleCase } from "@/lib/constants"
-import type { AddedByProfile } from "@/lib/data"
-import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
+import { formatEducationLine } from "@/lib/education"
+import { groupSkillsByCategory } from "@/lib/skill-categories"
+import {
+  calculateTenureStats,
+  notableEmployer,
+  type WorkHistoryEntry,
+} from "@/lib/work-history"
+import type { CandidateRow, SkillRow } from "@/lib/supabase/types"
+
+/** The current role if there is one, otherwise the most recently ended one. */
+function mostRecentRole(entries: WorkHistoryEntry[]): WorkHistoryEntry | null {
+  if (entries.length === 0) return null
+  return (
+    entries.find((e) => !e.end_date) ??
+    [...entries].sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? ""))[0]
+  )
+}
 
 export function OverviewTab({
   candidate: c,
-  addedBy,
+  skills,
+  workHistory,
 }: {
   candidate: CandidateRow
-  addedBy: AddedByProfile | null
+  skills: SkillRow[]
+  workHistory: WorkHistoryEntry[]
 }) {
-  const contact = (c.contact_info as ContactInfo | null) ?? {}
+  const notable = notableEmployer(workHistory)
+  const recentRole = mostRecentRole(workHistory)
+  const educationLine = formatEducationLine(c.education)
+  const categories = groupSkillsByCategory(skills)
 
   return (
     <div className="space-y-8">
@@ -24,6 +48,15 @@ export function OverviewTab({
           </Badge>
         )}
       </div>
+
+      {notable && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Highlights
+          </h2>
+          <HighlightCallout entry={notable} />
+        </section>
+      )}
 
       {c.professional_summary && (
         <section className="space-y-2">
@@ -41,58 +74,42 @@ export function OverviewTab({
         </section>
       )}
 
-      <section className="grid gap-6 md:grid-cols-3">
-        <Field label="Email" value={contact.email} />
-        <Field label="Phone" value={contact.phone} />
-        <Field label="Location" value={contact.location} />
-        <Field label="Timezone" value={contact.tz} />
-        <Field
-          label="Experience"
-          value={
-            c.years_experience != null ? `${c.years_experience} years` : undefined
-          }
-        />
-        <Field label="Source" value={c.source} />
-        <Field label="Added by" value={addedBy?.full_name ?? addedBy?.email} />
-        <Field
-          label="LinkedIn"
-          value={c.linkedin_url}
-          href={c.linkedin_url ?? undefined}
-        />
-        <Field
-          label="Portfolio"
-          value={c.portfolio_url}
-          href={c.portfolio_url ?? undefined}
-        />
-        <Field label="Languages" value={(c.languages ?? []).join(", ")} />
-      </section>
-    </div>
-  )
-}
+      {workHistory.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Experience
+          </h2>
+          <TenureStatTiles stats={calculateTenureStats(workHistory)} />
+          {recentRole && <ExperienceEntry entry={recentRole} />}
+        </section>
+      )}
 
-function Field({
-  label,
-  value,
-  href,
-}: {
-  label: string
-  value?: string | null
-  href?: string
-}) {
-  return (
-    <div className="space-y-0.5">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      {href && value ? (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm hover:underline break-all"
-        >
-          {value}
-        </a>
-      ) : (
-        <div className="text-sm">{value || "—"}</div>
+      {educationLine && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Education
+          </h2>
+          <p className="text-sm">{educationLine}</p>
+        </section>
+      )}
+
+      {categories.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Skill Map
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {categories.map(({ category, tier }) => (
+              <div
+                key={category}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5"
+              >
+                <span className="text-sm">{category}</span>
+                <ProficiencyBadge tier={tier} />
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   )
