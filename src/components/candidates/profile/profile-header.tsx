@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { Mail, Phone, Globe } from "lucide-react"
 
 import { GithubIcon, LinkedinIcon } from "@/components/icons/brand-icons"
+import { CandidateAvatar } from "@/components/candidate-avatar"
 import { isGithubUrl } from "@/lib/utils"
 import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
 
@@ -36,15 +37,21 @@ export function ProfileHeader({ candidate }: { candidate: CandidateRow }) {
 
   return (
     <div className="space-y-1">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        {candidate.full_name}
-      </h1>
-      {titleAtCompany && (
-        <p className="text-muted-foreground">{titleAtCompany}</p>
-      )}
-      {contact.location && (
-        <p className="text-sm text-muted-foreground">{contact.location}</p>
-      )}
+      <div className="flex items-center gap-3">
+        <CandidateAvatar name={candidate.full_name} className="size-14 text-base" />
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {candidate.full_name}
+          </h1>
+          {(titleAtCompany || contact.location) && (
+            <p className="text-muted-foreground">
+              {titleAtCompany}
+              {titleAtCompany && contact.location && " • "}
+              {contact.location}
+            </p>
+          )}
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
         {candidate.linkedin_url && (

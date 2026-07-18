@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { TierBadge } from "@/components/tier-badge"
+import { CandidateAvatar } from "@/components/candidate-avatar"
 import { CandidateSocialLinks } from "@/components/candidates/candidate-social-links"
 import { CandidateActions } from "@/components/candidates/candidate-actions"
 import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
@@ -71,8 +72,9 @@ const columns: ColumnDef<CandidateRow>[] = [
     cell: ({ row }) => (
       <Link
         href={`/candidates/${row.original.candidate_id}`}
-        className="font-medium hover:underline"
+        className="flex items-center gap-2.5 font-medium hover:underline"
       >
+        <CandidateAvatar name={row.original.full_name} className="size-7" />
         {row.original.full_name}
       </Link>
     ),
@@ -132,9 +134,9 @@ export function CandidatesTable({ data }: { data: CandidateRow[] }) {
   })
 
   return (
-    <div className="rounded-lg border border-border">
+    <div className="h-full overflow-y-auto rounded-lg border border-border">
       <Table>
-        <TableHeader>
+        <TableHeader className="sticky top-0 z-10 bg-background">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (

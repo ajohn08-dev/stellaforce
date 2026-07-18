@@ -4,6 +4,7 @@ import { GraduationCap, Sparkles, Building2 } from "lucide-react"
 
 import { Checkbox } from "@/components/ui/checkbox"
 import { TierBadge } from "@/components/tier-badge"
+import { CandidateAvatar } from "@/components/candidate-avatar"
 import { CandidateSocialLinks } from "@/components/candidates/candidate-social-links"
 import { CandidateActions } from "@/components/candidates/candidate-actions"
 import { companyLogoSrc } from "@/lib/company-logos"
@@ -23,6 +24,7 @@ export function CandidateCard({ candidate }: { candidate: CandidateRow }) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Checkbox aria-label={`Select ${candidate.full_name}`} />
+          <CandidateAvatar name={candidate.full_name} className="size-7" />
           <Link
             href={`/candidates/${candidate.candidate_id}`}
             className="font-semibold hover:underline"
