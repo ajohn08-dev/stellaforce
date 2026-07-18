@@ -1,9 +1,7 @@
 import { notFound } from "next/navigation"
 
-import { Separator } from "@/components/ui/separator"
 import { ProfileHeader } from "@/components/candidates/profile/profile-header"
 import { ProfileTabs } from "@/components/candidates/profile/profile-tabs"
-import { CandidateSidePanel } from "@/components/candidates/profile/candidate-side-panel"
 import { SetCandidateBreadcrumb } from "@/components/candidates/profile/set-candidate-breadcrumb"
 import { getCandidate } from "@/lib/data"
 import { MOCK_WORK_HISTORY } from "@/lib/mock-work-history"
@@ -24,35 +22,28 @@ export default async function CandidateProfilePage({
 
   return (
     <div
-      className="flex overflow-hidden"
+      className="flex flex-col gap-6 overflow-hidden p-4"
       // Inline style, not an arbitrary Tailwind class: this project has
       // already had one bracketed arbitrary-value class silently fail to
       // generate (grid-cols-[1fr_auto_1fr]), and this height calc is worth
-      // not gambling on. Only the header (h-14 = 3.5rem) needs subtracting —
-      // the route layout cancels <main>'s own padding. Fixed (not min-)
-      // height so each column can scroll internally instead of the page.
+      // not gambling on. <main> has no padding of its own — only the app
+      // header (h-14 = 3.5rem) needs subtracting; this div's own p-4 is
+      // included in that height via border-box. Fixed (not min-) height so
+      // the header stays put and only the tab content below it scrolls.
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
       <SetCandidateBreadcrumb name={candidate.full_name} />
 
-      <div className="flex min-h-0 min-w-0 flex-[3] flex-col">
-        <div className="shrink-0 p-6">
-          <ProfileHeader candidate={candidate} />
-        </div>
-        <ProfileTabs
-          candidate={candidate}
-          skills={skills}
-          workHistory={workHistory}
-        />
+      <div className="shrink-0">
+        <ProfileHeader candidate={candidate} />
       </div>
-      <Separator orientation="vertical" />
-      <div className="flex min-h-0 min-w-0 flex-[2] flex-col">
-        <CandidateSidePanel
-          candidateId={candidate.candidate_id}
-          addedBy={addedBy}
-          dateAdded={candidate.date_added}
-        />
-      </div>
+      <ProfileTabs
+        candidate={candidate}
+        skills={skills}
+        workHistory={workHistory}
+        addedBy={addedBy}
+        dateAdded={candidate.date_added}
+      />
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 
 export default function ScreeningAgentPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <Bot className="size-6 text-brand-purple-600" />

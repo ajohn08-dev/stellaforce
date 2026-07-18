@@ -27,7 +27,7 @@ export default async function HomePage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
         <p className="text-sm text-muted-foreground">

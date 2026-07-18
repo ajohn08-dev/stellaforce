@@ -23,7 +23,7 @@ export default async function JobWorkspacePage({
   const pipeline = getPipelineCandidates(job)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4">
       <SetJobBreadcrumb title={job.title} />
       <JobWorkspaceHeader job={job} />
       <PipelineBoard pipeline={pipeline} />
