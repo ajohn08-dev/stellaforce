@@ -200,3 +200,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /** Hides the scrollbar on a scrollable element while keeping it scrollable. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

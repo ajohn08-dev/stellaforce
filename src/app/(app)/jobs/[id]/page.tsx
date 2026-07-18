@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import { JobWorkspaceHeader } from "@/components/jobs/workspace/job-workspace-header"
 import { PipelineBoard } from "@/components/jobs/workspace/pipeline-board"
 import { SetJobBreadcrumb } from "@/components/jobs/workspace/set-job-breadcrumb"
-import { getPipelineCandidates } from "@/lib/pipeline-candidates"
+import { getSubStageBoard } from "@/lib/pipeline-candidates"
 import { MOCK_JOBS } from "@/lib/mock-jobs"
 
 /**
@@ -20,13 +20,25 @@ export default async function JobWorkspacePage({
   const job = MOCK_JOBS.find((j) => j.job_id === id)
   if (!job) notFound()
 
-  const pipeline = getPipelineCandidates(job)
+  const stages = getSubStageBoard(job)
 
   return (
-    <div className="space-y-6 p-4">
+    <div
+      className="flex flex-col overflow-hidden p-4"
+      // Inline style, not an arbitrary Tailwind class: <main> has no padding
+      // of its own, so only the app header (h-14 = 3.5rem) needs
+      // subtracting — this div's own p-4 is included via border-box. Fixed
+      // (not min-) height so the header stays put and the pipeline board
+      // fills the rest.
+      style={{ height: "calc(100vh - 3.5rem)" }}
+    >
       <SetJobBreadcrumb title={job.title} />
-      <JobWorkspaceHeader job={job} />
-      <PipelineBoard pipeline={pipeline} />
+      <div className="shrink-0 pb-4">
+        <JobWorkspaceHeader job={job} />
+      </div>
+      <div className="min-h-0 flex-1">
+        <PipelineBoard stages={stages} />
+      </div>
     </div>
   )
 }

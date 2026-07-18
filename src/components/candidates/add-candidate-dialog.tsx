@@ -62,7 +62,7 @@ export function AddCandidateDialog() {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={<Button>Add candidate</Button>} />
+      <DialogTrigger render={<Button>Add Candidate</Button>} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>

@@ -48,7 +48,7 @@ export function AddJobDialog() {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={<Button>Add job</Button>} />
+      <DialogTrigger render={<Button>Add Job</Button>} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add a job</DialogTitle>
