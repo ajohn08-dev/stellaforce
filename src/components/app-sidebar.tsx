@@ -38,7 +38,7 @@ export function AppSidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="flex h-full w-[200px] shrink-0 flex-col border-r border-border px-3 py-4">
+    <aside className="flex h-full w-[200px] shrink-0 flex-col border-r border-border bg-sidebar px-3 py-4">
       <Link href="/home" className="px-2.5 py-1.5">
         <Logo />
       </Link>
