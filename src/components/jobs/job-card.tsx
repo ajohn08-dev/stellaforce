@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { Building2, MapPin } from "lucide-react"
 
 import { Checkbox } from "@/components/ui/checkbox"
@@ -12,7 +13,9 @@ export function JobCard({ job }: { job: MockJob }) {
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Checkbox aria-label={`Select ${job.title}`} />
-          <span className="font-semibold">{job.title}</span>
+          <Link href={`/jobs/${job.job_id}`} className="font-semibold hover:underline">
+            {job.title}
+          </Link>
           <JobStatusBadge status={job.status} />
           <span className="text-muted-foreground">•</span>
           <Building2 className="size-4 shrink-0 text-muted-foreground" />

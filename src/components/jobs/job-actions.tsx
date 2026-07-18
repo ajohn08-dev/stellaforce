@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { MoreVertical } from "lucide-react"
 import { toast } from "sonner"
 
@@ -31,7 +32,7 @@ export function JobActions({ job }: { job: MockJob }) {
         }
       />
       <DropdownMenuContent>
-        <DropdownMenuItem onClick={() => stub("viewing job details")}>
+        <DropdownMenuItem render={<Link href={`/jobs/${job.job_id}`} />}>
           View details
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => stub("editing this job")}>

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   type ColumnDef,
   type RowSelectionState,
@@ -67,7 +68,12 @@ const columns: ColumnDef<MockJob>[] = [
     accessorKey: "title",
     header: sortHeader("Job title"),
     cell: ({ row }) => (
-      <span className="font-medium">{row.original.title}</span>
+      <Link
+        href={`/jobs/${row.original.job_id}`}
+        className="font-medium hover:underline"
+      >
+        {row.original.title}
+      </Link>
     ),
   },
   {
@@ -102,7 +108,7 @@ const columns: ColumnDef<MockJob>[] = [
   },
   {
     accessorKey: "recruiter",
-    header: "Recruiter",
+    header: "Owner",
     cell: ({ row }) => row.original.recruiter,
   },
   {
@@ -133,9 +139,9 @@ export function JobsTable({ data }: { data: MockJob[] }) {
   })
 
   return (
-    <div className="rounded-lg border border-border">
+    <div className="h-full overflow-y-auto rounded-lg border border-border">
       <Table>
-        <TableHeader>
+        <TableHeader className="sticky top-0 z-10 bg-background">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (

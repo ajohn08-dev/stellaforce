@@ -1,21 +1,14 @@
 import { Fragment } from "react"
 
 import { Separator } from "@/components/ui/separator"
+import { PIPELINE_STAGES } from "@/lib/pipeline-candidates"
 import type { PipelineCounts } from "@/lib/mock-jobs"
-
-const STAGES: { key: keyof PipelineCounts; label: string }[] = [
-  { key: "source", label: "source" },
-  { key: "screen", label: "screen" },
-  { key: "interview", label: "interview" },
-  { key: "offer", label: "offer" },
-  { key: "close", label: "close" },
-]
 
 /** Candidate headcount per pipeline stage — an unboxed row, columns split by hairline separators. */
 export function JobPipelineStages({ pipeline }: { pipeline: PipelineCounts }) {
   return (
     <div className="flex items-stretch">
-      {STAGES.map(({ key, label }, i) => (
+      {PIPELINE_STAGES.map(({ key, label }, i) => (
         <Fragment key={key}>
           {i > 0 && <Separator orientation="vertical" className="mx-4" />}
           <div className="flex-1 text-center">
