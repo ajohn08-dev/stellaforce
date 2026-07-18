@@ -17,7 +17,7 @@ export default async function CandidateProfilePage({
   const result = await getCandidate(id)
   if (!result) notFound()
 
-  const { candidate, skills } = result
+  const { candidate, skills, addedBy } = result
   // TODO: candidates.work_history isn't a real column yet — mock data until
   // the schema/UI here are approved (see src/lib/mock-work-history.ts).
   const workHistory = MOCK_WORK_HISTORY[candidate.candidate_id] ?? []
@@ -47,7 +47,11 @@ export default async function CandidateProfilePage({
       </div>
       <Separator orientation="vertical" />
       <div className="flex min-h-0 min-w-0 flex-[2] flex-col">
-        <CandidateSidePanel candidateId={candidate.candidate_id} />
+        <CandidateSidePanel
+          candidateId={candidate.candidate_id}
+          addedBy={addedBy}
+          dateAdded={candidate.date_added}
+        />
       </div>
     </div>
   )
