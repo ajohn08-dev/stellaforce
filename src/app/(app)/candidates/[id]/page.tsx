@@ -24,18 +24,21 @@ export default async function CandidateProfilePage({
 
   return (
     <div
-      className="flex"
+      className="flex overflow-hidden"
       // Inline style, not an arbitrary Tailwind class: this project has
       // already had one bracketed arbitrary-value class silently fail to
       // generate (grid-cols-[1fr_auto_1fr]), and this height calc is worth
       // not gambling on. Only the header (h-14 = 3.5rem) needs subtracting —
-      // the route layout cancels <main>'s own padding.
-      style={{ minHeight: "calc(100vh - 3.5rem)" }}
+      // the route layout cancels <main>'s own padding. Fixed (not min-)
+      // height so each column can scroll internally instead of the page.
+      style={{ height: "calc(100vh - 3.5rem)" }}
     >
       <SetCandidateBreadcrumb name={candidate.full_name} />
 
-      <div className="min-w-0 flex-1 space-y-6 p-6">
-        <ProfileHeader candidate={candidate} />
+      <div className="flex min-h-0 min-w-0 flex-[3] flex-col">
+        <div className="shrink-0 p-6">
+          <ProfileHeader candidate={candidate} />
+        </div>
         <ProfileTabs
           candidate={candidate}
           skills={skills}
@@ -43,7 +46,7 @@ export default async function CandidateProfilePage({
         />
       </div>
       <Separator orientation="vertical" />
-      <div className="min-w-0 flex-1 p-6">
+      <div className="flex min-h-0 min-w-0 flex-[2] flex-col">
         <CandidateSidePanel candidateId={candidate.candidate_id} />
       </div>
     </div>

@@ -22,8 +22,8 @@ export function ProfileTabs({
   workHistory: WorkHistoryEntry[]
 }) {
   return (
-    <Tabs defaultValue="overview">
-      <div className="flex items-center justify-between border-b border-border">
+    <Tabs defaultValue="overview" className="min-h-0 flex-1 gap-0">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-6">
         <TabsList className="border-b-0">
           <TabsTab value="overview">Overview</TabsTab>
           <TabsTab value="experience">Experience</TabsTab>
@@ -43,22 +43,24 @@ export function ProfileTabs({
         </Button>
       </div>
 
-      <TabsPanel value="overview">
-        <OverviewTab
-          candidate={candidate}
-          skills={skills}
-          workHistory={workHistory}
-        />
-      </TabsPanel>
-      <TabsPanel value="experience">
-        <ExperienceTab workHistory={workHistory} />
-      </TabsPanel>
-      <TabsPanel value="education">
-        <EducationTab candidate={candidate} />
-      </TabsPanel>
-      <TabsPanel value="skill-map">
-        <SkillMapTab skills={skills} />
-      </TabsPanel>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-6">
+        <TabsPanel value="overview">
+          <OverviewTab
+            candidate={candidate}
+            skills={skills}
+            workHistory={workHistory}
+          />
+        </TabsPanel>
+        <TabsPanel value="experience">
+          <ExperienceTab workHistory={workHistory} />
+        </TabsPanel>
+        <TabsPanel value="education">
+          <EducationTab candidate={candidate} />
+        </TabsPanel>
+        <TabsPanel value="skill-map">
+          <SkillMapTab skills={skills} />
+        </TabsPanel>
+      </div>
     </Tabs>
   )
 }
