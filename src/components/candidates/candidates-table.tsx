@@ -72,7 +72,7 @@ const columns: ColumnDef<CandidateRow>[] = [
     cell: ({ row }) => (
       <Link
         href={`/candidates/${row.original.candidate_id}`}
-        className="flex items-center gap-2.5 font-medium hover:underline"
+        className="flex items-center gap-2.5 font-medium hover:text-brand-purple-600"
       >
         <CandidateAvatar name={row.original.full_name} className="size-7" />
         {row.original.full_name}
@@ -136,7 +136,7 @@ export function CandidatesTable({ data }: { data: CandidateRow[] }) {
   return (
     <div className="h-full overflow-y-auto rounded-lg border border-border">
       <Table>
-        <TableHeader className="sticky top-0 z-10 bg-background">
+        <TableHeader className="sticky top-0 z-10 bg-muted">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (

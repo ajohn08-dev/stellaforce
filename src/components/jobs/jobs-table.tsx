@@ -70,7 +70,7 @@ const columns: ColumnDef<MockJob>[] = [
     cell: ({ row }) => (
       <Link
         href={`/jobs/${row.original.job_id}`}
-        className="font-medium hover:underline"
+        className="font-medium hover:text-brand-purple-600"
       >
         {row.original.title}
       </Link>
@@ -141,7 +141,7 @@ export function JobsTable({ data }: { data: MockJob[] }) {
   return (
     <div className="h-full overflow-y-auto rounded-lg border border-border">
       <Table>
-        <TableHeader className="sticky top-0 z-10 bg-background">
+        <TableHeader className="sticky top-0 z-10 bg-muted">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (

@@ -15,12 +15,15 @@ export type PipelineCounts = {
   close: number
 }
 
+/** "draft" isn't a real job_status DB value — it's a mock-only, pre-posting state for this UI preview. */
+export type MockJobStatus = JobStatus | "draft"
+
 export type MockJob = {
   job_id: string
   title: string
   openings: number
   client_name: string
-  status: JobStatus
+  status: MockJobStatus
   location: string
   candidates_in_pipeline: number
   recruiter: string
@@ -159,6 +162,17 @@ export const MOCK_JOBS: MockJob[] = [
     candidates_in_pipeline: 0,
     recruiter: "Diego Fernandez",
     pipeline: { source: 2, screen: 2, interview: 1, offer: 1, close: 1 },
+  },
+  {
+    job_id: "job-13",
+    title: "Senior Product Designer",
+    openings: 1,
+    client_name: "Globex Media",
+    status: "draft",
+    location: "Remote (US)",
+    candidates_in_pipeline: 0,
+    recruiter: "Priya Nair",
+    pipeline: { source: 0, screen: 0, interview: 0, offer: 0, close: 0 },
   },
 ]
 
