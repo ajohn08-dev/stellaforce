@@ -136,7 +136,7 @@ export function CandidatesTable({ data }: { data: CandidateRow[] }) {
   return (
     <div className="h-full overflow-y-auto rounded-lg border border-border">
       <Table>
-        <TableHeader className="sticky top-0 z-10 bg-muted">
+        <TableHeader className="sticky top-0 z-10 bg-muted/50">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (

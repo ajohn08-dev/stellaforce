@@ -6,6 +6,7 @@ import { Bell, LogOut } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -61,7 +62,14 @@ export function AppHeader({ user }: { user: CurrentProfile | null }) {
                 <Fragment key={i}>
                   <BreadcrumbItem>
                     {isLast || !item.href ? (
-                      <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                      <BreadcrumbPage className="flex items-center gap-1.5">
+                        {item.label}
+                        {item.badge && (
+                          <Badge className="border-transparent bg-muted text-muted-foreground">
+                            {item.badge}
+                          </Badge>
+                        )}
+                      </BreadcrumbPage>
                     ) : (
                       <BreadcrumbLink href={item.href}>
                         {item.label}

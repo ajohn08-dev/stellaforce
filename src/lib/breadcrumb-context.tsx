@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react"
 
-export type BreadcrumbSegment = { label: string; href?: string }
+export type BreadcrumbSegment = { label: string; href?: string; badge?: string }
 
 type BreadcrumbContextValue = {
   items: BreadcrumbSegment[] | null

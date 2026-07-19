@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation"
 
+import { JobDraftSpace } from "@/components/jobs/draft/job-draft-space"
 import { JobWorkspaceHeader } from "@/components/jobs/workspace/job-workspace-header"
 import { PipelineBoard } from "@/components/jobs/workspace/pipeline-board"
 import { SetJobBreadcrumb } from "@/components/jobs/workspace/set-job-breadcrumb"
+import { titleCase } from "@/lib/constants"
 import { getSubStageBoard } from "@/lib/pipeline-candidates"
 import { MOCK_JOBS } from "@/lib/mock-jobs"
 
@@ -19,6 +21,15 @@ export default async function JobWorkspacePage({
   const { id } = await params
   const job = MOCK_JOBS.find((j) => j.job_id === id)
   if (!job) notFound()
+
+  if (job.status === "draft") {
+    return (
+      <>
+        <SetJobBreadcrumb title={job.title} badge={titleCase(job.status)} />
+        <JobDraftSpace job={job} />
+      </>
+    )
+  }
 
   const stages = getSubStageBoard(job)
 

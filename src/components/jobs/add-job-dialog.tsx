@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { FileText, Upload, X } from "lucide-react"
 
@@ -91,6 +92,7 @@ function InlineFileUpload({
  * File uploads are selected but not parsed/stored anywhere yet.
  */
 export function AddJobDialog() {
+  const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState(EMPTY_FORM)
   const [descriptionFile, setDescriptionFile] = React.useState<File | null>(null)
@@ -210,8 +212,13 @@ export function AddJobDialog() {
         <Button
           disabled={!form.title || !form.client_name || !hasDescription}
           onClick={() => {
-            toast.info("Not wired up yet — job creation is coming soon.")
+            toast.info(
+              "Not wired up yet — this opens the sample draft job so you can see what's next."
+            )
             handleOpenChange(false)
+            // No job_orders write yet — routes to the mock draft job (job-13)
+            // to demonstrate the draft-space handoff after job creation.
+            router.push("/jobs/job-13")
           }}
         >
           Create job
