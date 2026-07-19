@@ -16,7 +16,7 @@ export default async function AppLayout({
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <AppHeader user={profile} />
-          <main className="flex-1 overflow-y-auto">{children}</main>
+          <main className="flex-1 overflow-y-auto bg-brand-neutral-50">{children}</main>
         </div>
       </div>
     </BreadcrumbProvider>

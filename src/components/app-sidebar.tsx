@@ -36,8 +36,8 @@ function NavLink({
         "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
         collapsed && "justify-center px-0",
         active
-          ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
-          : "text-muted-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent"
+          ? "bg-accent text-accent-foreground font-medium"
+          : "text-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent"
       )}
     >
       <Icon className="size-4 shrink-0" />

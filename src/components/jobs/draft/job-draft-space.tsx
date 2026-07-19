@@ -30,8 +30,7 @@ export function JobDraftSpace({ job }: { job: MockJob }) {
       // subtracting — this div's own p-4 is included via border-box.
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
-      <div className="shrink-0 space-y-4 pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">{job.title}</h1>
+      <div className="shrink-0 pb-4">
         <StepProgressBar
           steps={STEPS}
           currentIndex={stepIndex}

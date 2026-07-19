@@ -24,7 +24,7 @@ export function JobSearch() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search by title or client…"
-        className="w-56"
+        className="w-56 bg-white"
       />
     </form>
   )

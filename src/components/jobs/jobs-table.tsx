@@ -139,7 +139,7 @@ export function JobsTable({ data }: { data: MockJob[] }) {
   })
 
   return (
-    <div className="h-full overflow-y-auto rounded-lg border border-border">
+    <div className="h-full overflow-y-auto rounded-lg border border-border bg-white">
       <Table>
         <TableHeader className="sticky top-0 z-10 bg-muted/50">
           {table.getHeaderGroups().map((hg) => (
