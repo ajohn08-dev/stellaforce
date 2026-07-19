@@ -4,30 +4,17 @@ import { GraduationCap, Sparkles, Building2 } from "lucide-react"
 
 import { Checkbox } from "@/components/ui/checkbox"
 import { TierBadge } from "@/components/tier-badge"
+import { CandidateAvatar } from "@/components/candidate-avatar"
 import { CandidateSocialLinks } from "@/components/candidates/candidate-social-links"
 import { CandidateActions } from "@/components/candidates/candidate-actions"
 import { companyLogoSrc } from "@/lib/company-logos"
-import type {
-  CandidateRow,
-  ContactInfo,
-  EducationEntry,
-} from "@/lib/supabase/types"
-
-function formatEducation(education: CandidateRow["education"]): string | null {
-  const entries = Array.isArray(education) ? (education as EducationEntry[]) : []
-  const entry = entries[0]
-  if (!entry) return null
-  const degreeLine = [entry.degree, entry.field_of_study].filter(Boolean).join(", ")
-  if (!degreeLine && !entry.institution) return null
-  return [degreeLine, entry.institution && `at ${entry.institution}`]
-    .filter(Boolean)
-    .join(" ")
-}
+import { formatEducationLine } from "@/lib/education"
+import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
 
 export function CandidateCard({ candidate }: { candidate: CandidateRow }) {
   const contact = (candidate.contact_info as ContactInfo | null) ?? {}
   const logoSrc = companyLogoSrc(candidate.current_company)
-  const education = formatEducation(candidate.education)
+  const education = formatEducationLine(candidate.education)
   const titleAtCompany = [candidate.current_title, candidate.current_company]
     .filter(Boolean)
     .join(" at ")
@@ -37,6 +24,7 @@ export function CandidateCard({ candidate }: { candidate: CandidateRow }) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Checkbox aria-label={`Select ${candidate.full_name}`} />
+          <CandidateAvatar name={candidate.full_name} className="size-7" />
           <Link
             href={`/candidates/${candidate.candidate_id}`}
             className="font-semibold hover:underline"

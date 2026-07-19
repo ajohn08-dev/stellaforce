@@ -38,6 +38,8 @@ export type PlacementStatus = "active" | "completed" | "fell_through"
 export type InteractionType = "call" | "email" | "interview" | "note"
 export type NurtureStatus = "active" | "dormant" | "re_engaging"
 export type UserRole = "recruiter" | "manager" | "admin"
+export type ProfileSide = "stellaforce" | "client"
+export type ClientRole = "member" | "admin"
 
 // ── Domain JSON shapes (advisory; columns are jsonb) ─────────────────────────
 export type ContactInfo = {
@@ -88,6 +90,7 @@ export type CandidateRow = {
   data_provenance: DataProvenance
   freshness_score: number | null
   last_verified: string | null
+  added_by: string | null
   date_added: string
   last_updated: string
   created_at: string
@@ -185,6 +188,9 @@ export type ProfileRow = {
   email: string
   full_name: string | null
   role: UserRole
+  side: ProfileSide
+  client_id: string | null
+  client_role: ClientRole | null
   created_at: string
   updated_at: string
 }
@@ -265,6 +271,8 @@ export type Database = {
       interaction_type: InteractionType
       nurture_status: NurtureStatus
       user_role: UserRole
+      profile_side: ProfileSide
+      client_role: ClientRole
     }
     CompositeTypes: Record<string, never>
   }

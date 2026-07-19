@@ -1,12 +1,10 @@
-import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { Badge } from "@/components/ui/badge"
-import { buttonVariants } from "@/components/ui/button"
-import { TierBadge } from "@/components/tier-badge"
+import { ProfileHeader } from "@/components/candidates/profile/profile-header"
+import { ProfileTabs } from "@/components/candidates/profile/profile-tabs"
+import { SetCandidateBreadcrumb } from "@/components/candidates/profile/set-candidate-breadcrumb"
 import { getCandidate } from "@/lib/data"
-import { titleCase } from "@/lib/constants"
-import type { AiLiteracySignal, ContactInfo } from "@/lib/supabase/types"
+import { MOCK_WORK_HISTORY } from "@/lib/mock-work-history"
 
 export default async function CandidateProfilePage({
   params,
@@ -17,159 +15,35 @@ export default async function CandidateProfilePage({
   const result = await getCandidate(id)
   if (!result) notFound()
 
-  const { candidate: c, skills } = result
-  const contact = (c.contact_info as ContactInfo | null) ?? {}
+  const { candidate, skills, addedBy } = result
+  // TODO: candidates.work_history isn't a real column yet — mock data until
+  // the schema/UI here are approved (see src/lib/mock-work-history.ts).
+  const workHistory = MOCK_WORK_HISTORY[candidate.candidate_id] ?? []
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {c.full_name}
-            </h1>
-            <TierBadge tier={c.candidate_tier} />
-          </div>
-          <p className="text-muted-foreground">
-            {[c.current_title, c.current_company].filter(Boolean).join(" · ") ||
-              "—"}
-          </p>
-        </div>
-        <Link href="/candidates" className={buttonVariants({ variant: "outline" })}>
-          Back
-        </Link>
+    <div
+      className="flex flex-col gap-6 overflow-hidden p-4"
+      // Inline style, not an arbitrary Tailwind class: this project has
+      // already had one bracketed arbitrary-value class silently fail to
+      // generate (grid-cols-[1fr_auto_1fr]), and this height calc is worth
+      // not gambling on. <main> has no padding of its own — only the app
+      // header (h-14 = 3.5rem) needs subtracting; this div's own p-4 is
+      // included in that height via border-box. Fixed (not min-) height so
+      // the header stays put and only the tab content below it scrolls.
+      style={{ height: "calc(100vh - 3.5rem)" }}
+    >
+      <SetCandidateBreadcrumb name={candidate.full_name} />
+
+      <div className="shrink-0">
+        <ProfileHeader candidate={candidate} />
       </div>
-
-      <div className="grid gap-6 md:grid-cols-3">
-        <Field label="Email" value={contact.email} />
-        <Field label="Phone" value={contact.phone} />
-        <Field label="Location" value={contact.location} />
-        <Field label="Timezone" value={contact.tz} />
-        <Field
-          label="Experience"
-          value={
-            c.years_experience != null ? `${c.years_experience} years` : undefined
-          }
-        />
-        <Field label="Source" value={c.source} />
-        <Field
-          label="LinkedIn"
-          value={c.linkedin_url}
-          href={c.linkedin_url ?? undefined}
-        />
-        <Field
-          label="Portfolio"
-          value={c.portfolio_url}
-          href={c.portfolio_url ?? undefined}
-        />
-        <Field label="Languages" value={(c.languages ?? []).join(", ")} />
-      </div>
-
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          Provenance & freshness
-        </h2>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <Badge variant="outline">{titleCase(c.data_provenance)}</Badge>
-          {c.freshness_score != null && (
-            <Badge variant="secondary">
-              Freshness {Number(c.freshness_score).toFixed(2)}
-            </Badge>
-          )}
-          {c.last_verified && (
-            <span className="text-muted-foreground">
-              Verified {new Date(c.last_verified).toLocaleDateString()}
-            </span>
-          )}
-        </div>
-      </section>
-
-      {c.professional_summary && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">Summary</h2>
-          <p className="text-sm leading-relaxed">{c.professional_summary}</p>
-        </section>
-      )}
-
-      {c.tier_rationale && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Tier rationale
-          </h2>
-          <p className="text-sm leading-relaxed">{c.tier_rationale}</p>
-        </section>
-      )}
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          Skills ({skills.length})
-        </h2>
-        {skills.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No skills recorded.</p>
-        ) : (
-          <div className="grid gap-2">
-            {skills.map((s) => {
-              const ai = s.ai_literacy_signal as AiLiteracySignal | null
-              const hasAi = ai && (ai.tool_used || ai.how_used)
-              return (
-                <div
-                  key={s.skill_id}
-                  className="flex flex-col gap-1 rounded-md border border-border p-3"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{s.skill_name}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {titleCase(s.skill_type)}
-                    </Badge>
-                    {s.proficiency_level && (
-                      <Badge variant="secondary" className="text-xs">
-                        {titleCase(s.proficiency_level)}
-                      </Badge>
-                    )}
-                  </div>
-                  {hasAi && (
-                    <p className="text-xs text-muted-foreground">
-                      AI signal: {[ai?.tool_used, ai?.how_used, ai?.measurable_outcome]
-                        .filter(Boolean)
-                        .join(" — ")}
-                    </p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* TODO(workflow-3): refer / update loop — surface referral + enrichment here. */}
-    </div>
-  )
-}
-
-function Field({
-  label,
-  value,
-  href,
-}: {
-  label: string
-  value?: string | null
-  href?: string
-}) {
-  return (
-    <div className="space-y-0.5">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      {href && value ? (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm hover:underline break-all"
-        >
-          {value}
-        </a>
-      ) : (
-        <div className="text-sm">{value || "—"}</div>
-      )}
+      <ProfileTabs
+        candidate={candidate}
+        skills={skills}
+        workHistory={workHistory}
+        addedBy={addedBy}
+        dateAdded={candidate.date_added}
+      />
     </div>
   )
 }

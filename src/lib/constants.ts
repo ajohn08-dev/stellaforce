@@ -70,6 +70,7 @@ export const SKILL_TAXONOMY: string[] = [
   "Go",
   "Rust",
   "Java",
+  "Swift",
   "React",
   "Next.js",
   "Node.js",
@@ -102,11 +103,70 @@ export const SKILL_TAXONOMY: string[] = [
   "Mentorship",
 ]
 
+/**
+ * Groups SKILL_TAXONOMY into display categories for the candidate profile's
+ * Skill Map tab. Code-level only — not a DB concept, so a skill can move
+ * categories without a migration.
+ */
+export const SKILL_CATEGORIES: Record<string, string[]> = {
+  Engineering: [
+    "TypeScript",
+    "JavaScript",
+    "Python",
+    "Go",
+    "Rust",
+    "Java",
+    "Swift",
+    "React",
+    "Next.js",
+    "Node.js",
+    "PostgreSQL",
+    "GraphQL",
+    "AWS",
+    "Kubernetes",
+    "Terraform",
+  ],
+  "Data & AI": [
+    "Machine Learning",
+    "LLM Prompt Engineering",
+    "RAG Systems",
+    "Data Engineering",
+    "SQL",
+    "pandas",
+  ],
+  "Product & Design": [
+    "Product Management",
+    "UX Research",
+    "Figma",
+    "Design Systems",
+  ],
+  "Go-to-Market": [
+    "Sales",
+    "Account Management",
+    "Recruiting",
+    "Technical Recruiting",
+  ],
+  "Soft Skills": [
+    "Communication",
+    "Leadership",
+    "Stakeholder Management",
+    "Mentorship",
+  ],
+}
+
 /** Tailwind classes for tier badges (used across list + profile views). */
 export const TIER_BADGE_CLASS: Record<CandidateTier, string> = {
   gold: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
   silver: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
   bronze: "bg-orange-100 text-orange-900 dark:bg-orange-950 dark:text-orange-200",
+}
+
+/** Tailwind classes for job status badges (used on the Jobs list). */
+export const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
+  open: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  on_hold: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  filled: "bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200",
+  closed: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
 }
 
 /** Human-readable labels for enum values that need prettifying. */

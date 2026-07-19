@@ -58,7 +58,9 @@ Postgres enum types. snake_case throughout.
 - `placement_status`: **active | completed | fell_through**
 - `interaction_type`: **call | email | interview | note**
 - `nurture_status`: **active | dormant | re_engaging**
-- `user_role`: **recruiter | manager | admin**
+- `user_role`: **recruiter | manager | admin** (Stellaforce-side only)
+- `profile_side`: **stellaforce | client** — which side of the platform a profile belongs to
+- `client_role`: **member | admin** (client-side only, mirrors `user_role`'s purpose for the client side)
 
 ### Tables
 
@@ -70,6 +72,8 @@ Postgres enum types. snake_case throughout.
 `candidate_tier` (enum), `tier_rationale` (text),
 `embedding_vector` (vector(1536)), `data_provenance` (enum, default ai_parsed),
 `freshness_score` (numeric), `last_verified` (timestamptz),
+`added_by` (uuid, fk → `profiles.id`, nullable — which recruiter/manager/admin
+added this candidate; app write paths should always set it),
 `date_added`, `last_updated`, `created_at`, `updated_at`.
 _redeployment_fit lives in the `candidate_client_fit` join table (below)._
 
@@ -107,12 +111,20 @@ single role so one candidate can be scored against many clients → redeployment
 
 **profiles** (auth — one row per `auth.users` row, auto-created by trigger)
 `id` (uuid pk, fk → `auth.users.id`), `email` (not null), `full_name`,
-`role` (enum, default `recruiter`), `created_at`, `updated_at`. No public
-sign-up: users are created manually in the Supabase dashboard (Auth → Users,
-Auto Confirm on); `handle_new_user()` inserts the matching profile row;
-`role` is hand-promoted afterward via SQL. Role is stored but **not yet
-enforced** — every authenticated user has full CRUD via the existing
-permissive RLS policies. Role-based restriction is a future pass.
+`role` (enum, default `recruiter` — Stellaforce-side only), `side` (enum,
+default `stellaforce`), `client_id` (fk → `clients.client_id`, nullable —
+set for client-side profiles only), `client_role` (enum, nullable — set for
+client-side profiles only), `created_at`, `updated_at`. A check constraint
+enforces `side = 'stellaforce'` ⟺ `client_id`/`client_role` are null, and
+`side = 'client'` ⟺ both are set. No public sign-up: users are created
+manually in the Supabase dashboard (Auth → Users, Auto Confirm on);
+`handle_new_user()` inserts the matching profile row defaulted to the
+Stellaforce side; `role` (Stellaforce-side) or `side`/`client_id`/
+`client_role` (client-side, when onboarding a new client) are hand-set
+afterward via SQL. All of this is stored but **not yet enforced** — every
+authenticated user, Stellaforce or client-side, has full CRUD via the
+existing permissive RLS policies. Role-based and client-scoped restriction
+is a future pass.
 
 ### Indexes
 FK indexes on every fk column; filter indexes on `candidates.candidate_tier`,
@@ -177,16 +189,20 @@ Left sidebar (`src/components/app-sidebar.tsx`) + top header
 
 ## Migrations
 SQL lives in `supabase/migrations/` (0001 extensions+enums → 0002 tables →
-0003 indexes → 0004 RLS → 0005 auth roles). Apply via the Supabase CLI
+0003 indexes → 0004 RLS → 0005 auth roles → 0006 candidates.added_by →
+0007 client profiles). Apply
+via the Supabase CLI
 (`supabase db push`) or the SQL editor. RLS is minimal: authenticated users
 read/write all core tables; anonymous users get nothing (PII not public); the
 service-role key bypasses RLS for privileged operations (seeding, backfills).
 
 ## Auth
-Supabase Auth, email/password only, no public sign-up — recruiters/managers/
-admins are created manually in the dashboard. `src/middleware.ts` +
-`src/lib/supabase/middleware.ts` refresh the session and redirect signed-out
-requests to `/login`. `src/lib/auth.ts` (`getCurrentProfile`) resolves the
-signed-in user's `profiles` row server-side; `src/app/login/` holds the login
-page and the `login`/`logout` Server Actions. See the **profiles** table above
-for role provisioning.
+Supabase Auth, email/password only, no public sign-up — Stellaforce-side
+recruiters/managers/admins and client-side members/admins are all created
+manually in the dashboard. `src/proxy.ts` (Next.js 16's `middleware.ts`
+convention) + `src/lib/supabase/middleware.ts` refresh the session and
+redirect signed-out requests to `/login`. `src/lib/auth.ts`
+(`getCurrentProfile`) resolves the signed-in user's `profiles` row
+server-side; `src/app/login/` holds the login page and the `login`/`logout`
+Server Actions. See the **profiles** table above for role provisioning
+(Stellaforce-side) and client onboarding (client-side).

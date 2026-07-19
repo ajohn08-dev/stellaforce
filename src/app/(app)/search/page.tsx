@@ -5,7 +5,7 @@ import { SupabaseNotice } from "@/components/supabase-notice"
 
 export default function SearchPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
         <p className="text-sm text-muted-foreground">

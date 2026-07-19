@@ -1,87 +1,71 @@
-import Link from "next/link"
+import { JobsTable } from "@/components/jobs/jobs-table"
+import { JobsGrid } from "@/components/jobs/jobs-grid"
+import { JobSearch } from "@/components/jobs/job-search"
+import { JobFilterButton } from "@/components/jobs/job-filter-button"
+import { JobActiveFilters } from "@/components/jobs/job-active-filters"
+import { AddJobDialog } from "@/components/jobs/add-job-dialog"
+import { JobViewToggle } from "@/components/jobs/job-view-toggle"
+import { parseStatusesParam } from "@/lib/job-status"
+import { MOCK_JOBS } from "@/lib/mock-jobs"
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { SupabaseNotice } from "@/components/supabase-notice"
-import { getJobOrders } from "@/lib/data"
-import { titleCase } from "@/lib/constants"
-import type { SalaryRange } from "@/lib/supabase/types"
+export default async function JobsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const sp = await searchParams
+  const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined)
 
-function formatSalary(range: SalaryRange | null): string {
-  if (!range || (range.min == null && range.max == null)) return "—"
-  const cur = range.currency ?? "$"
-  const fmt = (n?: number) => (n != null ? `${cur}${n.toLocaleString()}` : "?")
-  return `${fmt(range.min)} – ${fmt(range.max)}`
-}
+  const statuses = parseStatusesParam(get("statuses") ?? null)
+  const q = get("q")?.trim().toLowerCase()
 
-export default async function JobsPage() {
-  const jobs = await getJobOrders()
+  const jobs = MOCK_JOBS.filter((job) => {
+    if (!statuses.includes(job.status)) return false
+    if (q) {
+      const haystack = `${job.title} ${job.client_name}`.toLowerCase()
+      if (!haystack.includes(q)) return false
+    }
+    return true
+  })
+
+  const view = get("view") === "grid" ? "grid" : "list"
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
-        <p className="text-sm text-muted-foreground">
-          {jobs.length} order{jobs.length === 1 ? "" : "s"}
-        </p>
+    <div
+      className="flex flex-col overflow-hidden"
+      // Inline style, not an arbitrary Tailwind class: <main> has no padding
+      // of its own — every section below manages its own — so only the app
+      // header (h-14 = 3.5rem) needs subtracting. Fixed (not min-) height so
+      // the header stays put and only the grid/table body below it scrolls.
+      style={{ height: "calc(100vh - 3.5rem)" }}
+    >
+      <div className="shrink-0 border-b border-border px-4 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <JobSearch />
+            <JobFilterButton />
+          </div>
+          <AddJobDialog />
+        </div>
       </div>
 
-      <SupabaseNotice />
+      <div className="shrink-0 px-4 pt-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <JobActiveFilters />
+          </div>
+          <JobViewToggle />
+        </div>
+      </div>
 
-      <div className="rounded-lg border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Client</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Salary range</TableHead>
-              <TableHead>Required skills</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {jobs.length ? (
-              jobs.map((j) => (
-                <TableRow key={j.job_id}>
-                  <TableCell>
-                    <Link
-                      href={`/jobs/${j.job_id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {j.title}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{j.client?.client_name ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{titleCase(j.status)}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {formatSalary(j.salary_range as SalaryRange | null)}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {(j.required_skills ?? []).slice(0, 4).join(", ") || "—"}
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  No jobs yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+      <div className="min-h-0 flex-1 p-4">
+        {view === "grid" ? (
+          <div className="h-full overflow-y-auto">
+            <JobsGrid data={jobs} />
+          </div>
+        ) : (
+          <JobsTable data={jobs} />
+        )}
       </div>
     </div>
   )

@@ -1,137 +1,55 @@
-import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { buttonVariants } from "@/components/ui/button"
-import { TierBadge } from "@/components/tier-badge"
-import { getJobOrder } from "@/lib/data"
+import { JobDraftSpace } from "@/components/jobs/draft/job-draft-space"
+import { JobWorkspaceHeader } from "@/components/jobs/workspace/job-workspace-header"
+import { PipelineBoard } from "@/components/jobs/workspace/pipeline-board"
+import { SetJobBreadcrumb } from "@/components/jobs/workspace/set-job-breadcrumb"
 import { titleCase } from "@/lib/constants"
+import { getSubStageBoard } from "@/lib/pipeline-candidates"
+import { MOCK_JOBS } from "@/lib/mock-jobs"
 
-export default async function JobDetailPage({
+/**
+ * UI-preview data only — renders from MOCK_JOBS (src/lib/mock-jobs.ts), not
+ * job_orders/applications. See CandidatesTable's real-data equivalent for
+ * how this would eventually be wired to Supabase.
+ */
+export default async function JobWorkspacePage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const job = await getJobOrder(id)
+  const job = MOCK_JOBS.find((j) => j.job_id === id)
   if (!job) notFound()
 
+  if (job.status === "draft") {
+    return (
+      <>
+        <SetJobBreadcrumb title={job.title} badge={titleCase(job.status)} />
+        <JobDraftSpace job={job} />
+      </>
+    )
+  }
+
+  const stages = getSubStageBoard(job)
+
   return (
-    <div className="space-y-8">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {job.title}
-            </h1>
-            <Badge variant="outline">{titleCase(job.status)}</Badge>
-          </div>
-          <p className="text-muted-foreground">
-            {job.client?.client_name ?? "Unassigned client"}
-          </p>
-        </div>
-        <Link href="/jobs" className={buttonVariants({ variant: "outline" })}>
-          Back
-        </Link>
+    <div
+      className="flex flex-col overflow-hidden p-4"
+      // Inline style, not an arbitrary Tailwind class: <main> has no padding
+      // of its own, so only the app header (h-14 = 3.5rem) needs
+      // subtracting — this div's own p-4 is included via border-box. Fixed
+      // (not min-) height so the header stays put and the pipeline board
+      // fills the rest.
+      style={{ height: "calc(100vh - 3.5rem)" }}
+    >
+      <SetJobBreadcrumb title={job.title} />
+      <div className="shrink-0 pb-4">
+        <JobWorkspaceHeader job={job} />
       </div>
-
-      {job.description && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Description
-          </h2>
-          <p className="text-sm leading-relaxed">{job.description}</p>
-        </section>
-      )}
-
-      {(job.required_skills ?? []).length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Required skills
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {(job.required_skills ?? []).map((s) => (
-              <Badge key={s} variant="secondary">
-                {s}
-              </Badge>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          Attached candidates ({job.applications.length})
-        </h2>
-        <div className="rounded-lg border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Candidate</TableHead>
-                <TableHead>Tier</TableHead>
-                <TableHead>Stage</TableHead>
-                <TableHead>Applied</TableHead>
-                <TableHead>Review</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {job.applications.length ? (
-                job.applications.map((a) => (
-                  <TableRow key={a.application_id}>
-                    <TableCell>
-                      {a.candidate ? (
-                        <Link
-                          href={`/candidates/${a.candidate.candidate_id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {a.candidate.full_name}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <TierBadge tier={a.candidate?.candidate_tier ?? null} />
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{titleCase(a.stage)}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(a.date_applied).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {a.human_review_flag ? (
-                        <Badge className="bg-amber-100 text-amber-900 border-transparent dark:bg-amber-950 dark:text-amber-200">
-                          Needs review
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="h-24 text-center text-muted-foreground"
-                  >
-                    No candidates attached yet.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
+      <div className="min-h-0 flex-1">
+        <PipelineBoard stages={stages} />
+      </div>
     </div>
   )
 }

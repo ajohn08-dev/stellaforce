@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import {
   type ColumnDef,
+  type RowSelectionState,
   type SortingState,
   flexRender,
   getCoreRowModel,
@@ -21,7 +22,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { TierBadge } from "@/components/tier-badge"
+import { CandidateAvatar } from "@/components/candidate-avatar"
 import { CandidateSocialLinks } from "@/components/candidates/candidate-social-links"
 import { CandidateActions } from "@/components/candidates/candidate-actions"
 import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
@@ -44,21 +47,37 @@ function sortHeader(label: string) {
 
 const columns: ColumnDef<CandidateRow>[] = [
   {
+    id: "select",
+    header: ({ table }) => (
+      <Checkbox
+        aria-label="Select all candidates"
+        checked={table.getIsAllRowsSelected()}
+        indeterminate={
+          table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()
+        }
+        onCheckedChange={(checked) => table.toggleAllRowsSelected(!!checked)}
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        aria-label={`Select ${row.original.full_name}`}
+        checked={row.getIsSelected()}
+        onCheckedChange={(checked) => row.toggleSelected(!!checked)}
+      />
+    ),
+  },
+  {
     accessorKey: "full_name",
     header: sortHeader("Name"),
     cell: ({ row }) => (
       <Link
         href={`/candidates/${row.original.candidate_id}`}
-        className="font-medium hover:underline"
+        className="flex items-center gap-2.5 font-medium hover:text-brand-purple-600"
       >
+        <CandidateAvatar name={row.original.full_name} className="size-7" />
         {row.original.full_name}
       </Link>
     ),
-  },
-  {
-    accessorKey: "candidate_tier",
-    header: sortHeader("Tier"),
-    cell: ({ row }) => <TierBadge tier={row.original.candidate_tier} />,
   },
   {
     accessorKey: "current_title",
@@ -69,6 +88,11 @@ const columns: ColumnDef<CandidateRow>[] = [
     accessorKey: "current_company",
     header: "Company",
     cell: ({ row }) => row.original.current_company ?? "—",
+  },
+  {
+    accessorKey: "candidate_tier",
+    header: sortHeader("Tier"),
+    cell: ({ row }) => <TierBadge tier={row.original.candidate_tier} />,
   },
   {
     accessorKey: "years_experience",
@@ -95,24 +119,31 @@ const columns: ColumnDef<CandidateRow>[] = [
 
 export function CandidatesTable({ data }: { data: CandidateRow[] }) {
   const [sorting, setSorting] = React.useState<SortingState>([])
+  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting },
+    state: { sorting, rowSelection },
     onSortingChange: setSorting,
+    onRowSelectionChange: setRowSelection,
+    getRowId: (row) => row.candidate_id,
+    enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
 
   return (
-    <div className="rounded-lg border border-border">
+    <div className="h-full overflow-y-auto rounded-lg border border-border bg-white">
       <Table>
-        <TableHeader>
+        <TableHeader className="sticky top-0 z-10 bg-muted/50">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (
-                <TableHead key={header.id}>
+                <TableHead
+                  key={header.id}
+                  className={header.column.id === "select" ? "w-10" : undefined}
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(
@@ -129,7 +160,10 @@ export function CandidatesTable({ data }: { data: CandidateRow[] }) {
             table.getRowModel().rows.map((row) => (
               <TableRow key={row.id}>
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
+                  <TableCell
+                    key={cell.id}
+                    className={cell.column.id === "select" ? "w-10" : undefined}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}

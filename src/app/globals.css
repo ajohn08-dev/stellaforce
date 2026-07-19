@@ -73,7 +73,7 @@
   --chart-3: var(--brand-neutral-700);
   --chart-4: var(--brand-orange-300);
   --chart-5: var(--brand-purple-300);
-  --sidebar: var(--brand-neutral-50);
+  --sidebar: #ffffff;
   --sidebar-foreground: var(--brand-neutral-950);
   --sidebar-primary: var(--brand-purple-300);
   --sidebar-primary-foreground: #ffffff;
@@ -198,5 +198,16 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /** Hides the scrollbar on a scrollable element while keeping it scrollable. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
