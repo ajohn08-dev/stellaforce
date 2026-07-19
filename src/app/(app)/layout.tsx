@@ -1,6 +1,7 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
 import { BreadcrumbProvider } from "@/lib/breadcrumb-context";
+import { SidebarProvider } from "@/lib/sidebar-context";
 import { getCurrentProfile } from "@/lib/auth";
 
 export default async function AppLayout({
@@ -11,14 +12,16 @@ export default async function AppLayout({
   const profile = await getCurrentProfile();
 
   return (
-    <BreadcrumbProvider>
-      <div className="flex h-full">
-        <AppSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <AppHeader user={profile} />
-          <main className="flex-1 overflow-y-auto bg-brand-neutral-50">{children}</main>
+    <SidebarProvider>
+      <BreadcrumbProvider>
+        <div className="flex h-full">
+          <AppSidebar />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <AppHeader user={profile} />
+            <main className="flex-1 overflow-y-auto bg-brand-neutral-50">{children}</main>
+          </div>
         </div>
-      </div>
-    </BreadcrumbProvider>
+      </BreadcrumbProvider>
+    </SidebarProvider>
   );
 }

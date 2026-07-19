@@ -8,26 +8,36 @@ export function StepProgressBar({
   steps,
   currentIndex,
   onStepClick,
+  orientation = "horizontal",
 }: {
   steps: Step[]
   currentIndex: number
   onStepClick?: (index: number) => void
+  orientation?: "horizontal" | "vertical"
 }) {
+  const isVertical = orientation === "vertical"
+
   return (
-    <ol className="flex items-center">
+    <ol className={cn("flex", isVertical ? "flex-col gap-1" : "items-center")}>
       {steps.map((step, i) => {
         const isComplete = i < currentIndex
         const isCurrent = i === currentIndex
         const clickable = Boolean(onStepClick) && i <= currentIndex
 
         return (
-          <li key={step.key} className="flex flex-1 items-center last:flex-none">
+          <li
+            key={step.key}
+            className={
+              isVertical ? "flex" : "flex flex-1 items-center last:flex-none"
+            }
+          >
             <button
               type="button"
               disabled={!clickable}
               onClick={() => clickable && onStepClick?.(i)}
               className={cn(
                 "flex items-center gap-2",
+                isVertical && "w-full rounded-md px-2 py-1.5",
                 clickable ? "cursor-pointer" : "cursor-default"
               )}
             >
@@ -35,9 +45,9 @@ export function StepProgressBar({
                 className={cn(
                   "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
                   isComplete
-                    ? "bg-brand-purple-600 text-white"
+                    ? "bg-primary text-primary-foreground"
                     : isCurrent
-                      ? "border-2 border-brand-purple-600 text-brand-purple-600"
+                      ? "border-2 border-primary text-primary"
                       : "border border-border text-muted-foreground"
                 )}
               >
@@ -45,9 +55,10 @@ export function StepProgressBar({
               </span>
               <span
                 className={cn(
-                  "text-sm whitespace-nowrap",
+                  "text-sm",
+                  isVertical ? "text-left" : "whitespace-nowrap",
                   isCurrent
-                    ? "font-medium text-foreground"
+                    ? "font-medium text-primary"
                     : isComplete
                       ? "text-foreground"
                       : "text-muted-foreground"
@@ -57,11 +68,11 @@ export function StepProgressBar({
               </span>
             </button>
 
-            {i < steps.length - 1 && (
+            {!isVertical && i < steps.length - 1 && (
               <span
                 className={cn(
                   "mx-3 h-px flex-1",
-                  isComplete ? "bg-brand-purple-600" : "bg-border"
+                  isComplete ? "bg-primary" : "bg-border"
                 )}
               />
             )}

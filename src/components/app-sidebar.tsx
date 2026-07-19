@@ -1,12 +1,12 @@
 "use client"
 
-import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { NAV_ITEMS, AGENTS_NAV_LABEL, AGENTS_NAV_ITEMS, SETTINGS_ITEM } from "@/lib/nav"
+import { useSidebarState } from "@/lib/sidebar-context"
 import { Logo } from "@/components/brand-logo"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
@@ -48,7 +48,7 @@ function NavLink({
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const [collapsed, setCollapsed] = React.useState(false)
+  const [collapsed, setCollapsed] = useSidebarState()
 
   return (
     <aside
@@ -73,7 +73,7 @@ export function AppSidebar() {
           size="icon"
           className="shrink-0 text-muted-foreground"
           aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={() => setCollapsed(!collapsed)}
         >
           {collapsed ? (
             <PanelLeftOpen className="size-4" />
