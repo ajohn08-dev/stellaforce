@@ -6,8 +6,9 @@ import { toast } from "sonner"
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { OverviewTab } from "@/components/candidates/profile/overview-tab"
-import { ExperienceTab } from "@/components/candidates/profile/experience-tab"
-import { EducationTab } from "@/components/candidates/profile/education-tab"
+import { ScorecardTab } from "@/components/candidates/profile/scorecard-tab"
+import { EvaluationTab } from "@/components/candidates/profile/evaluation-tab"
+import { BackgroundTab } from "@/components/candidates/profile/background-tab"
 import { SkillMapTab } from "@/components/candidates/profile/skill-map-tab"
 import { ActivityTab } from "@/components/candidates/profile/activity-tab"
 import { FilesTab } from "@/components/candidates/profile/files-tab"
@@ -21,21 +22,25 @@ export function ProfileTabs({
   workHistory,
   addedBy,
   dateAdded,
+  isAddedToJob = false,
 }: {
   candidate: CandidateRow
   skills: SkillRow[]
   workHistory: WorkHistoryEntry[]
   addedBy: AddedByProfile | null
   dateAdded: string
+  /** Scorecard/Evaluation only apply once a candidate is attached to a job. */
+  isAddedToJob?: boolean
 }) {
   return (
     <Tabs defaultValue="overview" className="min-h-0 flex-1 gap-0">
       <div className="-mx-4 flex shrink-0 items-center justify-between border-b border-border px-4">
         <TabsList className="border-b-0">
           <TabsTab value="overview">Overview</TabsTab>
-          <TabsTab value="experience">Experience</TabsTab>
-          <TabsTab value="education">Education</TabsTab>
-          <TabsTab value="skill-map">Skill Map</TabsTab>
+          {isAddedToJob && <TabsTab value="scorecard">Scorecard</TabsTab>}
+          {isAddedToJob && <TabsTab value="evaluation">Evaluation</TabsTab>}
+          <TabsTab value="background">Background</TabsTab>
+          <TabsTab value="skills">Skills</TabsTab>
           <TabsTab value="activity">Activity</TabsTab>
           <TabsTab value="files">Files</TabsTab>
         </TabsList>
@@ -60,13 +65,20 @@ export function ProfileTabs({
             workHistory={workHistory}
           />
         </TabsPanel>
-        <TabsPanel value="experience">
-          <ExperienceTab workHistory={workHistory} />
+        {isAddedToJob && (
+          <TabsPanel value="scorecard">
+            <ScorecardTab />
+          </TabsPanel>
+        )}
+        {isAddedToJob && (
+          <TabsPanel value="evaluation">
+            <EvaluationTab />
+          </TabsPanel>
+        )}
+        <TabsPanel value="background">
+          <BackgroundTab candidate={candidate} workHistory={workHistory} />
         </TabsPanel>
-        <TabsPanel value="education">
-          <EducationTab candidate={candidate} />
-        </TabsPanel>
-        <TabsPanel value="skill-map">
+        <TabsPanel value="skills">
           <SkillMapTab skills={skills} />
         </TabsPanel>
         <TabsPanel value="activity">

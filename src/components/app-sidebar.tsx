@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { NAV_ITEMS, AGENTS_NAV_LABEL, AGENTS_NAV_ITEMS, SETTINGS_ITEM } from "@/lib/nav"
+import { NAV_ITEMS, AGENTS_NAV_LABEL, AGENTS_NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/lib/nav"
 import { useSidebarState } from "@/lib/sidebar-context"
 import { Logo } from "@/components/brand-logo"
 import { Separator } from "@/components/ui/separator"
@@ -115,11 +115,14 @@ export function AppSidebar() {
       </div>
 
       <div className="mt-auto flex flex-col gap-1">
-        <NavLink
-          {...SETTINGS_ITEM}
-          active={isActive(pathname, SETTINGS_ITEM.href)}
-          collapsed={collapsed}
-        />
+        {BOTTOM_NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.href}
+            {...item}
+            active={isActive(pathname, item.href)}
+            collapsed={collapsed}
+          />
+        ))}
       </div>
     </aside>
   )

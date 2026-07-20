@@ -9,16 +9,41 @@ import { RoleDefinitionStep } from "@/components/jobs/draft/steps/role-definitio
 import { EvaluationCriteriaStep } from "@/components/jobs/draft/steps/evaluation-criteria-step"
 import { ScoreCardStep } from "@/components/jobs/draft/steps/score-card-step"
 import { TeamMembersStep } from "@/components/jobs/draft/steps/team-members-step"
+import { WorkflowStep } from "@/components/jobs/draft/steps/workflow-step"
 import { INITIAL_COMPETENCIES } from "@/components/jobs/draft/steps/competency-data"
+import { INITIAL_MEMBERS, type Member } from "@/components/jobs/draft/steps/team-member-data"
 import { useSidebarDefaultCollapsed } from "@/lib/sidebar-context"
 import type { MockJob } from "@/lib/mock-jobs"
 
 const STEPS: Step[] = [
-  { key: "role-definition", label: "Role Definition" },
-  { key: "evaluation-criteria", label: "Evaluation Criteria" },
-  { key: "score-card", label: "Scorecard" },
-  { key: "team-members", label: "Team Members" },
-  { key: "workflow", label: "Workflow" },
+  {
+    key: "role-definition",
+    label: "Role Definition",
+    description:
+      "Define the basics of this role — title, workplace, description, and employment details.",
+  },
+  {
+    key: "evaluation-criteria",
+    label: "Evaluation Criteria",
+    description:
+      "Set the competencies and skill levels candidates will be assessed against.",
+  },
+  {
+    key: "score-card",
+    label: "Scorecard",
+    description:
+      "Weight each evaluation category so it reflects what matters most for this role.",
+  },
+  {
+    key: "team-members",
+    label: "Team Members",
+    description: "Add the people involved in hiring for this role.",
+  },
+  {
+    key: "workflow",
+    label: "Workflow",
+    description: "Configure the pipeline stages candidates will move through.",
+  },
 ]
 
 /**
@@ -29,6 +54,7 @@ const STEPS: Step[] = [
 export function JobDraftSpace({ job }: { job: MockJob }) {
   const [stepIndex, setStepIndex] = React.useState(0)
   const [competencies, setCompetencies] = React.useState(INITIAL_COMPETENCIES)
+  const [members, setMembers] = React.useState<Member[]>(INITIAL_MEMBERS)
   const isLastStep = stepIndex === STEPS.length - 1
 
   useSidebarDefaultCollapsed(true)
@@ -76,9 +102,12 @@ export function JobDraftSpace({ job }: { job: MockJob }) {
               </Button>
             </div>
 
-            <h2 className="mb-4 text-lg font-semibold tracking-tight">
+            <h2 className="text-lg font-semibold tracking-tight">
               {STEPS[stepIndex].label}
             </h2>
+            <p className="mt-1 mb-4 text-sm text-muted-foreground">
+              {STEPS[stepIndex].description}
+            </p>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -92,7 +121,9 @@ export function JobDraftSpace({ job }: { job: MockJob }) {
             ) : STEPS[stepIndex].key === "score-card" ? (
               <ScoreCardStep competencies={competencies} />
             ) : STEPS[stepIndex].key === "team-members" ? (
-              <TeamMembersStep />
+              <TeamMembersStep members={members} setMembers={setMembers} />
+            ) : STEPS[stepIndex].key === "workflow" ? (
+              <WorkflowStep competencies={competencies} members={members} />
             ) : (
               <p className="text-sm text-muted-foreground">
                 Setup for this step is coming soon.

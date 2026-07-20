@@ -24,12 +24,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { logout } from "@/app/login/actions"
-import { NAV_ITEMS, SETTINGS_ITEM } from "@/lib/nav"
+import { NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/lib/nav"
 import { useBreadcrumbItems } from "@/lib/breadcrumb-context"
 import type { CurrentProfile } from "@/lib/auth"
 
 function currentTitle(pathname: string): string {
-  const item = [...NAV_ITEMS, SETTINGS_ITEM].find(
+  const item = [...NAV_ITEMS, ...BOTTOM_NAV_ITEMS].find(
     (i) => pathname === i.href || pathname.startsWith(i.href + "/")
   )
   return item?.label ?? ""

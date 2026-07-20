@@ -2,7 +2,7 @@ import { Check } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-export type Step = { key: string; label: string }
+export type Step = { key: string; label: string; description?: string }
 
 export function StepProgressBar({
   steps,

@@ -25,7 +25,7 @@ export function PipelineStagePanel({
 
   return (
     <div className="flex h-full gap-4">
-      <div className="flex h-full w-1/4 shrink-0 flex-col gap-2 overflow-y-auto">
+      <div className="scrollbar-light flex h-full w-1/4 shrink-0 flex-col gap-2 overflow-y-auto">
         {candidates.map((candidate) => (
           <PipelineCandidateCard
             key={candidate.candidate_id}
@@ -36,7 +36,7 @@ export function PipelineStagePanel({
         ))}
       </div>
 
-      <div className="min-w-0 flex-1 overflow-y-auto rounded-lg border border-border p-4">
+      <div className="min-w-0 flex-1 overflow-y-auto rounded-lg border border-border bg-white p-4">
         <PipelineCandidateDetail candidate={selected} />
       </div>
     </div>

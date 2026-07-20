@@ -210,4 +210,21 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /** Thin, light-gray scrollbar instead of the browser default. */
+  .scrollbar-light {
+    scrollbar-color: var(--border) transparent;
+    scrollbar-width: thin;
+  }
+  .scrollbar-light::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-light::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-light::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 9999px;
+  }
 }

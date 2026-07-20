@@ -28,23 +28,25 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-
-const STARTER_ROLES = ["Hiring Manager", "Interviewer", "HR Manager", "Approver"]
-
-type Member = {
-  id: string
-  name: string
-  email: string
-  role: string
-}
+import {
+  STARTER_ROLES,
+  type Member,
+} from "@/components/jobs/draft/steps/team-member-data"
 
 /**
  * Two stacked blocks: the add-member form, and a table of members added so
  * far. Roles are client-defined (who this person is to the client for this
- * job, not the app's own recruiter/manager/admin roles).
+ * job, not the app's own recruiter/manager/admin roles). Members are lifted
+ * to JobDraftSpace so the Workflow step can reference the same list when
+ * assigning reviewers.
  */
-export function TeamMembersStep() {
-  const [members, setMembers] = React.useState<Member[]>([])
+export function TeamMembersStep({
+  members,
+  setMembers,
+}: {
+  members: Member[]
+  setMembers: React.Dispatch<React.SetStateAction<Member[]>>
+}) {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
 
   const [name, setName] = React.useState("")

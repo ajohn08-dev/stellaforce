@@ -57,9 +57,10 @@ export function PipelineCandidateDetail({
       <Tabs defaultValue="overview" className="gap-3">
         <TabsList>
           <TabsTab value="overview">Overview</TabsTab>
-          <TabsTab value="experience">Experience</TabsTab>
-          <TabsTab value="education">Education</TabsTab>
-          <TabsTab value="skill-map">Skill Map</TabsTab>
+          <TabsTab value="scorecard">Scorecard</TabsTab>
+          <TabsTab value="evaluation">Evaluation</TabsTab>
+          <TabsTab value="background">Background</TabsTab>
+          <TabsTab value="skills">Skills</TabsTab>
           <TabsTab value="activity">Activity</TabsTab>
           <TabsTab value="files">Files</TabsTab>
         </TabsList>
@@ -72,20 +73,28 @@ export function PipelineCandidateDetail({
           <p className="text-sm">{candidate.summary}</p>
         </TabsPanel>
 
-        <TabsPanel value="experience">
+        {/* Every candidate here is already in this job's pipeline, so
+            Scorecard/Evaluation always apply — unlike the general candidate
+            profile page, there's no "not added" state to gate on. */}
+        <TabsPanel value="scorecard">
+          <p className="text-sm text-muted-foreground">Scorecard is coming soon.</p>
+        </TabsPanel>
+
+        <TabsPanel value="evaluation">
+          <p className="text-sm text-muted-foreground">Evaluation is coming soon.</p>
+        </TabsPanel>
+
+        <TabsPanel value="background" className="space-y-3">
           <div className="rounded-lg border border-border p-3">
             <p className="text-sm font-medium">{candidate.title}</p>
             <p className="text-sm text-muted-foreground">
               {candidate.company} • {candidate.location}
             </p>
           </div>
-        </TabsPanel>
-
-        <TabsPanel value="education">
           <p className="text-sm text-muted-foreground">No education on file yet.</p>
         </TabsPanel>
 
-        <TabsPanel value="skill-map">
+        <TabsPanel value="skills">
           <div className="flex flex-wrap gap-2">
             {candidate.skills.map((skill) => (
               <Badge key={skill} variant="secondary">
