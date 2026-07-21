@@ -27,7 +27,13 @@ export function CandidateCard({ candidate }: { candidate: CandidateListItem }) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Checkbox aria-label={`Select ${candidate.full_name}`} />
-          <CandidateAvatar name={candidate.full_name ?? ""} className="size-7" />
+          <CandidateAvatar
+            name={candidate.full_name ?? ""}
+            firstName={candidate.first_name}
+            lastName={candidate.last_name}
+            avatarUrl={candidate.avatar_url}
+            className="size-7"
+          />
           <Link
             href={`/candidates/${candidate.candidate_id}`}
             className="font-semibold hover:underline"

@@ -22,7 +22,13 @@ export function ProfileHeader({
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-3">
-        <CandidateAvatar name={candidate.full_name ?? ""} className="size-14 text-base" />
+        <CandidateAvatar
+          name={candidate.full_name ?? ""}
+          firstName={candidate.first_name}
+          lastName={candidate.last_name}
+          avatarUrl={candidate.avatar_url}
+          className="size-14 text-base"
+        />
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             {candidate.full_name}
