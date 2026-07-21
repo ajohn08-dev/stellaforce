@@ -3,7 +3,7 @@
  * supabase/migrations/0001. CLAUDE.md is the source of truth — keep in sync.
  */
 import type {
-  ApplicationStage,
+  ApplicationStatus,
   CandidateTier,
   ClientStatus,
   DataProvenance,
@@ -22,10 +22,9 @@ export const DATA_PROVENANCE: DataProvenance[] = [
   "enriched",
 ]
 
-export const SKILL_TYPES: SkillType[] = ["hard", "soft"]
+export const SKILL_TYPES: SkillType[] = ["technical", "functional", "behavioral"]
 
 export const PROFICIENCY_LEVELS: ProficiencyLevel[] = [
-  "novice",
   "beginner",
   "intermediate",
   "advanced",
@@ -34,16 +33,20 @@ export const PROFICIENCY_LEVELS: ProficiencyLevel[] = [
 
 export const CLIENT_STATUSES: ClientStatus[] = ["active", "paused", "churned"]
 
-export const JOB_STATUSES: JobStatus[] = ["open", "on_hold", "filled", "closed"]
+export const JOB_STATUSES: JobStatus[] = [
+  "draft",
+  "open",
+  "paused",
+  "filled",
+  "closed",
+]
 
-export const APPLICATION_STAGES: ApplicationStage[] = [
-  "sourced",
-  "screened",
-  "submitted",
-  "interviewing",
-  "offer",
-  "placed",
+export const APPLICATION_STATUSES: ApplicationStatus[] = [
+  "active",
+  "hired",
   "rejected",
+  "withdrawn",
+  "on_hold",
 ]
 
 export const PLACEMENT_STATUSES: PlacementStatus[] = [
@@ -163,8 +166,9 @@ export const TIER_BADGE_CLASS: Record<CandidateTier, string> = {
 
 /** Tailwind classes for job status badges (used on the Jobs list). */
 export const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
+  draft: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
   open: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
-  on_hold: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  paused: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
   filled: "bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200",
   closed: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
 }

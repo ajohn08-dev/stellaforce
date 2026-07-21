@@ -1,22 +1,24 @@
 import { SKILL_CATEGORIES } from "@/lib/constants"
 import { maxTier, proficiencyTier, type ProficiencyTier } from "@/lib/proficiency"
-import type { SkillRow } from "@/lib/supabase/types"
+import type { CandidateSkillWithSkill } from "@/lib/supabase/types"
 
 export type CategorySkills = {
   category: string
-  skills: SkillRow[]
+  skills: CandidateSkillWithSkill[]
   tier: ProficiencyTier
 }
 
 /** Groups a candidate's skills into SKILL_CATEGORIES, rating each category by its strongest skill. Categories with no matching skills are omitted. */
-export function groupSkillsByCategory(skills: SkillRow[]): CategorySkills[] {
-  const byName = new Map(skills.map((s) => [s.skill_name, s]))
+export function groupSkillsByCategory(
+  skills: CandidateSkillWithSkill[]
+): CategorySkills[] {
+  const byName = new Map(skills.map((s) => [s.skill?.name, s]))
 
   return Object.entries(SKILL_CATEGORIES)
     .map(([category, skillNames]) => {
       const matched = skillNames
         .map((name) => byName.get(name))
-        .filter((s): s is SkillRow => Boolean(s))
+        .filter((s): s is CandidateSkillWithSkill => Boolean(s))
       return {
         category,
         skills: matched,

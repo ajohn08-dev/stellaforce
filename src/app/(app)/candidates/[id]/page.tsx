@@ -4,7 +4,6 @@ import { ProfileHeader } from "@/components/candidates/profile/profile-header"
 import { ProfileTabs } from "@/components/candidates/profile/profile-tabs"
 import { SetCandidateBreadcrumb } from "@/components/candidates/profile/set-candidate-breadcrumb"
 import { getCandidate } from "@/lib/data"
-import { MOCK_WORK_HISTORY } from "@/lib/mock-work-history"
 
 export default async function CandidateProfilePage({
   params,
@@ -15,10 +14,7 @@ export default async function CandidateProfilePage({
   const result = await getCandidate(id)
   if (!result) notFound()
 
-  const { candidate, skills, addedBy } = result
-  // TODO: candidates.work_history isn't a real column yet — mock data until
-  // the schema/UI here are approved (see src/lib/mock-work-history.ts).
-  const workHistory = MOCK_WORK_HISTORY[candidate.candidate_id] ?? []
+  const { candidate, skills, education, certifications, workHistory, addedBy } = result
 
   return (
     <div
@@ -32,14 +28,16 @@ export default async function CandidateProfilePage({
       // the header stays put and only the tab content below it scrolls.
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
-      <SetCandidateBreadcrumb name={candidate.full_name} />
+      <SetCandidateBreadcrumb name={candidate.full_name ?? ""} />
 
       <div className="shrink-0">
-        <ProfileHeader candidate={candidate} />
+        <ProfileHeader candidate={candidate} workHistory={workHistory} />
       </div>
       <ProfileTabs
         candidate={candidate}
         skills={skills}
+        education={education}
+        certifications={certifications}
         workHistory={workHistory}
         addedBy={addedBy}
         dateAdded={candidate.date_added}

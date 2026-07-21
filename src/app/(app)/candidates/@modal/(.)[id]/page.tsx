@@ -4,7 +4,6 @@ import { CandidateProfileSheet } from "@/components/candidates/profile/candidate
 import { ProfileHeader } from "@/components/candidates/profile/profile-header"
 import { ProfileTabs } from "@/components/candidates/profile/profile-tabs"
 import { getCandidate } from "@/lib/data"
-import { MOCK_WORK_HISTORY } from "@/lib/mock-work-history"
 
 export default async function CandidateProfileModal({
   params,
@@ -15,19 +14,18 @@ export default async function CandidateProfileModal({
   const result = await getCandidate(id)
   if (!result) notFound()
 
-  const { candidate, skills, addedBy } = result
-  // TODO: candidates.work_history isn't a real column yet — mock data until
-  // the schema/UI here are approved (see src/lib/mock-work-history.ts).
-  const workHistory = MOCK_WORK_HISTORY[candidate.candidate_id] ?? []
+  const { candidate, skills, education, certifications, workHistory, addedBy } = result
 
   return (
     <CandidateProfileSheet>
       <div className="shrink-0">
-        <ProfileHeader candidate={candidate} />
+        <ProfileHeader candidate={candidate} workHistory={workHistory} />
       </div>
       <ProfileTabs
         candidate={candidate}
         skills={skills}
+        education={education}
+        certifications={certifications}
         workHistory={workHistory}
         addedBy={addedBy}
         dateAdded={candidate.date_added}

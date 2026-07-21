@@ -27,7 +27,7 @@ import { TierBadge } from "@/components/tier-badge"
 import { CandidateAvatar } from "@/components/candidate-avatar"
 import { CandidateSocialLinks } from "@/components/candidates/candidate-social-links"
 import { CandidateActions } from "@/components/candidates/candidate-actions"
-import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
+import type { CandidateListItem } from "@/lib/data"
 
 function sortHeader(label: string) {
   return function SortableHeader({ column }: { column: { toggleSorting: (d?: boolean) => void; getIsSorted: () => false | "asc" | "desc" } }) {
@@ -45,7 +45,7 @@ function sortHeader(label: string) {
   }
 }
 
-const columns: ColumnDef<CandidateRow>[] = [
+const columns: ColumnDef<CandidateListItem>[] = [
   {
     id: "select",
     header: ({ table }) => (
@@ -74,20 +74,22 @@ const columns: ColumnDef<CandidateRow>[] = [
         href={`/candidates/${row.original.candidate_id}`}
         className="flex items-center gap-2.5 font-medium hover:text-brand-purple-600"
       >
-        <CandidateAvatar name={row.original.full_name} className="size-7" />
+        <CandidateAvatar name={row.original.full_name ?? ""} className="size-7" />
         {row.original.full_name}
       </Link>
     ),
   },
   {
-    accessorKey: "current_title",
+    id: "title",
     header: "Title",
-    cell: ({ row }) => row.original.current_title ?? "—",
+    accessorFn: (row) => row.currentRole?.title ?? "",
+    cell: ({ row }) => row.original.currentRole?.title ?? "—",
   },
   {
-    accessorKey: "current_company",
+    id: "company",
     header: "Company",
-    cell: ({ row }) => row.original.current_company ?? "—",
+    accessorFn: (row) => row.currentRole?.company_name ?? "",
+    cell: ({ row }) => row.original.currentRole?.company_name ?? "—",
   },
   {
     accessorKey: "candidate_tier",
@@ -102,7 +104,7 @@ const columns: ColumnDef<CandidateRow>[] = [
   {
     id: "location",
     header: "Location",
-    accessorFn: (row) => (row.contact_info as ContactInfo | null)?.location ?? "",
+    accessorFn: (row) => row.location_raw ?? "",
     cell: ({ getValue }) => (getValue<string>() || "—"),
   },
   {
@@ -117,7 +119,7 @@ const columns: ColumnDef<CandidateRow>[] = [
   },
 ]
 
-export function CandidatesTable({ data }: { data: CandidateRow[] }) {
+export function CandidatesTable({ data }: { data: CandidateListItem[] }) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
 

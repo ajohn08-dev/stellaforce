@@ -12,19 +12,28 @@ import { BackgroundTab } from "@/components/candidates/profile/background-tab"
 import { ActivityTab } from "@/components/candidates/profile/activity-tab"
 import { FilesTab } from "@/components/candidates/profile/files-tab"
 import type { WorkHistoryEntry } from "@/lib/work-history"
-import type { CandidateRow, SkillRow } from "@/lib/supabase/types"
+import type {
+  CandidateCertificationRow,
+  CandidateEducationRow,
+  CandidateRow,
+  CandidateSkillWithSkill,
+} from "@/lib/supabase/types"
 import type { AddedByProfile } from "@/lib/data"
 
 export function ProfileTabs({
   candidate,
   skills,
+  education,
+  certifications,
   workHistory,
   addedBy,
   dateAdded,
   isAddedToJob = false,
 }: {
   candidate: CandidateRow
-  skills: SkillRow[]
+  skills: CandidateSkillWithSkill[]
+  education: CandidateEducationRow[]
+  certifications: CandidateCertificationRow[]
   workHistory: WorkHistoryEntry[]
   addedBy: AddedByProfile | null
   dateAdded: string
@@ -60,6 +69,7 @@ export function ProfileTabs({
           <OverviewTab
             candidate={candidate}
             skills={skills}
+            education={education}
             workHistory={workHistory}
           />
         </TabsPanel>
@@ -74,7 +84,12 @@ export function ProfileTabs({
           </TabsPanel>
         )}
         <TabsPanel value="background">
-          <BackgroundTab candidate={candidate} workHistory={workHistory} />
+          <BackgroundTab
+            candidate={candidate}
+            education={education}
+            certifications={certifications}
+            workHistory={workHistory}
+          />
         </TabsPanel>
         <TabsPanel value="activity">
           <ActivityTab addedBy={addedBy} dateAdded={dateAdded} />

@@ -9,22 +9,25 @@ import { CandidateSocialLinks } from "@/components/candidates/candidate-social-l
 import { CandidateActions } from "@/components/candidates/candidate-actions"
 import { companyLogoSrc } from "@/lib/company-logos"
 import { formatEducationLine } from "@/lib/education"
-import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
+import type { CandidateListItem } from "@/lib/data"
 
-export function CandidateCard({ candidate }: { candidate: CandidateRow }) {
-  const contact = (candidate.contact_info as ContactInfo | null) ?? {}
-  const logoSrc = companyLogoSrc(candidate.current_company)
-  const education = formatEducationLine(candidate.education)
-  const titleAtCompany = [candidate.current_title, candidate.current_company]
-    .filter(Boolean)
-    .join(" at ")
+export function CandidateCard({ candidate }: { candidate: CandidateListItem }) {
+  const logoSrc = companyLogoSrc(candidate.currentRole?.company_name)
+  const education = formatEducationLine(
+    candidate.primaryEducation ? [candidate.primaryEducation] : []
+  )
+  const titleAtCompany = candidate.currentRole
+    ? [candidate.currentRole.title, candidate.currentRole.company_name]
+        .filter(Boolean)
+        .join(" at ")
+    : candidate.headline ?? ""
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Checkbox aria-label={`Select ${candidate.full_name}`} />
-          <CandidateAvatar name={candidate.full_name} className="size-7" />
+          <CandidateAvatar name={candidate.full_name ?? ""} className="size-7" />
           <Link
             href={`/candidates/${candidate.candidate_id}`}
             className="font-semibold hover:underline"
@@ -53,10 +56,10 @@ export function CandidateCard({ candidate }: { candidate: CandidateRow }) {
           <Building2 className="size-4 shrink-0 text-muted-foreground" />
         )}
         <span>{titleAtCompany || "—"}</span>
-        {contact.location && (
+        {candidate.location_raw && (
           <>
             <span className="text-muted-foreground">•</span>
-            <span className="text-muted-foreground">{contact.location}</span>
+            <span className="text-muted-foreground">{candidate.location_raw}</span>
           </>
         )}
       </div>

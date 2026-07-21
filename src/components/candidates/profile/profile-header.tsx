@@ -4,27 +4,34 @@ import { GithubIcon, LinkedinIcon } from "@/components/icons/brand-icons"
 import { CandidateAvatar } from "@/components/candidate-avatar"
 import { ContactPill } from "@/components/contact-pill"
 import { isGithubUrl } from "@/lib/utils"
-import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
+import { mostRecentRole, type WorkHistoryEntry } from "@/lib/work-history"
+import type { CandidateRow } from "@/lib/supabase/types"
 
-export function ProfileHeader({ candidate }: { candidate: CandidateRow }) {
-  const contact = (candidate.contact_info as ContactInfo | null) ?? {}
-  const titleAtCompany = [candidate.current_title, candidate.current_company]
-    .filter(Boolean)
-    .join(" at ")
+export function ProfileHeader({
+  candidate,
+  workHistory,
+}: {
+  candidate: CandidateRow
+  workHistory: WorkHistoryEntry[]
+}) {
+  const recentRole = mostRecentRole(workHistory)
+  const titleAtCompany = recentRole
+    ? [recentRole.title, recentRole.company].filter(Boolean).join(" at ")
+    : candidate.headline ?? ""
 
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-3">
-        <CandidateAvatar name={candidate.full_name} className="size-14 text-base" />
+        <CandidateAvatar name={candidate.full_name ?? ""} className="size-14 text-base" />
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             {candidate.full_name}
           </h1>
-          {(titleAtCompany || contact.location) && (
+          {(titleAtCompany || candidate.location_raw) && (
             <p className="text-muted-foreground">
               {titleAtCompany}
-              {titleAtCompany && contact.location && " • "}
-              {contact.location}
+              {titleAtCompany && candidate.location_raw && " • "}
+              {candidate.location_raw}
             </p>
           )}
         </div>
@@ -38,18 +45,18 @@ export function ProfileHeader({ candidate }: { candidate: CandidateRow }) {
             label="LinkedIn profile"
           />
         )}
-        {contact.email && (
+        {candidate.email && (
           <ContactPill
-            href={`mailto:${contact.email}`}
+            href={`mailto:${candidate.email}`}
             icon={<Mail className="size-3.5" />}
-            label={contact.email}
+            label={candidate.email}
           />
         )}
-        {contact.phone && (
+        {candidate.phone && (
           <ContactPill
-            href={`tel:${contact.phone}`}
+            href={`tel:${candidate.phone}`}
             icon={<Phone className="size-3.5" />}
-            label={contact.phone}
+            label={candidate.phone}
           />
         )}
         {candidate.portfolio_url &&

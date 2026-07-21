@@ -21,19 +21,40 @@ import type { CandidateTier } from "@/lib/supabase/types"
 
 export type ActionResult = { ok: true } | { ok: false; error: string }
 
+/** "Sarah Chen" -> { first_name: "Sarah", last_name: "Chen" }. Best-effort — a single trailing name is treated as first_name only. */
+function splitFullName(fullName: string): { first_name: string; last_name: string } {
+  const idx = fullName.indexOf(" ")
+  if (idx === -1) return { first_name: fullName, last_name: "" }
+  return { first_name: fullName.slice(0, idx), last_name: fullName.slice(idx + 1) }
+}
+
+/** "San Francisco, CA" -> { city: "San Francisco", state: "CA" }. */
+function splitLocationRaw(location: string): { city: string | null; state: string | null } {
+  const parts = location.split(",").map((p) => p.trim()).filter(Boolean)
+  return { city: parts[0] ?? null, state: parts[1] ?? null }
+}
+
 // ── Workflow 1: ADD CANDIDATE (manual) ───────────────────────────────────────
 export async function addCandidate(formData: FormData): Promise<void> {
   const full_name = String(formData.get("full_name") ?? "").trim()
   if (!full_name) throw new Error("Full name is required.")
+  const { first_name, last_name } = splitFullName(full_name)
 
-  const contact_info = {
-    email: String(formData.get("email") ?? ""),
-    phone: String(formData.get("phone") ?? ""),
-    location: String(formData.get("location") ?? ""),
-    tz: String(formData.get("tz") ?? ""),
-  }
-  const current_title = String(formData.get("current_title") ?? "")
-  const current_company = String(formData.get("current_company") ?? "")
+  const email = String(formData.get("email") ?? "").trim() || null
+  const phone = String(formData.get("phone") ?? "").trim() || null
+  const location_raw = String(formData.get("location") ?? "").trim() || null
+  const timezone = String(formData.get("tz") ?? "").trim() || null
+  const { city: location_city, state: location_state } = splitLocationRaw(
+    location_raw ?? ""
+  )
+
+  const current_title = String(formData.get("current_title") ?? "").trim()
+  const current_company = String(formData.get("current_company") ?? "").trim()
+  const headline =
+    current_title && current_company
+      ? `${current_title} at ${current_company}`
+      : current_title || current_company || null
+
   const professional_summary = String(formData.get("professional_summary") ?? "")
   const yearsRaw = String(formData.get("years_experience") ?? "")
   const years_experience = yearsRaw ? Number(yearsRaw) : null
@@ -43,7 +64,7 @@ export async function addCandidate(formData: FormData): Promise<void> {
   const embedding = await generateEmbedding(
     candidateEmbeddingText({
       full_name,
-      current_title,
+      current_title: headline,
       professional_summary,
     })
   )
@@ -53,23 +74,43 @@ export async function addCandidate(formData: FormData): Promise<void> {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { error } = await supabase.from("candidates").insert({
-    full_name,
-    contact_info,
-    current_title: current_title || null,
-    current_company: current_company || null,
-    professional_summary: professional_summary || null,
-    years_experience,
-    candidate_tier,
-    source: "manual_entry",
-    data_provenance: "recruiter_confirmed",
-    freshness_score: 1.0,
-    last_verified: new Date().toISOString(),
-    embedding_vector: toPgVector(embedding),
-    added_by: user?.id ?? null,
-  })
+  const { data: candidate, error } = await supabase
+    .from("candidates")
+    .insert({
+      first_name,
+      last_name,
+      email,
+      phone,
+      location_raw,
+      location_city,
+      location_state,
+      timezone,
+      headline,
+      professional_summary: professional_summary || null,
+      years_experience,
+      candidate_tier,
+      source: "manual_entry",
+      data_provenance: "recruiter_confirmed",
+      freshness_score: 1.0,
+      last_verified: new Date().toISOString(),
+      embedding_vector: toPgVector(embedding),
+      added_by: user?.id ?? null,
+    })
+    .select("candidate_id")
+    .single()
 
-  if (error) throw new Error(error.message)
+  if (error || !candidate) throw new Error(error?.message ?? "Failed to create candidate.")
+
+  if (current_title && current_company) {
+    await supabase.from("candidate_work_experiences").insert({
+      candidate_id: candidate.candidate_id,
+      display_order: 0,
+      company_name: current_company,
+      title: current_title,
+      start_date: new Date().toISOString().slice(0, 10),
+      is_current: true,
+    })
+  }
 
   revalidatePath("/candidates")
   redirect("/candidates")
@@ -100,16 +141,26 @@ export async function createCandidateFromParsed(
 ): Promise<ActionResult & { id?: string }> {
   const full_name = parsed.full_name?.trim()
   if (!full_name) return { ok: false, error: "Full name is required." }
+  const { first_name, last_name } = splitFullName(full_name)
 
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const headline =
+    parsed.current_title && parsed.current_company
+      ? `${parsed.current_title} at ${parsed.current_company}`
+      : parsed.current_title || parsed.current_company || null
+
+  const { city: location_city, state: location_state } = splitLocationRaw(
+    parsed.contact_info.location
+  )
+
   const embedding = await generateEmbedding(
     candidateEmbeddingText({
       full_name,
-      current_title: parsed.current_title,
+      current_title: headline,
       professional_summary: parsed.professional_summary,
       skills: parsed.skills.map((s) => s.skill_name),
     })
@@ -118,12 +169,17 @@ export async function createCandidateFromParsed(
   const { data: candidate, error } = await supabase
     .from("candidates")
     .insert({
-      full_name,
-      contact_info: parsed.contact_info,
+      first_name,
+      last_name,
+      email: parsed.contact_info.email || null,
+      phone: parsed.contact_info.phone || null,
+      location_raw: parsed.contact_info.location || null,
+      location_city,
+      location_state,
+      timezone: parsed.contact_info.tz || null,
       linkedin_url: parsed.linkedin_url || null,
       portfolio_url: parsed.portfolio_url || null,
-      current_title: parsed.current_title || null,
-      current_company: parsed.current_company || null,
+      headline,
       years_experience: parsed.years_experience ?? null,
       professional_summary: parsed.professional_summary || null,
       languages: parsed.languages ?? [],
@@ -144,18 +200,52 @@ export async function createCandidateFromParsed(
     return { ok: false, error: error?.message ?? "Failed to create candidate." }
   }
 
-  // Insert skills (best-effort; candidate is already created).
+  if (parsed.current_title && parsed.current_company) {
+    await supabase.from("candidate_work_experiences").insert({
+      candidate_id: candidate.candidate_id,
+      display_order: 0,
+      company_name: parsed.current_company,
+      title: parsed.current_title,
+      start_date: new Date().toISOString().slice(0, 10),
+      is_current: true,
+    })
+  }
+
+  // Skills now live in a global lookup: find-or-create each name, then attach
+  // the per-candidate proficiency/AI-literacy data via candidate_skills.
   if (parsed.skills.length > 0) {
-    const { error: skillErr } = await supabase.from("skills").insert(
-      parsed.skills.map((s) => ({
-        candidate_id: candidate.candidate_id,
-        skill_name: s.skill_name,
-        skill_type: s.skill_type,
-        proficiency_level: s.proficiency_level,
-        ai_literacy_signal: s.ai_literacy_signal,
-      }))
+    const names = parsed.skills.map((s) => s.skill_name)
+
+    await supabase.from("skills").upsert(
+      parsed.skills.map((s) => ({ name: s.skill_name, skill_type: s.skill_type })),
+      { onConflict: "name", ignoreDuplicates: true }
     )
-    if (skillErr) console.error("skill insert error:", skillErr.message)
+
+    const { data: skillRows } = await supabase
+      .from("skills")
+      .select("id, name")
+      .in("name", names)
+    const idByName = new Map((skillRows ?? []).map((s) => [s.name, s.id]))
+
+    const candidateSkills = parsed.skills
+      .map((s) => {
+        const skill_id = idByName.get(s.skill_name)
+        if (!skill_id) return null
+        return {
+          candidate_id: candidate.candidate_id,
+          skill_id,
+          proficiency_level: s.proficiency_level,
+          ai_literacy_signal: s.ai_literacy_signal,
+        }
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null)
+
+    if (candidateSkills.length > 0) {
+      const { error: skillErr } = await supabase
+        .from("candidate_skills")
+        .insert(candidateSkills)
+      if (skillErr) console.error("skill insert error:", skillErr.message)
+    }
   }
 
   revalidatePath("/candidates")

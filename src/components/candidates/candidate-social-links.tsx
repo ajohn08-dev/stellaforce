@@ -3,7 +3,7 @@ import { Mail, Phone, Globe } from "lucide-react"
 
 import { GithubIcon, LinkedinIcon } from "@/components/icons/brand-icons"
 import { isGithubUrl } from "@/lib/utils"
-import type { CandidateRow, ContactInfo } from "@/lib/supabase/types"
+import type { CandidateRow } from "@/lib/supabase/types"
 
 function IconLink({
   href,
@@ -31,8 +31,6 @@ function IconLink({
 
 /** LinkedIn/email/phone/portfolio icon links + a link to the full profile — shared by grid and list views. */
 export function CandidateSocialLinks({ candidate }: { candidate: CandidateRow }) {
-  const contact = (candidate.contact_info as ContactInfo | null) ?? {}
-
   return (
     <div className="flex items-center gap-2">
       {candidate.linkedin_url && (
@@ -40,13 +38,13 @@ export function CandidateSocialLinks({ candidate }: { candidate: CandidateRow })
           <LinkedinIcon className="size-3.5" />
         </IconLink>
       )}
-      {contact.email && (
-        <IconLink href={`mailto:${contact.email}`} label="Email">
+      {candidate.email && (
+        <IconLink href={`mailto:${candidate.email}`} label="Email">
           <Mail className="size-3.5" />
         </IconLink>
       )}
-      {contact.phone && (
-        <IconLink href={`tel:${contact.phone}`} label="Phone">
+      {candidate.phone && (
+        <IconLink href={`tel:${candidate.phone}`} label="Phone">
           <Phone className="size-3.5" />
         </IconLink>
       )}
