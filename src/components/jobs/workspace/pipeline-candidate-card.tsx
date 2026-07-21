@@ -18,7 +18,7 @@ export function PipelineCandidateCard({
       className={cn(
         "flex w-full items-start gap-2.5 rounded-md border p-3 text-left transition-colors",
         selected
-          ? "border-transparent bg-brand-orange-100 dark:bg-brand-orange-950"
+          ? "border-brand-orange-300 bg-brand-orange-100 dark:bg-brand-orange-950"
           : "border-border bg-background hover:bg-muted/50"
       )}
     >

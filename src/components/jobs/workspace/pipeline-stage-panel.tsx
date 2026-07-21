@@ -36,7 +36,7 @@ export function PipelineStagePanel({
         ))}
       </div>
 
-      <div className="min-w-0 flex-1 overflow-y-auto rounded-lg border border-border bg-white p-4">
+      <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-white">
         <PipelineCandidateDetail candidate={selected} />
       </div>
     </div>

@@ -9,7 +9,6 @@ import { OverviewTab } from "@/components/candidates/profile/overview-tab"
 import { ScorecardTab } from "@/components/candidates/profile/scorecard-tab"
 import { EvaluationTab } from "@/components/candidates/profile/evaluation-tab"
 import { BackgroundTab } from "@/components/candidates/profile/background-tab"
-import { SkillMapTab } from "@/components/candidates/profile/skill-map-tab"
 import { ActivityTab } from "@/components/candidates/profile/activity-tab"
 import { FilesTab } from "@/components/candidates/profile/files-tab"
 import type { WorkHistoryEntry } from "@/lib/work-history"
@@ -40,7 +39,6 @@ export function ProfileTabs({
           {isAddedToJob && <TabsTab value="scorecard">Scorecard</TabsTab>}
           {isAddedToJob && <TabsTab value="evaluation">Evaluation</TabsTab>}
           <TabsTab value="background">Background</TabsTab>
-          <TabsTab value="skills">Skills</TabsTab>
           <TabsTab value="activity">Activity</TabsTab>
           <TabsTab value="files">Files</TabsTab>
         </TabsList>
@@ -77,9 +75,6 @@ export function ProfileTabs({
         )}
         <TabsPanel value="background">
           <BackgroundTab candidate={candidate} workHistory={workHistory} />
-        </TabsPanel>
-        <TabsPanel value="skills">
-          <SkillMapTab skills={skills} />
         </TabsPanel>
         <TabsPanel value="activity">
           <ActivityTab addedBy={addedBy} dateAdded={dateAdded} />
