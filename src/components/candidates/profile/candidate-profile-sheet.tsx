@@ -9,6 +9,12 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 export function CandidateProfileSheet({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(true)
+  // Scopes the overlay/panel to the header+content region (see #app-content's
+  // `contain: layout` in the app layout) so the sidebar stays visible and
+  // white instead of sitting under the dimmed backdrop.
+  const [container] = React.useState(
+    () => document.getElementById("app-content") ?? undefined
+  )
 
   return (
     <Sheet
@@ -18,7 +24,7 @@ export function CandidateProfileSheet({ children }: { children: React.ReactNode 
         if (!nextOpen) router.back()
       }}
     >
-      <SheetContent className="max-w-4xl gap-0 bg-white p-0">
+      <SheetContent container={container} className="max-w-4xl gap-0 bg-white p-0">
         <div
           className="flex flex-col gap-6 overflow-hidden p-6"
           style={{ height: "100dvh" }}
