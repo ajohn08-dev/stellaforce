@@ -288,8 +288,8 @@ export function CandidatesTable({ data }: { data: CandidateListItem[] }) {
 
   return (
     <div className="h-full overflow-y-auto rounded-lg border border-border bg-white">
-      <Table className="table-fixed">
-        <TableHeader className="sticky top-0 z-10 bg-muted/50">
+      <Table className="table-fixed" containerClassName="scrollbar-light">
+        <TableHeader className="sticky top-0 z-10 bg-muted">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (
@@ -312,7 +312,7 @@ export function CandidatesTable({ data }: { data: CandidateListItem[] }) {
         <TableBody>
           {table.getRowModel().rows.length ? (
             table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id} className="group">
+              <TableRow key={row.id} className="group hover:bg-muted">
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
                     key={cell.id}
