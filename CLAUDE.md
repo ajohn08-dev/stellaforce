@@ -80,9 +80,10 @@ evaluation-criteria → scorecard → workflow model with a two-tier pipeline
 
 **candidates** (core)
 `candidate_id` (uuid pk), `first_name`/`last_name` (not null), `full_name`
-(generated: `first_name || ' ' || last_name`), `headline`, `summary`, `email`
-(unique), `phone`, `location_city`/`location_state`/`location_country`/
-`location_raw`, `timezone` (IANA, decoupled from location), `is_open_to_remote`,
+(generated: `first_name || ' ' || last_name`), `headline`, `current_title`,
+`current_company`, `professional_summary`, `email` (unique), `phone`,
+`location_city`/`location_state`/`location_country`/`location_raw`,
+`timezone` (IANA, decoupled from location), `is_open_to_remote`,
 `is_open_to_relocation`, `languages` (text[]), `years_experience` (int, cached
 aggregate), `linkedin_url`, `portfolio_url`, `github_url`, `resume_path`,
 `avatar_url`, `source` (text), `source_metadata` (jsonb),
@@ -340,9 +341,12 @@ tables, profiles two-sided identity, indexes + RLS for all new tables).
 Applied directly via the Supabase MCP (`apply_migration`); pull the schema
 history with the Supabase CLI (`supabase db pull`) to sync local migration
 files if needed. RLS is minimal: authenticated users read/write all core
-tables (including the V3.2 additions); anonymous users get nothing (PII not
-public); the service-role key bypasses RLS for privileged operations
-(seeding, backfills).
+tables (including the V3.2 additions) via a permissive `ALL` policy per
+table — **except `profiles`**, which only has a `SELECT`-for-authenticated
+policy; profile rows are written exclusively by the `handle_new_user()`
+security-definer trigger, never by an authenticated user's own request.
+Anonymous users get nothing (PII not public); the service-role key bypasses
+RLS for privileged operations (seeding, backfills).
 
 ## Auth
 Supabase Auth, email/password only, no public sign-up — Stellaforce-side
