@@ -259,6 +259,14 @@ export async function createCandidateFromParsed(
 // `resumes` Storage bucket by the time this runs — this just tells the n8n
 // workflow where to find it. `user_id` is resolved server-side from the
 // session rather than trusted from the client.
+//
+// Of the three "add a candidate" entry points (resume drag-and-drop, CSV
+// upload, manual form), this n8n webhook is called ONLY by resume
+// drag-and-drop. CSV upload should parse rows and insert into `candidates`
+// directly (or reuse parseCandidate/createCandidateFromParsed below for
+// AI-assisted mapping) — it must not call this function or reference
+// serverEnv.n8nWebhookUrl. Manual form already writes directly via
+// addCandidate and should stay that way too.
 export async function notifyResumeUploaded(
   storagePath: string,
   filename: string

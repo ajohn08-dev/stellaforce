@@ -253,9 +253,12 @@ when side=client), `side` (enum, default `stellaforce`), `client_id` (fk →
 IS NULL`, or `side='client' AND role IS NULL AND client_role IS NOT NULL AND
 client_id IS NOT NULL`. No public sign-up: users are created manually in the
 Supabase dashboard (Auth → Users, Auto Confirm on); `handle_new_user()`
-inserts the matching profile row defaulted to the Stellaforce side; `role`
-(Stellaforce-side) or `side`/`client_id`/`client_role` (client-side, when
-onboarding a new client) are hand-set afterward via SQL. All of this is
+inserts the matching profile row defaulted to the Stellaforce side with
+`role = 'recruiter'` (the least-privileged role — required so the insert
+satisfies `chk_profiles_side_consistency`, which needs `role IS NOT NULL`
+for `side='stellaforce'`); elevate to `manager`/`admin`, or reassign to
+`side`/`client_id`/`client_role` (client-side, when onboarding a new
+client), by hand via SQL afterward. All of this is
 stored but **not yet enforced** — every authenticated user, Stellaforce or
 client-side, has full CRUD via the existing permissive RLS policies.
 Role-based and client-scoped restriction is a known, deferred follow-up pass.
