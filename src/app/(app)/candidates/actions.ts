@@ -254,11 +254,22 @@ export async function createCandidateFromParsed(
   return { ok: true, id: candidate.candidate_id }
 }
 
+export type NotifyResumeResult =
+  | { ok: true; candidateName: string | null }
+  | { ok: false; error: string }
+
 // ── Workflow 2 (resume upload variant): hand an uploaded resume off to n8n
 // for parsing. The client has already uploaded the file directly to the
 // `resumes` Storage bucket by the time this runs — this just tells the n8n
 // workflow where to find it. `user_id` is resolved server-side from the
 // session rather than trusted from the client.
+//
+// The n8n workflow is synchronous: it doesn't respond until parsing has
+// finished and the candidate + resume rows are written to Supabase, so a
+// resolved fetch here means the write already happened — there's no
+// separate polling/realtime step. The exact response body shape isn't
+// pinned down yet, so we read a `success`/`candidate_name` field
+// best-effort and fall back to response.ok / a generic message if absent.
 //
 // Of the three "add a candidate" entry points (resume drag-and-drop, CSV
 // upload, manual form), this n8n webhook is called ONLY by resume
@@ -270,7 +281,7 @@ export async function createCandidateFromParsed(
 export async function notifyResumeUploaded(
   storagePath: string,
   filename: string
-): Promise<ActionResult> {
+): Promise<NotifyResumeResult> {
   const profile = await getCurrentProfile()
   if (!profile) {
     return { ok: false, error: "You must be signed in to upload a resume." }
@@ -290,15 +301,34 @@ export async function notifyResumeUploaded(
       }),
     })
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => "")
+    const rawBody = await response.text()
+    let parsedBody: Record<string, unknown> | null = null
+    try {
+      parsedBody = rawBody ? JSON.parse(rawBody) : null
+    } catch {
+      // Not JSON — fall through and treat rawBody as plain text below.
+    }
+
+    const success =
+      typeof parsedBody?.success === "boolean" ? parsedBody.success : response.ok
+
+    if (!success) {
+      const message =
+        (typeof parsedBody?.error === "string" && parsedBody.error) ||
+        (typeof parsedBody?.message === "string" && parsedBody.message) ||
+        rawBody.slice(0, 200)
       return {
         ok: false,
-        error: `Resume parsing service returned an error (${response.status}).${body ? ` ${body.slice(0, 200)}` : ""}`,
+        error: `Resume parsing failed.${message ? ` ${message}` : ""}`,
       }
     }
 
-    return { ok: true }
+    const candidateName =
+      (typeof parsedBody?.candidate_name === "string" && parsedBody.candidate_name) ||
+      (typeof parsedBody?.full_name === "string" && parsedBody.full_name) ||
+      null
+
+    return { ok: true, candidateName }
   } catch (err) {
     return {
       ok: false,

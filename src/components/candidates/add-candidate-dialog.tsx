@@ -133,15 +133,21 @@ export function AddCandidateDialog() {
     }
 
     setStatus("notifying")
+    const toastId = toast.loading("Resume is being parsed…")
     const notifyResult = await notifyResumeUploaded(storagePath, file.name)
     if (!notifyResult.ok) {
       setStatus("error")
       setErrorMessage(notifyResult.error)
-      toast.error(notifyResult.error)
+      toast.error(notifyResult.error, { id: toastId })
       return
     }
 
-    toast.success("Resume uploaded. Parsing has started.")
+    toast.success(
+      notifyResult.candidateName
+        ? `Resume parsed. ${notifyResult.candidateName} added as a candidate.`
+        : "Resume parsed. Candidate added.",
+      { id: toastId }
+    )
     handleOpenChange(false)
   }
 
@@ -179,7 +185,7 @@ export function AddCandidateDialog() {
           <div className="space-y-1.5">
             <Progress value={null} />
             <p className="text-xs text-muted-foreground">
-              Sending to parser…
+              Parsing resume…
             </p>
           </div>
         )}
@@ -198,7 +204,7 @@ export function AddCandidateDialog() {
           {status === "uploading"
             ? "Uploading…"
             : status === "notifying"
-              ? "Sending…"
+              ? "Parsing…"
               : "Continue"}
         </Button>
 
