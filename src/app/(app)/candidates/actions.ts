@@ -10,6 +10,8 @@ import {
   toPgVector,
 } from "@/lib/ai/embeddings"
 import { parseCandidateText, type ParsedCandidate } from "@/lib/ai/parse"
+import { getCurrentProfile } from "@/lib/auth"
+import { serverEnv } from "@/lib/env"
 import type { CandidateTier } from "@/lib/supabase/types"
 
 /**
@@ -250,4 +252,52 @@ export async function createCandidateFromParsed(
 
   revalidatePath("/candidates")
   return { ok: true, id: candidate.candidate_id }
+}
+
+// ── Workflow 2 (resume upload variant): hand an uploaded resume off to n8n
+// for parsing. The client has already uploaded the file directly to the
+// `resumes` Storage bucket by the time this runs — this just tells the n8n
+// workflow where to find it. `user_id` is resolved server-side from the
+// session rather than trusted from the client.
+export async function notifyResumeUploaded(
+  storagePath: string,
+  filename: string
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) {
+    return { ok: false, error: "You must be signed in to upload a resume." }
+  }
+
+  try {
+    const response = await fetch(serverEnv.n8nWebhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serverEnv.n8nWebhookSecret}`,
+      },
+      body: JSON.stringify({
+        storage_path: storagePath,
+        user_id: profile.id,
+        filename,
+      }),
+    })
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "")
+      return {
+        ok: false,
+        error: `Resume parsing service returned an error (${response.status}).${body ? ` ${body.slice(0, 200)}` : ""}`,
+      }
+    }
+
+    return { ok: true }
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? `Could not reach the resume parsing service: ${err.message}`
+          : "Could not reach the resume parsing service.",
+    }
+  }
 }

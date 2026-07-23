@@ -15,9 +15,19 @@ import {
 } from "@/components/ui/dialog"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Progress } from "@/components/ui/progress"
 import { FileDropZone } from "@/components/candidates/file-drop-zone"
+import { createClient } from "@/lib/supabase/client"
+import {
+  ResumeValidationError,
+  uploadResumeWithProgress,
+  validateResumeFile,
+} from "@/lib/resume-upload"
+import { notifyResumeUploaded } from "@/app/(app)/candidates/actions"
+import { RESUME_ACCEPT } from "@/lib/constants"
 
 type Method = "resume" | "csv"
+type Status = "idle" | "uploading" | "notifying" | "error"
 
 const COPY: Record<
   Method,
@@ -27,7 +37,7 @@ const COPY: Record<
     title: "Add a candidate",
     description:
       "Drop a resume and we'll pre-fill a draft for you to review before saving.",
-    accept: ".pdf,.doc,.docx",
+    accept: RESUME_ACCEPT,
     hint: "PDF, DOC, or DOCX",
   },
   csv: {
@@ -41,21 +51,98 @@ const COPY: Record<
 
 /**
  * Resume upload is the default/primary ingestion method; CSV and manual
- * entry are offered as alternatives below it. Selecting a file is fully
- * functional — parsing it is not wired up yet (no PDF/DOCX text extraction
- * or CSV parsing exists server-side), so "Continue" is an honest stub.
+ * entry are offered as alternatives below it. Resume upload is fully wired:
+ * the file goes straight to the `resumes` Storage bucket from the browser
+ * (with progress), then a Server Action hands the storage path to n8n for
+ * parsing. CSV upload is still an honest stub — no CSV parsing exists yet.
  */
 export function AddCandidateDialog() {
   const [open, setOpen] = React.useState(false)
   const [method, setMethod] = React.useState<Method>("resume")
   const [file, setFile] = React.useState<File | null>(null)
+  const [status, setStatus] = React.useState<Status>("idle")
+  const [progress, setProgress] = React.useState(0)
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null)
+  const abortRef = React.useRef<(() => void) | null>(null)
+
+  const busy = status === "uploading" || status === "notifying"
+
+  function resetState() {
+    setMethod("resume")
+    setFile(null)
+    setStatus("idle")
+    setProgress(0)
+    setErrorMessage(null)
+  }
 
   function handleOpenChange(next: boolean) {
-    setOpen(next)
-    if (!next) {
-      setMethod("resume")
-      setFile(null)
+    if (!next && status === "uploading") {
+      abortRef.current?.()
     }
+    setOpen(next)
+    if (!next) resetState()
+  }
+
+  async function handleResumeContinue() {
+    if (!file) return
+    setErrorMessage(null)
+
+    try {
+      validateResumeFile(file)
+    } catch (err) {
+      const message =
+        err instanceof ResumeValidationError ? err.message : "Invalid file."
+      setErrorMessage(message)
+      toast.error(message)
+      return
+    }
+
+    const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      const message = "You must be signed in to upload a resume."
+      setErrorMessage(message)
+      toast.error(message)
+      return
+    }
+
+    setStatus("uploading")
+    setProgress(0)
+
+    const { promise, abort } = uploadResumeWithProgress({
+      file,
+      userId: user.id,
+      onProgress: setProgress,
+    })
+    abortRef.current = abort
+
+    let storagePath: string
+    try {
+      const result = await promise
+      storagePath = result.storagePath
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Upload failed."
+      setStatus("error")
+      setErrorMessage(message)
+      toast.error(message)
+      return
+    } finally {
+      abortRef.current = null
+    }
+
+    setStatus("notifying")
+    const notifyResult = await notifyResumeUploaded(storagePath, file.name)
+    if (!notifyResult.ok) {
+      setStatus("error")
+      setErrorMessage(notifyResult.error)
+      toast.error(notifyResult.error)
+      return
+    }
+
+    toast.success("Resume uploaded. Parsing has started.")
+    handleOpenChange(false)
   }
 
   const copy = COPY[method]
@@ -73,16 +160,46 @@ export function AddCandidateDialog() {
           accept={copy.accept}
           hint={copy.hint}
           file={file}
-          onFileChange={setFile}
+          onFileChange={(next) => {
+            setFile(next)
+            setStatus("idle")
+            setErrorMessage(null)
+          }}
         />
 
+        {status === "uploading" && (
+          <div className="space-y-1.5">
+            <Progress value={progress} />
+            <p className="text-xs text-muted-foreground">
+              Uploading… {progress}%
+            </p>
+          </div>
+        )}
+        {status === "notifying" && (
+          <div className="space-y-1.5">
+            <Progress value={null} />
+            <p className="text-xs text-muted-foreground">
+              Sending to parser…
+            </p>
+          </div>
+        )}
+        {status === "error" && errorMessage && (
+          <p className="text-sm text-destructive">{errorMessage}</p>
+        )}
+
         <Button
-          disabled={!file}
-          onClick={() =>
-            toast.info("Not wired up yet — parsing is coming soon.")
+          disabled={!file || busy}
+          onClick={
+            method === "resume"
+              ? handleResumeContinue
+              : () => toast.info("Not wired up yet — parsing is coming soon.")
           }
         >
-          Continue
+          {status === "uploading"
+            ? "Uploading…"
+            : status === "notifying"
+              ? "Sending…"
+              : "Continue"}
         </Button>
 
         <div className="flex items-center gap-3">
@@ -95,6 +212,7 @@ export function AddCandidateDialog() {
           {method === "resume" ? (
             <Button
               variant="outline"
+              disabled={busy}
               onClick={() => {
                 setFile(null)
                 setMethod("csv")
@@ -106,6 +224,7 @@ export function AddCandidateDialog() {
           ) : (
             <Button
               variant="outline"
+              disabled={busy}
               onClick={() => {
                 setFile(null)
                 setMethod("resume")
@@ -117,7 +236,14 @@ export function AddCandidateDialog() {
           <Link
             href="/candidates/new"
             className={buttonVariants({ variant: "outline" })}
-            onClick={() => handleOpenChange(false)}
+            aria-disabled={busy}
+            onClick={(e) => {
+              if (busy) {
+                e.preventDefault()
+                return
+              }
+              handleOpenChange(false)
+            }}
           >
             <ClipboardList className="size-4" />
             Manual form

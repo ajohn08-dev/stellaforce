@@ -39,6 +39,12 @@ export const serverEnv = {
   get anthropicApiKey() {
     return required("ANTHROPIC_API_KEY", process.env.ANTHROPIC_API_KEY)
   },
+  get n8nWebhookUrl() {
+    return required("N8N_WEBHOOK_URL", process.env.N8N_WEBHOOK_URL)
+  },
+  get n8nWebhookSecret() {
+    return required("N8N_WEBHOOK_SECRET", process.env.N8N_WEBHOOK_SECRET)
+  },
 }
 
 /** True when the public Supabase config is present (used to guard demo UI). */

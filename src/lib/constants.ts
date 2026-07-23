@@ -183,3 +183,17 @@ export function titleCase(value: string): string {
 
 /** Embedding dimension — must match vector(1536) in the schema. */
 export const EMBEDDING_DIM = 1536
+
+/**
+ * Resume upload constraints — mirrors the `resumes` Storage bucket's
+ * `allowed_mime_types` / `file_size_limit` (supabase/migrations). Enforced
+ * client-side for immediate feedback; the bucket enforces them again
+ * server-side as the source of truth.
+ */
+export const RESUME_ACCEPT = ".pdf,.doc,.docx"
+export const RESUME_ACCEPTED_MIME_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]
+export const RESUME_MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB

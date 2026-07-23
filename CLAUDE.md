@@ -288,12 +288,24 @@ the application layer to match V3.2 is a separate, not-yet-started pass.
    `date_added`/`last_updated`/`freshness_score`, generates `embedding_vector`.
    _Implemented: `src/app/candidates/actions.ts`, `/candidates/new` (Manual tab)._
 
-2. **INGESTION (AI + human confirm)** — `/candidates/new` (AI tab): paste raw text
-   → Server Action `parseCandidate` calls Claude (`src/lib/ai/parse.ts`, structured
-   outputs) → returns a pre-filled **editable** draft (`data_provenance = ai_parsed`)
-   → recruiter edits/confirms → `createCandidateFromParsed` writes candidate +
-   skills, **flips provenance to `recruiter_confirmed`**, generates embedding.
-   _Implemented._
+2. **INGESTION (AI + human confirm)** — two entry points:
+   - **Paste text**: `/candidates/new` (AI tab) → Server Action `parseCandidate`
+     calls Claude (`src/lib/ai/parse.ts`, structured outputs) → returns a
+     pre-filled **editable** draft (`data_provenance = ai_parsed`) → recruiter
+     edits/confirms → `createCandidateFromParsed` writes candidate + skills,
+     **flips provenance to `recruiter_confirmed`**, generates embedding.
+     _Implemented._
+   - **Resume upload**: `AddCandidateDialog` (`/candidates` toolbar) → client
+     uploads the file directly to the `resumes` Storage bucket
+     (`src/lib/resume-upload.ts`, raw XHR for progress reporting; path
+     `{user_id}/{timestamp}-{filename}`) → Server Action `notifyResumeUploaded`
+     POSTs `{storage_path, user_id, filename}` to the n8n webhook
+     (`N8N_WEBHOOK_URL`, header `Authorization: Bearer N8N_WEBHOOK_SECRET`) for
+     parsing. _Upload + dispatch implemented; n8n's parsed response is not yet
+     consumed — no `resumes` row is written, no draft is shown, and the
+     candidate is not created. That wiring (n8n → draft review → confirm →
+     `resumes`/`candidates` write, mirroring the paste-text path above) is the
+     next step._
 
 3. **ADD-TO-ORDER / REFER & UPDATE** — attach a candidate to a `job_order` as an
    `application`; advance `current_stage_id` through the job's
@@ -358,3 +370,35 @@ redirect signed-out requests to `/login`. `src/lib/auth.ts`
 server-side; `src/app/login/` holds the login page and the `login`/`logout`
 Server Actions. See the **profiles** table above for role provisioning
 (Stellaforce-side) and client onboarding (client-side).
+
+## Storage
+Supabase Storage bucket **`resumes`** (private, `public = false`) holds
+uploaded resume binaries — PDF/DOC/DOCX only (`allowed_mime_types`), 10 MB
+cap (`file_size_limit`). Objects are namespaced per **candidate**, not per
+uploader (candidates have no login): path is
+`{candidate_id}/{timestamp}-{filename}.ext`, matching `resumes.storage_path`
+below. RLS on `storage.objects` is uniform across select/insert/update/delete
+— open to any authenticated user with `profiles.side = 'stellaforce'`;
+client-side profiles have no access at all. (There is no per-object
+"owner" restriction — a folder-per-uploader scheme was tried first but
+doesn't fit a candidate-keyed path, since any Stellaforce user may need to
+replace a candidate's resume regardless of who originally uploaded it.)
+
+**resumes** (candidate resume history — Postgres table, metadata only)
+`id` (uuid pk), `candidate_id` (fk → `candidates.candidate_id`, cascade
+delete), `storage_path` (not null — the Storage object path described
+above), `filename` (not null, original upload name), `file_size` (bigint,
+nullable), `mime_type` (nullable), `parsed_data` (jsonb, nullable —
+structured output from the n8n resume-parsing webhook), `parse_status`
+(text, default `pending`, check `pending | parsed | failed` — a plain check
+constraint rather than a Postgres enum, unlike every other status field in
+this schema), `parse_error` (text, nullable — set when `parse_status =
+failed`), `is_current` (bool, default true — a partial unique index
+enforces at most one current resume per candidate), `version` (int, default
+1), `superseded_at` (timestamptz, nullable — set when a newer upload
+replaces this one as current), `created_at`/`updated_at`. RLS: permissive
+`ALL` for any authenticated user, matching every other V3.2 table (access
+control for the actual file bytes lives at the Storage layer above, not
+here). The `candidates.resume_path` column predates this table and is
+superseded by it — not yet removed, not yet wired up app-side (see Build
+order).
