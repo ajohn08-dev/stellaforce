@@ -1,26 +1,86 @@
-import { Workflow } from "lucide-react"
+import { WorkflowsTable } from "@/components/workflows/workflows-table"
+import { WorkflowsGrid } from "@/components/workflows/workflows-grid"
+import { WorkflowSearch } from "@/components/workflows/workflow-search"
+import { WorkflowFilterButton } from "@/components/workflows/workflow-filter-button"
+import { WorkflowActiveFilters } from "@/components/workflows/workflow-active-filters"
+import { WorkflowViewToggle } from "@/components/workflows/workflow-view-toggle"
+import { AddWorkflowButton } from "@/components/workflows/add-workflow-button"
+import {
+  MOCK_WORKFLOWS,
+  MOCK_WORKFLOW_CLIENTS,
+  MOCK_WORKFLOW_DEPARTMENTS,
+} from "@/lib/mock-workflows"
+import {
+  parseWorkflowClientsParam,
+  parseWorkflowDepartmentsParam,
+  parseWorkflowStatusesParam,
+} from "@/lib/workflow-status"
 
-import { Badge } from "@/components/ui/badge"
+export default async function WorkflowsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const sp = await searchParams
+  const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined)
 
-export default function WorkflowsPage() {
+  const statuses = parseWorkflowStatusesParam(get("statuses") ?? null)
+  const departments = parseWorkflowDepartmentsParam(
+    get("departments") ?? null,
+    MOCK_WORKFLOW_DEPARTMENTS
+  )
+  const clients = parseWorkflowClientsParam(get("clients") ?? null, MOCK_WORKFLOW_CLIENTS)
+  const q = get("q")?.trim().toLowerCase()
+
+  const workflows = MOCK_WORKFLOWS.filter((workflow) => {
+    if (!statuses.includes(workflow.status)) return false
+    if (!departments.includes(workflow.department)) return false
+    if (workflow.client_name && !clients.includes(workflow.client_name)) return false
+    if (q) {
+      const haystack = `${workflow.name} ${workflow.client_name ?? ""} ${workflow.department}`.toLowerCase()
+      if (!haystack.includes(q)) return false
+    }
+    return true
+  })
+
+  const view = get("view") === "grid" ? "grid" : "list"
+
   return (
-    <div className="space-y-6 p-4">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <Workflow className="size-6 text-brand-purple-600" />
-          Workflows
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Manage reusable hiring pipeline templates.
-        </p>
+    <div
+      className="flex flex-col overflow-hidden"
+      // Inline style, not an arbitrary Tailwind class: <main> has no padding
+      // of its own — every section below manages its own — so only the app
+      // header (h-14 = 3.5rem) needs subtracting. Fixed (not min-) height so
+      // the header stays put and only the grid/table body below it scrolls.
+      style={{ height: "calc(100vh - 3.5rem)" }}
+    >
+      <div className="shrink-0 border-b border-border px-4 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <WorkflowSearch />
+            <WorkflowFilterButton />
+          </div>
+          <AddWorkflowButton />
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Badge variant="outline">TODO — stub</Badge>
-        <p className="text-sm text-muted-foreground">
-          Not wired up yet — this page exists so the Workflows nav item has
-          somewhere to land.
-        </p>
+      <div className="shrink-0 px-4 pt-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <WorkflowActiveFilters />
+          </div>
+          <WorkflowViewToggle />
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 p-4">
+        {view === "grid" ? (
+          <div className="h-full overflow-y-auto">
+            <WorkflowsGrid data={workflows} />
+          </div>
+        ) : (
+          <WorkflowsTable data={workflows} />
+        )}
       </div>
     </div>
   )

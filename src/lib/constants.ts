@@ -173,12 +173,33 @@ export const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
   closed: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
 }
 
+/** Tailwind classes for workflow status badges (used on the Workflows list). */
+export const WORKFLOW_STATUS_BADGE_CLASS: Record<"draft" | "published", string> = {
+  draft: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
+  published: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+}
+
 /** Human-readable labels for enum values that need prettifying. */
 export function titleCase(value: string): string {
   return value
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ")
+}
+
+/**
+ * Short human-readable date, e.g. "Mar 4, 2026" — used across list views.
+ * Parses "YYYY-MM-DD" into local-time parts (not `new Date(string)`, which
+ * treats a bare date as UTC midnight and can render a day early in
+ * timezones behind UTC).
+ */
+export function formatDate(value: string): string {
+  const [y, m, d] = value.split("-").map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
 }
 
 /** Embedding dimension — must match vector(1536) in the schema. */
