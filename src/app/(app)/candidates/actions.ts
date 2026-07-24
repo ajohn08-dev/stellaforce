@@ -270,6 +270,9 @@ export type NotifyResumeResult =
 // separate polling/realtime step. The exact response body shape isn't
 // pinned down yet, so we read a `success`/`candidate_name` field
 // best-effort and fall back to response.ok / a generic message if absent.
+// On `success: false`, an optional `candidate_id` field lets n8n report a
+// row it already inserted before discovering the parse was incomplete —
+// see the cleanup delete below.
 //
 // Of the three "add a candidate" entry points (resume drag-and-drop, CSV
 // upload, manual form), this n8n webhook is called ONLY by resume
@@ -317,6 +320,32 @@ export async function notifyResumeUploaded(
         (typeof parsedBody?.error === "string" && parsedBody.error) ||
         (typeof parsedBody?.message === "string" && parsedBody.message) ||
         rawBody.slice(0, 200)
+
+      // n8n may have already inserted a `candidates` row before discovering
+      // the parse was incomplete (e.g. unreadable text, no extractable work
+      // history). If it reports that row's id, delete it now rather than
+      // leaving a bare, dataless candidate behind — cascades to any child
+      // rows (skills/tools/work history/resume) via FK ON DELETE CASCADE.
+      // n8n's response shape isn't pinned down, so don't rely solely on it
+      // reporting `candidate_id` — fall back to looking up the `resumes` row
+      // it wrote for this exact `storage_path` (it's namespaced per-upload,
+      // see the Storage note in CLAUDE.md, so this is an unambiguous match).
+      const supabase = await createClient()
+      const reportedCandidateId =
+        typeof parsedBody?.candidate_id === "string" ? parsedBody.candidate_id : null
+      let partialCandidateId = reportedCandidateId
+      if (!partialCandidateId) {
+        const { data: resumeRow } = await supabase
+          .from("resumes")
+          .select("candidate_id")
+          .eq("storage_path", storagePath)
+          .maybeSingle()
+        partialCandidateId = resumeRow?.candidate_id ?? null
+      }
+      if (partialCandidateId) {
+        await supabase.from("candidates").delete().eq("candidate_id", partialCandidateId)
+      }
+
       return {
         ok: false,
         error: `Resume parsing failed.${message ? ` ${message}` : ""}`,
