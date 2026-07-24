@@ -8,11 +8,11 @@ import { cn } from "@/lib/utils"
 export function WorkflowViewToggle() {
   const router = useRouter()
   const params = useSearchParams()
-  const view = params.get("view") === "grid" ? "grid" : "list"
+  const view = params.get("view") === "list" ? "list" : "grid"
 
   function setView(next: "list" | "grid") {
     const sp = new URLSearchParams(params.toString())
-    if (next === "grid") sp.set("view", "grid")
+    if (next === "list") sp.set("view", "list")
     else sp.delete("view")
     router.push(`/workflows?${sp.toString()}`)
   }

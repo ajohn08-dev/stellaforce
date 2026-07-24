@@ -11,30 +11,23 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { WorkflowChecklistFilterSubmenuItem } from "@/components/workflows/workflow-filter-menu"
 import { titleCase } from "@/lib/constants"
-import { MOCK_WORKFLOW_CLIENTS, MOCK_WORKFLOW_DEPARTMENTS } from "@/lib/mock-workflows"
 import {
   WORKFLOW_STATUS_OPTIONS,
   listToParam,
-  parseWorkflowClientsParam,
-  parseWorkflowDepartmentsParam,
   parseWorkflowStatusesParam,
 } from "@/lib/workflow-status"
 
 /**
- * "Filter" opens a menu of filterable fields — Status, Department, Client.
- * Each field cascades its own options into a submenu rather than exposing
- * them directly here (mirrors JobFilterButton).
+ * "Filter" opens a menu of filterable fields — currently just Status.
+ * Department and Client have their own always-visible chips in the toolbar
+ * (WorkflowClientFilterChip/WorkflowDepartmentFilterChip) instead of living
+ * here, since those are the fields recruiters narrow by most often.
  */
 export function WorkflowFilterButton() {
   const router = useRouter()
   const params = useSearchParams()
 
   const statuses = parseWorkflowStatusesParam(params.get("statuses"))
-  const departments = parseWorkflowDepartmentsParam(
-    params.get("departments"),
-    MOCK_WORKFLOW_DEPARTMENTS
-  )
-  const clients = parseWorkflowClientsParam(params.get("clients"), MOCK_WORKFLOW_CLIENTS)
 
   function setParam(key: string, values: string[]) {
     const sp = new URLSearchParams(params.toString())
@@ -59,18 +52,6 @@ export function WorkflowFilterButton() {
           selected={statuses}
           onChange={(v) => setParam("statuses", v)}
           formatLabel={titleCase}
-        />
-        <WorkflowChecklistFilterSubmenuItem
-          label="Department"
-          options={MOCK_WORKFLOW_DEPARTMENTS}
-          selected={departments}
-          onChange={(v) => setParam("departments", v)}
-        />
-        <WorkflowChecklistFilterSubmenuItem
-          label="Client"
-          options={MOCK_WORKFLOW_CLIENTS}
-          selected={clients}
-          onChange={(v) => setParam("clients", v)}
         />
       </DropdownMenuContent>
     </DropdownMenu>

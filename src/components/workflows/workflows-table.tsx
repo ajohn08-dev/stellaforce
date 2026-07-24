@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   type ColumnDef,
   type RowSelectionState,
@@ -68,14 +69,12 @@ const columns: ColumnDef<MockWorkflow>[] = [
     accessorKey: "name",
     header: sortHeader("Name"),
     cell: ({ row }) => (
-      <div className="flex flex-col">
-        <span className="font-medium">{row.original.name}</span>
-        {row.original.status === "draft" && (
-          <span className="max-w-xs truncate text-xs text-muted-foreground">
-            {row.original.description}
-          </span>
-        )}
-      </div>
+      <Link
+        href={`/workflows/${row.original.workflow_id}`}
+        className="font-medium hover:underline"
+      >
+        {row.original.name}
+      </Link>
     ),
   },
   {

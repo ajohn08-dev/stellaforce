@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { Building2, Calendar, Layers } from "lucide-react"
 
 import { Checkbox } from "@/components/ui/checkbox"
@@ -12,7 +13,12 @@ export function WorkflowCard({ workflow }: { workflow: MockWorkflow }) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2 text-sm">
           <Checkbox aria-label={`Select ${workflow.name}`} className="shrink-0" />
-          <span className="truncate font-semibold">{workflow.name}</span>
+          <Link
+            href={`/workflows/${workflow.workflow_id}`}
+            className="truncate font-semibold hover:underline"
+          >
+            {workflow.name}
+          </Link>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <WorkflowStatusBadge status={workflow.status} />
@@ -21,7 +27,7 @@ export function WorkflowCard({ workflow }: { workflow: MockWorkflow }) {
       </div>
 
       <p className="line-clamp-2 min-h-10 text-sm text-muted-foreground">
-        {workflow.status === "draft" ? workflow.description : null}
+        {workflow.description}
       </p>
 
       <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2 text-sm text-muted-foreground">

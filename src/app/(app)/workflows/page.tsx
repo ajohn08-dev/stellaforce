@@ -2,6 +2,10 @@ import { WorkflowsTable } from "@/components/workflows/workflows-table"
 import { WorkflowsGrid } from "@/components/workflows/workflows-grid"
 import { WorkflowSearch } from "@/components/workflows/workflow-search"
 import { WorkflowFilterButton } from "@/components/workflows/workflow-filter-button"
+import {
+  WorkflowClientFilterChip,
+  WorkflowDepartmentFilterChip,
+} from "@/components/workflows/workflow-filter-chips"
 import { WorkflowActiveFilters } from "@/components/workflows/workflow-active-filters"
 import { WorkflowViewToggle } from "@/components/workflows/workflow-view-toggle"
 import { AddWorkflowButton } from "@/components/workflows/add-workflow-button"
@@ -43,7 +47,7 @@ export default async function WorkflowsPage({
     return true
   })
 
-  const view = get("view") === "grid" ? "grid" : "list"
+  const view = get("view") === "list" ? "list" : "grid"
 
   return (
     <div
@@ -66,8 +70,10 @@ export default async function WorkflowsPage({
 
       <div className="shrink-0 px-4 pt-4">
         <div className="flex items-center justify-between gap-4">
-          <div>
+          <div className="flex items-center gap-2">
             <WorkflowActiveFilters />
+            <WorkflowClientFilterChip />
+            <WorkflowDepartmentFilterChip />
           </div>
           <WorkflowViewToggle />
         </div>

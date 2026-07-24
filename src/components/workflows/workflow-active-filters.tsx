@@ -5,14 +5,7 @@ import { ChevronDown, X } from "lucide-react"
 
 import { WorkflowChecklistFilterMenu } from "@/components/workflows/workflow-filter-menu"
 import { titleCase } from "@/lib/constants"
-import { MOCK_WORKFLOW_CLIENTS, MOCK_WORKFLOW_DEPARTMENTS } from "@/lib/mock-workflows"
-import {
-  WORKFLOW_STATUS_OPTIONS,
-  listToParam,
-  parseWorkflowClientsParam,
-  parseWorkflowDepartmentsParam,
-  parseWorkflowStatusesParam,
-} from "@/lib/workflow-status"
+import { WORKFLOW_STATUS_OPTIONS, listToParam, parseWorkflowStatusesParam } from "@/lib/workflow-status"
 
 /** One removable/editable pill for a narrowed field — shown only when it excludes at least one option. */
 function FilterPill({
@@ -59,17 +52,17 @@ function FilterPill({
   )
 }
 
-/** Row of removable/editable pills for currently active filters, shown above the list. */
+/**
+ * Removable/editable pill for a narrowed Status filter, shown above the
+ * list. Department and Client have their own always-visible pills
+ * (WorkflowClientFilterChip/WorkflowDepartmentFilterChip) rendered
+ * alongside this in the page, since those are narrowed more often.
+ */
 export function WorkflowActiveFilters() {
   const router = useRouter()
   const params = useSearchParams()
 
   const statuses = parseWorkflowStatusesParam(params.get("statuses"))
-  const departments = parseWorkflowDepartmentsParam(
-    params.get("departments"),
-    MOCK_WORKFLOW_DEPARTMENTS
-  )
-  const clients = parseWorkflowClientsParam(params.get("clients"), MOCK_WORKFLOW_CLIENTS)
 
   function setParam(key: string, values: string[]) {
     const sp = new URLSearchParams(params.toString())
@@ -78,38 +71,16 @@ export function WorkflowActiveFilters() {
   }
 
   const statusNarrowed = statuses.length < WORKFLOW_STATUS_OPTIONS.length
-  const departmentNarrowed = departments.length < MOCK_WORKFLOW_DEPARTMENTS.length
-  const clientNarrowed = clients.length < MOCK_WORKFLOW_CLIENTS.length
 
-  if (!statusNarrowed && !departmentNarrowed && !clientNarrowed) return null
+  if (!statusNarrowed) return null
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {statusNarrowed && (
-        <FilterPill
-          label="Status"
-          options={WORKFLOW_STATUS_OPTIONS}
-          selected={statuses}
-          onChange={(v) => setParam("statuses", v)}
-          formatLabel={titleCase}
-        />
-      )}
-      {departmentNarrowed && (
-        <FilterPill
-          label="Department"
-          options={MOCK_WORKFLOW_DEPARTMENTS}
-          selected={departments}
-          onChange={(v) => setParam("departments", v)}
-        />
-      )}
-      {clientNarrowed && (
-        <FilterPill
-          label="Client"
-          options={MOCK_WORKFLOW_CLIENTS}
-          selected={clients}
-          onChange={(v) => setParam("clients", v)}
-        />
-      )}
-    </div>
+    <FilterPill
+      label="Status"
+      options={WORKFLOW_STATUS_OPTIONS}
+      selected={statuses}
+      onChange={(v) => setParam("statuses", v)}
+      formatLabel={titleCase}
+    />
   )
 }
