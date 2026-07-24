@@ -30,7 +30,7 @@ function Field({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex max-w-xl flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5">
       <Label>{label}</Label>
       {children}
     </div>
@@ -45,7 +45,7 @@ export function WorkflowBasicTab({ workflow }: { workflow: MockWorkflow }) {
   const [hiringType, setHiringType] = React.useState<string | undefined>(undefined)
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
       <Field label="Workflow Name">
         <Input
           value={name}

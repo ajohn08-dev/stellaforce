@@ -1,16 +1,21 @@
 import { notFound } from "next/navigation"
 
 import { SetWorkflowBreadcrumb } from "@/components/workflows/set-workflow-breadcrumb"
+import { WorkflowDetailHeader } from "@/components/workflows/workflow-detail-header"
 import { WorkflowDetailTabs } from "@/components/workflows/workflow-detail-tabs"
 import { MOCK_WORKFLOWS } from "@/lib/mock-workflows"
 
 // Layout/content beyond the Basic tab is a placeholder — Stages, Scheduling
 // Policy, AI & Automation, and Communication are stubs to be specified
 // later. Renders from MOCK_WORKFLOWS just like the list, since there's no
-// workflow_templates table yet (see CLAUDE.md build order). No white-card
-// wrapper here (unlike the candidate detail page) — this page keeps the
-// app's gray background. The Run/Save/Publish actions live inside
-// WorkflowDetailTabs' tab-list row, not as a separate header above it.
+// workflow_templates table yet (see CLAUDE.md build order). Full white
+// background (overrides <main>'s default gray), unlike the candidate detail
+// page's white card with a gray margin. SetWorkflowBreadcrumb and
+// WorkflowDetailHeader both render null — they register content into the
+// app's shared top nav (breadcrumb, and Run/Save/Publish replacing the
+// default notifications/avatar) rather than rendering inline here. No
+// padding on this root — WorkflowDetailTabs insets its own tab bar and
+// panel content instead, so the tab bar can sit flush under the app header.
 export default async function WorkflowDetailPage({
   params,
 }: {
@@ -22,10 +27,11 @@ export default async function WorkflowDetailPage({
 
   return (
     <div
-      className="flex flex-col gap-4 overflow-hidden p-4"
+      className="flex flex-col overflow-hidden bg-white"
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
       <SetWorkflowBreadcrumb name={workflow.name} status={workflow.status} />
+      <WorkflowDetailHeader />
       <WorkflowDetailTabs workflow={workflow} />
     </div>
   )
