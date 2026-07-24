@@ -1,3 +1,4 @@
+import { SetSidebarCollapsed } from "@/components/set-sidebar-collapsed"
 import { WorkflowsTable } from "@/components/workflows/workflows-table"
 import { WorkflowsGrid } from "@/components/workflows/workflows-grid"
 import { WorkflowSearch } from "@/components/workflows/workflow-search"
@@ -58,6 +59,7 @@ export default async function WorkflowsPage({
       // the header stays put and only the grid/table body below it scrolls.
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
+      <SetSidebarCollapsed />
       <div className="shrink-0 border-b border-border px-4 py-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">

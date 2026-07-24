@@ -1,6 +1,9 @@
+import { SetSidebarCollapsed } from "@/components/set-sidebar-collapsed"
+
 export default function IntegrationsPage() {
   return (
     <div className="space-y-6 p-4">
+      <SetSidebarCollapsed />
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
         <p className="text-sm text-muted-foreground">
