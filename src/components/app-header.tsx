@@ -26,6 +26,7 @@ import {
 import { logout } from "@/app/login/actions"
 import { NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/lib/nav"
 import { useBreadcrumbItems } from "@/lib/breadcrumb-context"
+import { useHeaderActionsContent } from "@/lib/header-actions-context"
 import type { CurrentProfile } from "@/lib/auth"
 
 function currentTitle(pathname: string): string {
@@ -50,6 +51,7 @@ function getInitials({ full_name, email }: CurrentProfile): string {
 export function AppHeader({ user }: { user: CurrentProfile | null }) {
   const pathname = usePathname()
   const breadcrumbItems = useBreadcrumbItems()
+  const headerActions = useHeaderActionsContent()
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-6">
@@ -86,7 +88,9 @@ export function AppHeader({ user }: { user: CurrentProfile | null }) {
         <span className="text-sm font-medium">{currentTitle(pathname)}</span>
       )}
 
-      {user ? (
+      {headerActions ? (
+        headerActions
+      ) : user ? (
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" aria-label="Notifications">
             <Bell />
