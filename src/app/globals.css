@@ -227,4 +227,35 @@
     background-color: var(--border);
     border-radius: 9999px;
   }
+
+  /**
+   * Scrollbar stays invisible at rest and only appears while actively
+   * scrolling — still scrollable while hidden. Scroll (unlike hover) can't
+   * be detected in pure CSS, so the `.is-scrolling` class is toggled by
+   * useScrollbarOnScroll (src/lib/use-scrollbar-on-scroll.ts) on scroll,
+   * removed again after a short idle timeout.
+   */
+  .scrollbar-hover {
+    scrollbar-color: transparent transparent;
+    scrollbar-width: thin;
+    transition: scrollbar-color 150ms ease;
+  }
+  .scrollbar-hover.is-scrolling {
+    scrollbar-color: var(--border) transparent;
+  }
+  .scrollbar-hover::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-hover::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-hover::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+    transition: background-color 150ms ease;
+  }
+  .scrollbar-hover.is-scrolling::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+  }
 }
