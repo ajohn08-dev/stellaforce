@@ -7,7 +7,7 @@ import { XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
-/** Right-side slide-over panel — same primitive as Dialog, positioned/animated differently. */
+/** Slide-over panel (left or right side, via SheetContent's `side` prop) — same primitive as Dialog, positioned/animated differently. */
 function Sheet({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="sheet" {...props} />
 }
@@ -37,15 +37,23 @@ function SheetOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) {
   )
 }
 
+const SHEET_SIDE_CLASSES = {
+  right:
+    "right-0 border-l data-open:slide-in-from-right data-closed:slide-out-to-right",
+  left: "left-0 border-r data-open:slide-in-from-left data-closed:slide-out-to-left",
+} as const
+
 function SheetContent({
   className,
   children,
   showCloseButton = true,
   container,
+  side = "right",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
   container?: DialogPrimitive.Portal.Props["container"]
+  side?: keyof typeof SHEET_SIDE_CLASSES
 }) {
   return (
     <SheetPortal container={container}>
@@ -53,7 +61,8 @@ function SheetContent({
       <DialogPrimitive.Popup
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col gap-4 border-l border-border bg-background p-6 text-sm outline-none duration-200 data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right",
+          "fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col gap-4 border-border bg-background p-6 text-sm outline-none duration-200 data-open:animate-in data-closed:animate-out",
+          SHEET_SIDE_CLASSES[side],
           className
         )}
         {...props}
