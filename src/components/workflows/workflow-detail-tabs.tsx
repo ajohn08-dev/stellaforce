@@ -23,7 +23,7 @@ export function WorkflowDetailTabs({ workflow }: { workflow: MockWorkflow }) {
         <WorkflowBasicTab workflow={workflow} />
       </TabsPanel>
       <TabsPanel value="stages" className="min-h-0 flex-1 overflow-hidden">
-        <WorkflowStagesTab />
+        <WorkflowStagesTab workflow={workflow} />
       </TabsPanel>
       <TabsPanel
         value="scheduling-policy"

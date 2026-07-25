@@ -6,6 +6,38 @@
  */
 export type WorkflowStatus = "draft" | "published"
 
+/** Fixed Tier-1 stages, mirrors the pipeline_stage enum (source|screen|interview|offer|close). */
+export type MainStageKey = "source" | "screen" | "interview" | "offer" | "close"
+
+/**
+ * The master Scale list for workflow sub-stage decisions. Defined once here
+ * and read by both the Workflows "Create Workflow" Stages editor (where a
+ * scale is picked per sub-stage) and the job draft Workflow step (where the
+ * scale is shown read-only, derived from whichever workflow template the
+ * job was built from) — the two must never diverge.
+ */
+export type SubStageScale = "star" | "numeric-5" | "numeric-10" | "numeric-100"
+
+export const SCALE_OPTIONS: { value: SubStageScale; label: string }[] = [
+  { value: "star", label: "Star Rating" },
+  { value: "numeric-5", label: "Numeric scale (1-5)" },
+  { value: "numeric-10", label: "Numeric scale (1-10)" },
+  { value: "numeric-100", label: "Numeric scale (1-100)" },
+]
+
+export const SCALE_LABEL: Record<SubStageScale, string> = Object.fromEntries(
+  SCALE_OPTIONS.map((o) => [o.value, o.label])
+) as Record<SubStageScale, string>
+
+/** A Tier-2 sub-stage on a workflow template — the source of truth a job draft reads its per-stage Scale from. */
+export type MockWorkflowStage = {
+  id: string
+  mainStage: MainStageKey
+  name: string
+  purpose: string
+  scale: SubStageScale
+}
+
 export type MockWorkflow = {
   workflow_id: string
   name: string
@@ -16,6 +48,7 @@ export type MockWorkflow = {
   created_by: string
   created_at: string
   updated_at: string
+  stages: MockWorkflowStage[]
 }
 
 export const MOCK_WORKFLOWS: MockWorkflow[] = [
@@ -30,6 +63,13 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Anna John",
     created_at: "2026-01-12",
     updated_at: "2026-05-02",
+    stages: [
+      { id: "wf-01-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm baseline qualifications and interest", scale: "numeric-5" },
+      { id: "wf-01-s2", mainStage: "screen", name: "Technical Phone Screen", purpose: "Validate core technical fundamentals", scale: "numeric-5" },
+      { id: "wf-01-s3", mainStage: "interview", name: "Take-Home Exercise", purpose: "Hands-on skills assessment", scale: "numeric-10" },
+      { id: "wf-01-s4", mainStage: "interview", name: "Onsite Loop", purpose: "Full-loop technical and behavioral evaluation", scale: "star" },
+      { id: "wf-01-s5", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
   {
     workflow_id: "wf-02",
@@ -42,6 +82,12 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Diego Fernandez",
     created_at: "2026-02-03",
     updated_at: "2026-06-18",
+    stages: [
+      { id: "wf-02-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm availability and logistics fit", scale: "numeric-5" },
+      { id: "wf-02-s2", mainStage: "interview", name: "Site Interview", purpose: "Evaluate hands-on operations experience", scale: "star" },
+      { id: "wf-02-s3", mainStage: "offer", name: "Background Check", purpose: "Background and reference checks", scale: "numeric-5" },
+      { id: "wf-02-s4", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
   {
     workflow_id: "wf-03",
@@ -54,6 +100,12 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Priya Nair",
     created_at: "2026-06-20",
     updated_at: "2026-07-10",
+    stages: [
+      { id: "wf-03-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm baseline qualifications and interest", scale: "numeric-5" },
+      { id: "wf-03-s2", mainStage: "interview", name: "Growth Case Study", purpose: "Evaluate growth strategy and metrics fluency", scale: "numeric-10" },
+      { id: "wf-03-s3", mainStage: "interview", name: "Onsite Panel", purpose: "Cross-functional panel evaluation", scale: "star" },
+      { id: "wf-03-s4", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
   {
     workflow_id: "wf-04",
@@ -66,6 +118,12 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Anna John",
     created_at: "2025-11-08",
     updated_at: "2026-04-14",
+    stages: [
+      { id: "wf-04-s1", mainStage: "screen", name: "Executive Screen", purpose: "Confirm scope, motivation, and comp expectations", scale: "numeric-5" },
+      { id: "wf-04-s2", mainStage: "interview", name: "Board-Style Panel", purpose: "Cross-functional leadership evaluation", scale: "star" },
+      { id: "wf-04-s3", mainStage: "interview", name: "References", purpose: "Structured reference checks", scale: "numeric-10" },
+      { id: "wf-04-s4", mainStage: "offer", name: "Compensation Committee Review", purpose: "Final comp and offer sign-off", scale: "numeric-100" },
+    ],
   },
   {
     workflow_id: "wf-05",
@@ -78,6 +136,12 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Priya Nair",
     created_at: "2026-03-01",
     updated_at: "2026-06-29",
+    stages: [
+      { id: "wf-05-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm baseline qualifications and interest", scale: "numeric-5" },
+      { id: "wf-05-s2", mainStage: "screen", name: "SQL / Case Study Screen", purpose: "Validate SQL fluency and analytical reasoning", scale: "numeric-10" },
+      { id: "wf-05-s3", mainStage: "interview", name: "Onsite Loop", purpose: "Full-loop technical and behavioral evaluation", scale: "star" },
+      { id: "wf-05-s4", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
   {
     workflow_id: "wf-06",
@@ -90,6 +154,12 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Diego Fernandez",
     created_at: "2026-07-01",
     updated_at: "2026-07-15",
+    stages: [
+      { id: "wf-06-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm baseline qualifications and interest", scale: "numeric-5" },
+      { id: "wf-06-s2", mainStage: "interview", name: "Live Role-Play", purpose: "Evaluate live sales conversation skills", scale: "star" },
+      { id: "wf-06-s3", mainStage: "interview", name: "Manager Shadow Day", purpose: "Observe fit in a live team setting", scale: "numeric-5" },
+      { id: "wf-06-s4", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
   {
     workflow_id: "wf-07",
@@ -102,6 +172,11 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Anna John",
     created_at: "2026-01-25",
     updated_at: "2026-05-30",
+    stages: [
+      { id: "wf-07-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm baseline qualifications and interest", scale: "numeric-5" },
+      { id: "wf-07-s2", mainStage: "interview", name: "Panel Interview", purpose: "Cross-functional CSM evaluation", scale: "star" },
+      { id: "wf-07-s3", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
   {
     workflow_id: "wf-08",
@@ -114,6 +189,11 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Priya Nair",
     created_at: "2026-07-05",
     updated_at: "2026-07-20",
+    stages: [
+      { id: "wf-08-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm baseline qualifications and interest", scale: "numeric-5" },
+      { id: "wf-08-s2", mainStage: "interview", name: "Writing Sample Review", purpose: "Evaluate writing sample against role scorecard", scale: "numeric-10" },
+      { id: "wf-08-s3", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
   {
     workflow_id: "wf-09",
@@ -126,6 +206,13 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Anna John",
     created_at: "2025-12-15",
     updated_at: "2026-03-22",
+    stages: [
+      { id: "wf-09-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm baseline qualifications and interest", scale: "numeric-5" },
+      { id: "wf-09-s2", mainStage: "screen", name: "Technical Phone Screen", purpose: "Validate core frontend fundamentals", scale: "numeric-5" },
+      { id: "wf-09-s3", mainStage: "interview", name: "Design-System Pairing", purpose: "Hands-on pairing against the design system", scale: "star" },
+      { id: "wf-09-s4", mainStage: "interview", name: "Onsite Loop", purpose: "Full-loop technical and behavioral evaluation", scale: "star" },
+      { id: "wf-09-s5", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
   {
     workflow_id: "wf-10",
@@ -138,6 +225,13 @@ export const MOCK_WORKFLOWS: MockWorkflow[] = [
     created_by: "Diego Fernandez",
     created_at: "2026-02-18",
     updated_at: "2026-06-05",
+    stages: [
+      { id: "wf-10-s1", mainStage: "screen", name: "Recruiter Screen", purpose: "Confirm baseline qualifications and interest", scale: "numeric-5" },
+      { id: "wf-10-s2", mainStage: "offer", name: "Background Check", purpose: "Mandatory background and clearance check", scale: "numeric-5" },
+      { id: "wf-10-s3", mainStage: "interview", name: "Incident-Response Scenario", purpose: "Hands-on incident-response simulation", scale: "numeric-10" },
+      { id: "wf-10-s4", mainStage: "interview", name: "Onsite Loop", purpose: "Full-loop technical and behavioral evaluation", scale: "star" },
+      { id: "wf-10-s5", mainStage: "offer", name: "Offer", purpose: "Extend and negotiate the offer", scale: "numeric-5" },
+    ],
   },
 ]
 

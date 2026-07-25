@@ -26,9 +26,13 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
 import { RadioCardGroup } from "@/components/workflows/radio-card-group"
 import { useScrollbarOnScroll } from "@/lib/use-scrollbar-on-scroll"
-
-/** Fixed Tier-1 stages, mirrors the pipeline_stage enum (source|screen|interview|offer|close) — never varies. */
-type MainStageKey = "source" | "screen" | "interview" | "offer" | "close"
+import {
+  SCALE_OPTIONS,
+  type MainStageKey,
+  type MockWorkflow,
+  type MockWorkflowStage,
+  type SubStageScale,
+} from "@/lib/mock-workflows"
 
 const MAIN_STAGES: { key: MainStageKey; label: string }[] = [
   { key: "source", label: "Sourced" },
@@ -64,7 +68,7 @@ type SubStage = {
   captureTranscript: boolean
   decisionMode: DecisionMode
   decisionOwner: string
-  decisionScale: string
+  decisionScale: SubStageScale
   overrideEnabled: boolean
   overrideRoles: string
 }
@@ -77,7 +81,6 @@ const DECISION_OWNER_OPTIONS = [
   "Hiring Manager",
   "Panel Consensus",
 ]
-const SCALE_OPTIONS = ["Strong Hire / Hire / No Hire", "1-5 Rating", "Pass / Fail"]
 const OVERRIDE_ROLE_OPTIONS = [
   "Admin, Hiring Manager",
   "Admin Only",
@@ -144,7 +147,12 @@ const DEFAULT_REQUIRED_QUESTIONS = [
 const SUB_NAV_ITEMS = ["Overview", "Setup", "Evaluation", "Decision", "Automation"] as const
 type SubNavItem = (typeof SUB_NAV_ITEMS)[number]
 
-function makeSubStage(mainStage: MainStageKey, name: string, purpose = ""): SubStage {
+function makeSubStage(
+  mainStage: MainStageKey,
+  name: string,
+  purpose = "",
+  scale: SubStageScale = SCALE_OPTIONS[0].value
+): SubStage {
   return {
     id: crypto.randomUUID(),
     mainStage,
@@ -163,23 +171,16 @@ function makeSubStage(mainStage: MainStageKey, name: string, purpose = ""): SubS
     captureTranscript: true,
     decisionMode: "single_rater",
     decisionOwner: DECISION_OWNER_OPTIONS[0],
-    decisionScale: SCALE_OPTIONS[0],
+    decisionScale: scale,
     overrideEnabled: true,
     overrideRoles: OVERRIDE_ROLE_OPTIONS[0],
   }
 }
 
-const INITIAL_SUB_STAGES: SubStage[] = [
-  makeSubStage("source", "Sourced", "Adding candidates to pipeline"),
-  makeSubStage(
-    "screen",
-    "Candidate Screening",
-    "Stage for candidate screening before presenting to hiring manager"
-  ),
-  makeSubStage("interview", "Hiring Manager Interview", "Meeting with team lead"),
-  makeSubStage("interview", "Interview 2", "Meeting with team lead"),
-  makeSubStage("offer", "Background Check", "Background and reference checks"),
-]
+/** Seeds a sub-stage from the workflow template's stored master stage — this is the source of truth a job draft later reads its Scale from. */
+function subStageFromMock(mock: MockWorkflowStage): SubStage {
+  return { ...makeSubStage(mock.mainStage, mock.name, mock.purpose, mock.scale), id: mock.id }
+}
 
 /**
  * Two-column Stages editor: fixed main stages on the left (each holding a
@@ -192,10 +193,12 @@ const INITIAL_SUB_STAGES: SubStage[] = [
  * dropping on a card inserts before it; dropping on a header appends to the
  * end of that group.
  */
-export function WorkflowStagesTab() {
-  const [subStages, setSubStages] = React.useState<SubStage[]>(INITIAL_SUB_STAGES)
+export function WorkflowStagesTab({ workflow }: { workflow: MockWorkflow }) {
+  const [subStages, setSubStages] = React.useState<SubStage[]>(() =>
+    workflow.stages.map(subStageFromMock)
+  )
   const [selectedId, setSelectedId] = React.useState<string | null>(
-    INITIAL_SUB_STAGES[1]?.id ?? null
+    workflow.stages[0]?.id ?? null
   )
   const [collapsed, setCollapsed] = React.useState<Set<MainStageKey>>(new Set())
   const [dragId, setDragId] = React.useState<string | null>(null)
@@ -711,15 +714,17 @@ function SubStageSettingsPanel({
               <Label>Scale</Label>
               <Select
                 value={subStage.decisionScale}
-                onValueChange={(value) => value && onChange((s) => ({ ...s, decisionScale: value }))}
+                onValueChange={(value) =>
+                  value && onChange((s) => ({ ...s, decisionScale: value as SubStageScale }))
+                }
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {SCALE_OPTIONS.map((o) => (
-                    <SelectItem key={o} value={o}>
-                      {o}
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

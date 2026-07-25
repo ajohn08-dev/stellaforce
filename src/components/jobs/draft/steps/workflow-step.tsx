@@ -18,10 +18,15 @@ import {
 } from "@/components/ui/select"
 import type { Competency } from "@/components/jobs/draft/steps/competency-data"
 import type { Member } from "@/components/jobs/draft/steps/team-member-data"
+import {
+  MOCK_WORKFLOWS,
+  SCALE_OPTIONS,
+  type MockWorkflow,
+  type SubStageScale,
+} from "@/lib/mock-workflows"
 
 type StageType = "source" | "screen" | "interview" | "offer"
 type InterviewFormat = "phone" | "video" | "onsite" | "async"
-type RatingScale = "star" | "ten-point" | "hundred-point"
 type Outcome = "advance" | "hold" | "reject" | "remove"
 
 const STAGE_TYPE_LABEL: Record<StageType, string> = {
@@ -36,12 +41,6 @@ const FORMAT_LABEL: Record<InterviewFormat, string> = {
   video: "Video",
   onsite: "Onsite",
   async: "Async",
-}
-
-const RATING_SCALE_LABEL: Record<RatingScale, string> = {
-  star: "Star rating",
-  "ten-point": "10-point scale",
-  "hundred-point": "100-point scale",
 }
 
 const OUTCOME_META: { value: Outcome; label: string }[] = [
@@ -61,7 +60,7 @@ type WorkflowStage = {
   competencyIds: string[]
   reviewerIds: string[]
   questions: string
-  ratingScale: RatingScale | ""
+  scale: SubStageScale | ""
   allowedOutcomes: Outcome[]
   needsFinalApproval: boolean
 }
@@ -150,22 +149,45 @@ const STAGE_TEMPLATES: StageTemplate[] = [
 ]
 
 /**
+ * The Scale a job stage shows is never picked here — it's read off the
+ * selected workflow template's own sub-stages (see workflow-stages-tab.tsx,
+ * the "Create Workflow" Decision panel where a template's per-sub-stage
+ * Scale is actually configured). Matched by main-stage type and position,
+ * since STAGE_TEMPLATES' fixed ids don't correspond to a template's stage
+ * ids. Falls back to the template's last matching sub-stage if it has fewer
+ * of that type than the reference pipeline.
+ */
+function scaleForStage(
+  workflow: MockWorkflow | undefined,
+  type: StageType,
+  indexWithinType: number
+): SubStageScale | "" {
+  if (!workflow) return ""
+  const matches = workflow.stages.filter((s) => s.mainStage === type)
+  return matches[indexWithinType]?.scale ?? matches[matches.length - 1]?.scale ?? ""
+}
+
+/**
  * Source/Offer aren't evaluative stages, so they don't get competencies or
  * reviewers pre-assigned — every Screen/Interview stage does, from whatever
  * already exists in Evaluation Criteria and Team Members.
  */
 function createInitialStages(
   competencies: Competency[],
-  members: Member[]
+  members: Member[],
+  selectedWorkflow: MockWorkflow | undefined
 ): WorkflowStage[] {
+  const seenPerType: Partial<Record<StageType, number>> = {}
   return STAGE_TEMPLATES.map((template) => {
     const isEvaluative = template.type === "screen" || template.type === "interview"
+    const indexWithinType = seenPerType[template.type] ?? 0
+    seenPerType[template.type] = indexWithinType + 1
     return {
       ...template,
       competencyIds: isEvaluative ? competencies.map((c) => c.id) : [],
       reviewerIds: isEvaluative ? members.map((m) => m.id) : [],
       questions: "",
-      ratingScale: "",
+      scale: scaleForStage(selectedWorkflow, template.type, indexWithinType),
       allowedOutcomes: ["advance", "hold", "reject"],
       needsFinalApproval: false,
     }
@@ -183,7 +205,7 @@ function blankStage(id: string, name: string): WorkflowStage {
     competencyIds: [],
     reviewerIds: [],
     questions: "",
-    ratingScale: "",
+    scale: "",
     allowedOutcomes: ["advance", "hold", "reject"],
     needsFinalApproval: false,
   }
@@ -203,12 +225,17 @@ export function WorkflowStep({
   competencies: Competency[]
   members: Member[]
 }) {
+  const [selectedWorkflowId, setSelectedWorkflowId] = React.useState<string | undefined>(
+    undefined
+  )
+  const selectedWorkflow = MOCK_WORKFLOWS.find((w) => w.workflow_id === selectedWorkflowId)
+
   const [workflowName, setWorkflowName] = React.useState("A10 Workflow (Product)")
   const [editingName, setEditingName] = React.useState(false)
   const [nameDraft, setNameDraft] = React.useState(workflowName)
 
   const [stages, setStages] = React.useState<WorkflowStage[]>(() =>
-    createInitialStages(competencies, members)
+    createInitialStages(competencies, members, selectedWorkflow)
   )
   const [selectedStageId, setSelectedStageId] = React.useState(
     STAGE_TEMPLATES[0].id
@@ -218,6 +245,17 @@ export function WorkflowStep({
   const [newStageName, setNewStageName] = React.useState("")
 
   const selectedStage = stages.find((s) => s.id === selectedStageId) ?? null
+
+  function selectWorkflowTemplate(workflowId: string | null) {
+    if (!workflowId) return
+    setSelectedWorkflowId(workflowId)
+    const workflow = MOCK_WORKFLOWS.find((w) => w.workflow_id === workflowId)
+    if (!workflow) return
+    setWorkflowName(workflow.name)
+    setNameDraft(workflow.name)
+    setStages(createInitialStages(competencies, members, workflow))
+    setSelectedStageId(STAGE_TEMPLATES[0].id)
+  }
 
   function updateStage(
     id: string,
@@ -254,6 +292,21 @@ export function WorkflowStep({
 
   return (
     <div className="flex flex-col gap-4">
+      <Field label="Workflow Template" className="max-w-xs">
+        <Select value={selectedWorkflowId} onValueChange={selectWorkflowTemplate}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select a workflow template" />
+          </SelectTrigger>
+          <SelectContent>
+            {MOCK_WORKFLOWS.map((w) => (
+              <SelectItem key={w.workflow_id} value={w.workflow_id}>
+                {w.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+
       <div className="flex items-center gap-2">
         {editingName ? (
           <Input
@@ -629,20 +682,15 @@ function StageConfigForm({
           />
         </Field>
 
-        <Field label="Rating scale">
-          <Select
-            value={stage.ratingScale}
-            onValueChange={(value) =>
-              onChange((s) => ({ ...s, ratingScale: value as RatingScale }))
-            }
-          >
+        <Field label="Scale">
+          <Select value={stage.scale} disabled>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select rating scale" />
+              <SelectValue placeholder="Set by the selected workflow template" />
             </SelectTrigger>
             <SelectContent>
-              {(Object.keys(RATING_SCALE_LABEL) as RatingScale[]).map((r) => (
-                <SelectItem key={r} value={r}>
-                  {RATING_SCALE_LABEL[r]}
+              {SCALE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
                 </SelectItem>
               ))}
             </SelectContent>
