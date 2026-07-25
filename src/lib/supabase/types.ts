@@ -533,7 +533,9 @@ export type Database = {
           candidate_id: string
           created_at: string
           id: string
-          proficiency_level: Database["public"]["Enums"]["proficiency_level"]
+          proficiency_level:
+            | Database["public"]["Enums"]["proficiency_level"]
+            | null
           scorecard: Json | null
           skill_id: string
           years_of_experience: number | null
@@ -544,7 +546,9 @@ export type Database = {
           candidate_id: string
           created_at?: string
           id?: string
-          proficiency_level: Database["public"]["Enums"]["proficiency_level"]
+          proficiency_level?:
+            | Database["public"]["Enums"]["proficiency_level"]
+            | null
           scorecard?: Json | null
           skill_id: string
           years_of_experience?: number | null
@@ -555,7 +559,9 @@ export type Database = {
           candidate_id?: string
           created_at?: string
           id?: string
-          proficiency_level?: Database["public"]["Enums"]["proficiency_level"]
+          proficiency_level?:
+            | Database["public"]["Enums"]["proficiency_level"]
+            | null
           scorecard?: Json | null
           skill_id?: string
           years_of_experience?: number | null
@@ -1500,6 +1506,65 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["client_id"]
+          },
+        ]
+      }
+      resumes: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          file_size: number | null
+          filename: string
+          id: string
+          is_current: boolean
+          mime_type: string | null
+          parse_error: string | null
+          parse_status: string
+          parsed_data: Json | null
+          storage_path: string
+          superseded_at: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          file_size?: number | null
+          filename: string
+          id?: string
+          is_current?: boolean
+          mime_type?: string | null
+          parse_error?: string | null
+          parse_status?: string
+          parsed_data?: Json | null
+          storage_path: string
+          superseded_at?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          file_size?: number | null
+          filename?: string
+          id?: string
+          is_current?: boolean
+          mime_type?: string | null
+          parse_error?: string | null
+          parse_status?: string
+          parsed_data?: Json | null
+          storage_path?: string
+          superseded_at?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resumes_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
           },
         ]
       }
