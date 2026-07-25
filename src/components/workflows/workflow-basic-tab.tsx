@@ -12,7 +12,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { MOCK_WORKFLOW_DEPARTMENTS, type MockWorkflow } from "@/lib/mock-workflows"
+import {
+  MOCK_WORKFLOW_CLIENTS,
+  MOCK_WORKFLOW_DEPARTMENTS,
+  type MockWorkflow,
+} from "@/lib/mock-workflows"
+
+const NO_CLIENT_VALUE = "__none__"
 
 const HIRING_TYPE_OPTIONS = [
   "full-time",
@@ -41,6 +47,7 @@ function Field({
 export function WorkflowBasicTab({ workflow }: { workflow: MockWorkflow }) {
   const [name, setName] = React.useState(workflow.name)
   const [description, setDescription] = React.useState(workflow.description)
+  const [client, setClient] = React.useState(workflow.client_name ?? NO_CLIENT_VALUE)
   const [department, setDepartment] = React.useState(workflow.department)
   const [hiringType, setHiringType] = React.useState<string | undefined>(undefined)
 
@@ -64,6 +71,22 @@ export function WorkflowBasicTab({ workflow }: { workflow: MockWorkflow }) {
         </Field>
         <p className="text-sm text-muted-foreground">This is an input description.</p>
       </div>
+
+      <Field label="Client">
+        <Select value={client} onValueChange={(value) => value && setClient(value)}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_CLIENT_VALUE}>No client</SelectItem>
+            {MOCK_WORKFLOW_CLIENTS.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
 
       <Field label="Department">
         <Select
