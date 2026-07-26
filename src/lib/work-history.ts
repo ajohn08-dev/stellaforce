@@ -1,9 +1,9 @@
 import { companyLogoSrc } from "@/lib/company-logos"
 
 /**
- * Not yet a DB column — candidates don't have structured work history in
- * the schema today. This type + the mock data that uses it are UI-only
- * until we decide to add candidates.work_history.
+ * Mirrors a row from `candidate_work_experiences` (see data.ts's
+ * toWorkHistoryEntry), reshaped for the tenure/experience display helpers
+ * below.
  */
 export type WorkHistoryEntry = {
   company: string
@@ -83,4 +83,13 @@ export function notableEmployer(
   entries: WorkHistoryEntry[]
 ): WorkHistoryEntry | null {
   return entries.find((e) => companyLogoSrc(e.company) !== null) ?? null
+}
+
+/** The current role if there is one, otherwise the most recently ended one. */
+export function mostRecentRole(entries: WorkHistoryEntry[]): WorkHistoryEntry | null {
+  if (entries.length === 0) return null
+  return (
+    entries.find((e) => !e.end_date) ??
+    [...entries].sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? ""))[0]
+  )
 }

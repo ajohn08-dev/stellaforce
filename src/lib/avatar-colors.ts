@@ -7,6 +7,11 @@ export function getInitials(fullName: string): string {
   return (first + last).toUpperCase()
 }
 
+/** Preferred over getInitials when first_name/last_name are available directly (e.g. candidates) — no string-splitting guesswork. */
+export function getInitialsFromParts(firstName: string, lastName: string): string {
+  return ((firstName[0] ?? "") + (lastName[0] ?? "")).toUpperCase()
+}
+
 /** Same bg-100/dark:bg-950 + text-900/dark:text-200 shape as TIER_BADGE_CLASS / JOB_STATUS_BADGE_CLASS. */
 const AVATAR_COLOR_CLASSES: string[] = [
   "bg-brand-purple-100 text-brand-purple-900 dark:bg-brand-purple-950 dark:text-brand-purple-200",

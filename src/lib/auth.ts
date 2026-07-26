@@ -7,7 +7,8 @@ export type CurrentProfile = {
   id: string
   email: string
   full_name: string | null
-  role: UserRole
+  /** Stellaforce-side only — null for client-side profiles (see client_role). */
+  role: UserRole | null
   side: ProfileSide
   client_id: string | null
   client_role: ClientRole | null

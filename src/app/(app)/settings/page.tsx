@@ -1,3 +1,4 @@
+import { SetSidebarCollapsed } from "@/components/set-sidebar-collapsed"
 import { getCurrentProfile } from "@/lib/auth"
 
 export default async function SettingsPage() {
@@ -5,6 +6,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6 p-4">
+      <SetSidebarCollapsed />
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">

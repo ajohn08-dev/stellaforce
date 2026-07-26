@@ -39,9 +39,8 @@ export const ParsedCandidateSchema = z.object({
   skills: z.array(
     z.object({
       skill_name: z.string(),
-      skill_type: z.enum(["hard", "soft"]),
+      skill_type: z.enum(["technical", "functional", "behavioral"]),
       proficiency_level: z.enum([
-        "novice",
         "beginner",
         "intermediate",
         "advanced",
@@ -68,7 +67,8 @@ Rules:
   for years_experience, or [] for arrays) — never invent facts.
 - Prefer skill names from this controlled taxonomy where they match; otherwise
   use the candidate's own wording: ${SKILL_TAXONOMY.join(", ")}.
-- skill_type: "hard" for technical/tool skills, "soft" for interpersonal skills.
+- skill_type: "technical" for hard/tool skills, "behavioral" for interpersonal
+  skills, "functional" for domain/process skills that are neither.
 - For ai_literacy_signal, only fill fields when the text gives real evidence of
   AI-tool usage; otherwise leave those strings empty.
 - candidate_tier is your assessment (gold = exceptional, silver = solid,

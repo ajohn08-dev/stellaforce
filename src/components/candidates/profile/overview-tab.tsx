@@ -9,32 +9,26 @@ import { formatEducationLine } from "@/lib/education"
 import { groupSkillsByCategory } from "@/lib/skill-categories"
 import {
   calculateTenureStats,
+  mostRecentRole,
   notableEmployer,
   type WorkHistoryEntry,
 } from "@/lib/work-history"
-import type { CandidateRow, SkillRow } from "@/lib/supabase/types"
-
-/** The current role if there is one, otherwise the most recently ended one. */
-function mostRecentRole(entries: WorkHistoryEntry[]): WorkHistoryEntry | null {
-  if (entries.length === 0) return null
-  return (
-    entries.find((e) => !e.end_date) ??
-    [...entries].sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? ""))[0]
-  )
-}
+import type { CandidateEducationRow, CandidateRow, CandidateSkillWithSkill } from "@/lib/supabase/types"
 
 export function OverviewTab({
   candidate: c,
   skills,
+  education,
   workHistory,
 }: {
   candidate: CandidateRow
-  skills: SkillRow[]
+  skills: CandidateSkillWithSkill[]
+  education: CandidateEducationRow[]
   workHistory: WorkHistoryEntry[]
 }) {
   const notable = notableEmployer(workHistory)
   const recentRole = mostRecentRole(workHistory)
-  const educationLine = formatEducationLine(c.education)
+  const educationLine = formatEducationLine(education)
   const categories = groupSkillsByCategory(skills)
 
   return (

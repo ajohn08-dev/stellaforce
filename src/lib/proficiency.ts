@@ -14,7 +14,6 @@ export function proficiencyTier(
       return "proficient"
     case "intermediate":
       return "medium"
-    case "novice":
     case "beginner":
     default:
       return "low"

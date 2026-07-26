@@ -1,14 +1,19 @@
-import type { CandidateRow, EducationEntry } from "@/lib/supabase/types"
+import type {
+  CandidateCertificationRow,
+  CandidateEducationRow,
+  CandidateRow,
+} from "@/lib/supabase/types"
 
-type CertificationEntry = { name?: string; issuer?: string; year?: string }
-
-export function EducationTab({ candidate }: { candidate: CandidateRow }) {
-  const entries = Array.isArray(candidate.education)
-    ? (candidate.education as EducationEntry[])
-    : []
-  const certifications = Array.isArray(candidate.certifications)
-    ? (candidate.certifications as CertificationEntry[])
-    : []
+export function EducationTab({
+  candidate,
+  education,
+  certifications,
+}: {
+  candidate: CandidateRow
+  education: CandidateEducationRow[]
+  certifications: CandidateCertificationRow[]
+}) {
+  const entries = education
   const languages = candidate.languages ?? []
 
   return (
@@ -25,7 +30,7 @@ export function EducationTab({ candidate }: { candidate: CandidateRow }) {
                   {[e.degree, e.field_of_study].filter(Boolean).join(", ") || "—"}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {[e.institution, e.end_date].filter(Boolean).join(" · ")}
+                  {[e.institution_name, e.end_date].filter(Boolean).join(" · ")}
                 </p>
               </div>
             ))}
@@ -41,7 +46,9 @@ export function EducationTab({ candidate }: { candidate: CandidateRow }) {
           <div className="space-y-2">
             {certifications.map((c, i) => (
               <p key={i} className="text-sm">
-                {[c.name, c.issuer, c.year].filter(Boolean).join(" · ")}
+                {[c.name, c.issuing_organization, c.issue_date]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             ))}
           </div>

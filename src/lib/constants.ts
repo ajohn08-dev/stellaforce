@@ -3,7 +3,7 @@
  * supabase/migrations/0001. CLAUDE.md is the source of truth — keep in sync.
  */
 import type {
-  ApplicationStage,
+  ApplicationStatus,
   CandidateTier,
   ClientStatus,
   DataProvenance,
@@ -22,10 +22,9 @@ export const DATA_PROVENANCE: DataProvenance[] = [
   "enriched",
 ]
 
-export const SKILL_TYPES: SkillType[] = ["hard", "soft"]
+export const SKILL_TYPES: SkillType[] = ["technical", "functional", "behavioral"]
 
 export const PROFICIENCY_LEVELS: ProficiencyLevel[] = [
-  "novice",
   "beginner",
   "intermediate",
   "advanced",
@@ -34,16 +33,20 @@ export const PROFICIENCY_LEVELS: ProficiencyLevel[] = [
 
 export const CLIENT_STATUSES: ClientStatus[] = ["active", "paused", "churned"]
 
-export const JOB_STATUSES: JobStatus[] = ["open", "on_hold", "filled", "closed"]
+export const JOB_STATUSES: JobStatus[] = [
+  "draft",
+  "open",
+  "paused",
+  "filled",
+  "closed",
+]
 
-export const APPLICATION_STAGES: ApplicationStage[] = [
-  "sourced",
-  "screened",
-  "submitted",
-  "interviewing",
-  "offer",
-  "placed",
+export const APPLICATION_STATUSES: ApplicationStatus[] = [
+  "active",
+  "hired",
   "rejected",
+  "withdrawn",
+  "on_hold",
 ]
 
 export const PLACEMENT_STATUSES: PlacementStatus[] = [
@@ -163,10 +166,17 @@ export const TIER_BADGE_CLASS: Record<CandidateTier, string> = {
 
 /** Tailwind classes for job status badges (used on the Jobs list). */
 export const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
+  draft: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
   open: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
-  on_hold: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  paused: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
   filled: "bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200",
   closed: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
+}
+
+/** Tailwind classes for workflow status badges (used on the Workflows list). */
+export const WORKFLOW_STATUS_BADGE_CLASS: Record<"draft" | "published", string> = {
+  draft: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
+  published: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
 }
 
 /** Human-readable labels for enum values that need prettifying. */
@@ -177,5 +187,34 @@ export function titleCase(value: string): string {
     .join(" ")
 }
 
+/**
+ * Short human-readable date, e.g. "Mar 4, 2026" — used across list views.
+ * Parses "YYYY-MM-DD" into local-time parts (not `new Date(string)`, which
+ * treats a bare date as UTC midnight and can render a day early in
+ * timezones behind UTC).
+ */
+export function formatDate(value: string): string {
+  const [y, m, d] = value.split("-").map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
 /** Embedding dimension — must match vector(1536) in the schema. */
 export const EMBEDDING_DIM = 1536
+
+/**
+ * Resume upload constraints — mirrors the `resumes` Storage bucket's
+ * `allowed_mime_types` / `file_size_limit` (supabase/migrations). Enforced
+ * client-side for immediate feedback; the bucket enforces them again
+ * server-side as the source of truth.
+ */
+export const RESUME_ACCEPT = ".pdf,.doc,.docx"
+export const RESUME_ACCEPTED_MIME_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]
+export const RESUME_MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB

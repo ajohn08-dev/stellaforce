@@ -10,6 +10,8 @@ import {
   toPgVector,
 } from "@/lib/ai/embeddings"
 import { parseCandidateText, type ParsedCandidate } from "@/lib/ai/parse"
+import { getCurrentProfile } from "@/lib/auth"
+import { serverEnv } from "@/lib/env"
 import type { CandidateTier } from "@/lib/supabase/types"
 
 /**
@@ -21,19 +23,40 @@ import type { CandidateTier } from "@/lib/supabase/types"
 
 export type ActionResult = { ok: true } | { ok: false; error: string }
 
+/** "Sarah Chen" -> { first_name: "Sarah", last_name: "Chen" }. Best-effort — a single trailing name is treated as first_name only. */
+function splitFullName(fullName: string): { first_name: string; last_name: string } {
+  const idx = fullName.indexOf(" ")
+  if (idx === -1) return { first_name: fullName, last_name: "" }
+  return { first_name: fullName.slice(0, idx), last_name: fullName.slice(idx + 1) }
+}
+
+/** "San Francisco, CA" -> { city: "San Francisco", state: "CA" }. */
+function splitLocationRaw(location: string): { city: string | null; state: string | null } {
+  const parts = location.split(",").map((p) => p.trim()).filter(Boolean)
+  return { city: parts[0] ?? null, state: parts[1] ?? null }
+}
+
 // ── Workflow 1: ADD CANDIDATE (manual) ───────────────────────────────────────
 export async function addCandidate(formData: FormData): Promise<void> {
   const full_name = String(formData.get("full_name") ?? "").trim()
   if (!full_name) throw new Error("Full name is required.")
+  const { first_name, last_name } = splitFullName(full_name)
 
-  const contact_info = {
-    email: String(formData.get("email") ?? ""),
-    phone: String(formData.get("phone") ?? ""),
-    location: String(formData.get("location") ?? ""),
-    tz: String(formData.get("tz") ?? ""),
-  }
-  const current_title = String(formData.get("current_title") ?? "")
-  const current_company = String(formData.get("current_company") ?? "")
+  const email = String(formData.get("email") ?? "").trim() || null
+  const phone = String(formData.get("phone") ?? "").trim() || null
+  const location_raw = String(formData.get("location") ?? "").trim() || null
+  const timezone = String(formData.get("tz") ?? "").trim() || null
+  const { city: location_city, state: location_state } = splitLocationRaw(
+    location_raw ?? ""
+  )
+
+  const current_title = String(formData.get("current_title") ?? "").trim()
+  const current_company = String(formData.get("current_company") ?? "").trim()
+  const headline =
+    current_title && current_company
+      ? `${current_title} at ${current_company}`
+      : current_title || current_company || null
+
   const professional_summary = String(formData.get("professional_summary") ?? "")
   const yearsRaw = String(formData.get("years_experience") ?? "")
   const years_experience = yearsRaw ? Number(yearsRaw) : null
@@ -43,7 +66,7 @@ export async function addCandidate(formData: FormData): Promise<void> {
   const embedding = await generateEmbedding(
     candidateEmbeddingText({
       full_name,
-      current_title,
+      current_title: headline,
       professional_summary,
     })
   )
@@ -53,23 +76,43 @@ export async function addCandidate(formData: FormData): Promise<void> {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { error } = await supabase.from("candidates").insert({
-    full_name,
-    contact_info,
-    current_title: current_title || null,
-    current_company: current_company || null,
-    professional_summary: professional_summary || null,
-    years_experience,
-    candidate_tier,
-    source: "manual_entry",
-    data_provenance: "recruiter_confirmed",
-    freshness_score: 1.0,
-    last_verified: new Date().toISOString(),
-    embedding_vector: toPgVector(embedding),
-    added_by: user?.id ?? null,
-  })
+  const { data: candidate, error } = await supabase
+    .from("candidates")
+    .insert({
+      first_name,
+      last_name,
+      email,
+      phone,
+      location_raw,
+      location_city,
+      location_state,
+      timezone,
+      headline,
+      professional_summary: professional_summary || null,
+      years_experience,
+      candidate_tier,
+      source: "manual_entry",
+      data_provenance: "recruiter_confirmed",
+      freshness_score: 1.0,
+      last_verified: new Date().toISOString(),
+      embedding_vector: toPgVector(embedding),
+      added_by: user?.id ?? null,
+    })
+    .select("candidate_id")
+    .single()
 
-  if (error) throw new Error(error.message)
+  if (error || !candidate) throw new Error(error?.message ?? "Failed to create candidate.")
+
+  if (current_title && current_company) {
+    await supabase.from("candidate_work_experiences").insert({
+      candidate_id: candidate.candidate_id,
+      display_order: 0,
+      company_name: current_company,
+      title: current_title,
+      start_date: new Date().toISOString().slice(0, 10),
+      is_current: true,
+    })
+  }
 
   revalidatePath("/candidates")
   redirect("/candidates")
@@ -100,16 +143,26 @@ export async function createCandidateFromParsed(
 ): Promise<ActionResult & { id?: string }> {
   const full_name = parsed.full_name?.trim()
   if (!full_name) return { ok: false, error: "Full name is required." }
+  const { first_name, last_name } = splitFullName(full_name)
 
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const headline =
+    parsed.current_title && parsed.current_company
+      ? `${parsed.current_title} at ${parsed.current_company}`
+      : parsed.current_title || parsed.current_company || null
+
+  const { city: location_city, state: location_state } = splitLocationRaw(
+    parsed.contact_info.location
+  )
+
   const embedding = await generateEmbedding(
     candidateEmbeddingText({
       full_name,
-      current_title: parsed.current_title,
+      current_title: headline,
       professional_summary: parsed.professional_summary,
       skills: parsed.skills.map((s) => s.skill_name),
     })
@@ -118,12 +171,17 @@ export async function createCandidateFromParsed(
   const { data: candidate, error } = await supabase
     .from("candidates")
     .insert({
-      full_name,
-      contact_info: parsed.contact_info,
+      first_name,
+      last_name,
+      email: parsed.contact_info.email || null,
+      phone: parsed.contact_info.phone || null,
+      location_raw: parsed.contact_info.location || null,
+      location_city,
+      location_state,
+      timezone: parsed.contact_info.tz || null,
       linkedin_url: parsed.linkedin_url || null,
       portfolio_url: parsed.portfolio_url || null,
-      current_title: parsed.current_title || null,
-      current_company: parsed.current_company || null,
+      headline,
       years_experience: parsed.years_experience ?? null,
       professional_summary: parsed.professional_summary || null,
       languages: parsed.languages ?? [],
@@ -144,20 +202,169 @@ export async function createCandidateFromParsed(
     return { ok: false, error: error?.message ?? "Failed to create candidate." }
   }
 
-  // Insert skills (best-effort; candidate is already created).
+  if (parsed.current_title && parsed.current_company) {
+    await supabase.from("candidate_work_experiences").insert({
+      candidate_id: candidate.candidate_id,
+      display_order: 0,
+      company_name: parsed.current_company,
+      title: parsed.current_title,
+      start_date: new Date().toISOString().slice(0, 10),
+      is_current: true,
+    })
+  }
+
+  // Skills now live in a global lookup: find-or-create each name, then attach
+  // the per-candidate proficiency/AI-literacy data via candidate_skills.
   if (parsed.skills.length > 0) {
-    const { error: skillErr } = await supabase.from("skills").insert(
-      parsed.skills.map((s) => ({
-        candidate_id: candidate.candidate_id,
-        skill_name: s.skill_name,
-        skill_type: s.skill_type,
-        proficiency_level: s.proficiency_level,
-        ai_literacy_signal: s.ai_literacy_signal,
-      }))
+    const names = parsed.skills.map((s) => s.skill_name)
+
+    await supabase.from("skills").upsert(
+      parsed.skills.map((s) => ({ name: s.skill_name, skill_type: s.skill_type })),
+      { onConflict: "name", ignoreDuplicates: true }
     )
-    if (skillErr) console.error("skill insert error:", skillErr.message)
+
+    const { data: skillRows } = await supabase
+      .from("skills")
+      .select("id, name")
+      .in("name", names)
+    const idByName = new Map((skillRows ?? []).map((s) => [s.name, s.id]))
+
+    const candidateSkills = parsed.skills
+      .map((s) => {
+        const skill_id = idByName.get(s.skill_name)
+        if (!skill_id) return null
+        return {
+          candidate_id: candidate.candidate_id,
+          skill_id,
+          proficiency_level: s.proficiency_level,
+          ai_literacy_signal: s.ai_literacy_signal,
+        }
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null)
+
+    if (candidateSkills.length > 0) {
+      const { error: skillErr } = await supabase
+        .from("candidate_skills")
+        .insert(candidateSkills)
+      if (skillErr) console.error("skill insert error:", skillErr.message)
+    }
   }
 
   revalidatePath("/candidates")
   return { ok: true, id: candidate.candidate_id }
+}
+
+export type NotifyResumeResult =
+  | { ok: true; candidateName: string | null }
+  | { ok: false; error: string }
+
+// ── Workflow 2 (resume upload variant): hand an uploaded resume off to n8n
+// for parsing. The client has already uploaded the file directly to the
+// `resumes` Storage bucket by the time this runs — this just tells the n8n
+// workflow where to find it. `user_id` is resolved server-side from the
+// session rather than trusted from the client.
+//
+// The n8n workflow is synchronous: it doesn't respond until parsing has
+// finished and the candidate + resume rows are written to Supabase, so a
+// resolved fetch here means the write already happened — there's no
+// separate polling/realtime step. The exact response body shape isn't
+// pinned down yet, so we read a `success`/`candidate_name` field
+// best-effort and fall back to response.ok / a generic message if absent.
+// On `success: false`, an optional `candidate_id` field lets n8n report a
+// row it already inserted before discovering the parse was incomplete —
+// see the cleanup delete below.
+//
+// Of the three "add a candidate" entry points (resume drag-and-drop, CSV
+// upload, manual form), this n8n webhook is called ONLY by resume
+// drag-and-drop. CSV upload should parse rows and insert into `candidates`
+// directly (or reuse parseCandidate/createCandidateFromParsed below for
+// AI-assisted mapping) — it must not call this function or reference
+// serverEnv.n8nWebhookUrl. Manual form already writes directly via
+// addCandidate and should stay that way too.
+export async function notifyResumeUploaded(
+  storagePath: string,
+  filename: string
+): Promise<NotifyResumeResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) {
+    return { ok: false, error: "You must be signed in to upload a resume." }
+  }
+
+  try {
+    const response = await fetch(serverEnv.n8nWebhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serverEnv.n8nWebhookSecret}`,
+      },
+      body: JSON.stringify({
+        storage_path: storagePath,
+        user_id: profile.id,
+        filename,
+      }),
+    })
+
+    const rawBody = await response.text()
+    let parsedBody: Record<string, unknown> | null = null
+    try {
+      parsedBody = rawBody ? JSON.parse(rawBody) : null
+    } catch {
+      // Not JSON — fall through and treat rawBody as plain text below.
+    }
+
+    const success =
+      typeof parsedBody?.success === "boolean" ? parsedBody.success : response.ok
+
+    if (!success) {
+      const message =
+        (typeof parsedBody?.error === "string" && parsedBody.error) ||
+        (typeof parsedBody?.message === "string" && parsedBody.message) ||
+        rawBody.slice(0, 200)
+
+      // n8n may have already inserted a `candidates` row before discovering
+      // the parse was incomplete (e.g. unreadable text, no extractable work
+      // history). If it reports that row's id, delete it now rather than
+      // leaving a bare, dataless candidate behind — cascades to any child
+      // rows (skills/tools/work history/resume) via FK ON DELETE CASCADE.
+      // n8n's response shape isn't pinned down, so don't rely solely on it
+      // reporting `candidate_id` — fall back to looking up the `resumes` row
+      // it wrote for this exact `storage_path` (it's namespaced per-upload,
+      // see the Storage note in CLAUDE.md, so this is an unambiguous match).
+      const supabase = await createClient()
+      const reportedCandidateId =
+        typeof parsedBody?.candidate_id === "string" ? parsedBody.candidate_id : null
+      let partialCandidateId = reportedCandidateId
+      if (!partialCandidateId) {
+        const { data: resumeRow } = await supabase
+          .from("resumes")
+          .select("candidate_id")
+          .eq("storage_path", storagePath)
+          .maybeSingle()
+        partialCandidateId = resumeRow?.candidate_id ?? null
+      }
+      if (partialCandidateId) {
+        await supabase.from("candidates").delete().eq("candidate_id", partialCandidateId)
+      }
+
+      return {
+        ok: false,
+        error: `Resume parsing failed.${message ? ` ${message}` : ""}`,
+      }
+    }
+
+    const candidateName =
+      (typeof parsedBody?.candidate_name === "string" && parsedBody.candidate_name) ||
+      (typeof parsedBody?.full_name === "string" && parsedBody.full_name) ||
+      null
+
+    return { ok: true, candidateName }
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? `Could not reach the resume parsing service: ${err.message}`
+          : "Could not reach the resume parsing service.",
+    }
+  }
 }

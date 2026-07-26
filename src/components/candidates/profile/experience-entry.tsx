@@ -3,8 +3,18 @@ import { Building2 } from "lucide-react"
 
 import { companyLogoSrc } from "@/lib/company-logos"
 import { formatDateRange, type WorkHistoryEntry } from "@/lib/work-history"
+import { SkillToolChips } from "@/components/skill-tool-chips"
 
-export function ExperienceEntry({ entry }: { entry: WorkHistoryEntry }) {
+export function ExperienceEntry({
+  entry,
+  skills,
+  tools,
+}: {
+  entry: WorkHistoryEntry
+  /** Skills/tools surfaced from the resume for this role, if any. */
+  skills?: string[]
+  tools?: string[]
+}) {
   const logoSrc = companyLogoSrc(entry.company)
   return (
     <div className="flex gap-3">
@@ -21,7 +31,7 @@ export function ExperienceEntry({ entry }: { entry: WorkHistoryEntry }) {
           <Building2 className="size-5 text-muted-foreground" />
         )}
       </div>
-      <div className="flex-1 space-y-0.5">
+      <div className="flex-1 space-y-1.5">
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-sm font-medium">{entry.title}</p>
@@ -35,6 +45,9 @@ export function ExperienceEntry({ entry }: { entry: WorkHistoryEntry }) {
           <p className="text-xs text-muted-foreground">{entry.location}</p>
         )}
         {entry.description && <p className="mt-1 text-sm">{entry.description}</p>}
+        {(skills?.length || tools?.length) && (
+          <SkillToolChips skills={skills ?? []} tools={tools ?? []} />
+        )}
       </div>
     </div>
   )

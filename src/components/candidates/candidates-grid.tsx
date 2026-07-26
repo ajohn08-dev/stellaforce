@@ -1,7 +1,7 @@
 import { CandidateCard } from "@/components/candidates/candidate-card"
-import type { CandidateRow } from "@/lib/supabase/types"
+import type { CandidateListItem } from "@/lib/data"
 
-export function CandidatesGrid({ data }: { data: CandidateRow[] }) {
+export function CandidatesGrid({ data }: { data: CandidateListItem[] }) {
   if (data.length === 0) {
     return (
       <div className="rounded-lg border border-border p-10 text-center text-sm text-muted-foreground">
