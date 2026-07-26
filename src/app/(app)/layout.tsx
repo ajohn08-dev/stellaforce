@@ -1,9 +1,13 @@
+import { cookies } from "next/headers";
+
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
 import { BreadcrumbProvider } from "@/lib/breadcrumb-context";
 import { HeaderActionsProvider } from "@/lib/header-actions-context";
 import { SidebarProvider } from "@/lib/sidebar-context";
 import { getCurrentProfile } from "@/lib/auth";
+import { getSwitchableProfiles } from "@/lib/data";
+import { IMPERSONATOR_COOKIE } from "@/lib/impersonation";
 
 export default async function AppLayout({
   children,
@@ -11,6 +15,9 @@ export default async function AppLayout({
   children: React.ReactNode;
 }>) {
   const profile = await getCurrentProfile();
+  const canSwitchUsers = profile?.side === "stellaforce" && profile.role === "admin";
+  const switchableUsers = canSwitchUsers ? await getSwitchableProfiles() : [];
+  const isImpersonating = !!(await cookies()).get(IMPERSONATOR_COOKIE);
 
   return (
     <SidebarProvider>
@@ -28,7 +35,11 @@ export default async function AppLayout({
               // backdrop.
               style={{ contain: "layout" }}
             >
-              <AppHeader user={profile} />
+              <AppHeader
+                user={profile}
+                switchableUsers={switchableUsers}
+                isImpersonating={isImpersonating}
+              />
               <main className="flex-1 overflow-y-auto bg-brand-neutral-50">{children}</main>
             </div>
           </div>
