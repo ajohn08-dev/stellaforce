@@ -59,6 +59,9 @@ evaluation-criteria → scorecard → workflow model with a two-tier pipeline
 - `fit_proficiency_level`: **aware | proficient | expert** (job_competencies.recommended_level, achieved_proficiency — a distinct scale from proficiency_level)
 - `confidence_level`: **low | medium | high** (scorecard + fit confidence fields)
 - `client_status`: **active | paused | churned**
+- `client_plan`: **basic | standard | premium** — gates feature access and usage
+  caps for a client's account; enforced app-side (Server Actions check
+  `clients.plan` before allowing plan-gated actions), not via RLS
 - `job_status`: **draft | open | paused | filled | closed** (was open|on_hold|filled|closed)
 - `competency_type`: **technical | behavioral | hybrid | leadership**
 - `pipeline_stage`: **source | screen | interview | offer | close** (fixed Tier-1 canonical stages, never vary — used for cross-job audit/rollup)
@@ -128,8 +131,17 @@ deduplicated, controlled lookup._
 ### Client & job domain
 
 **clients**
-`client_id` (uuid pk), `client_name` (not null), `status` (enum), `notes`
-(text), `industry` (text), `website_url` (url).
+`client_id` (uuid pk), `client_name` (not null), `status` (enum), `plan`
+(enum, default `basic` — see Plans below), `notes` (text), `industry`
+(text), `website_url` (url).
+
+**Plans.** `clients.plan` (basic/standard/premium) is stored but **not yet
+enforced** — which features/usage caps each tier actually gates hasn't been
+specified. Once specified, enforcement is app-side (Server Actions check
+the acting profile's `client_id → clients.plan` before allowing a
+plan-gated action or exceeding a cap), not via RLS — mirrors the
+role/client_role split, another known, deferred follow-up pass (see
+Auth below for the client-scoped RLS gap).
 
 **job_orders**
 `job_id` (uuid pk), `client_id` (fk), `title` (not null), `status` (enum,

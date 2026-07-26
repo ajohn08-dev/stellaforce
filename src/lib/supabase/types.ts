@@ -832,6 +832,7 @@ export type Database = {
           created_at: string
           industry: string | null
           notes: string | null
+          plan: Database["public"]["Enums"]["client_plan"]
           status: Database["public"]["Enums"]["client_status"]
           updated_at: string
           website_url: string | null
@@ -842,6 +843,7 @@ export type Database = {
           created_at?: string
           industry?: string | null
           notes?: string | null
+          plan?: Database["public"]["Enums"]["client_plan"]
           status?: Database["public"]["Enums"]["client_status"]
           updated_at?: string
           website_url?: string | null
@@ -852,6 +854,7 @@ export type Database = {
           created_at?: string
           industry?: string | null
           notes?: string | null
+          plan?: Database["public"]["Enums"]["client_plan"]
           status?: Database["public"]["Enums"]["client_status"]
           updated_at?: string
           website_url?: string | null
@@ -1628,6 +1631,7 @@ export type Database = {
         | "withdrawn"
         | "on_hold"
       candidate_tier: "gold" | "silver" | "bronze"
+      client_plan: "basic" | "standard" | "premium"
       client_role: "member" | "admin" | "reviewer" | "recruiter"
       client_status: "active" | "paused" | "churned"
       competency_type: "technical" | "behavioral" | "hybrid" | "leadership"
@@ -1788,6 +1792,7 @@ export const Constants = {
         "on_hold",
       ],
       candidate_tier: ["gold", "silver", "bronze"],
+      client_plan: ["basic", "standard", "premium"],
       client_role: ["member", "admin", "reviewer", "recruiter"],
       client_status: ["active", "paused", "churned"],
       competency_type: ["technical", "behavioral", "hybrid", "leadership"],
@@ -1836,6 +1841,7 @@ export type ProficiencyLevel = SchemaEnums["proficiency_level"]
 export type FitProficiencyLevel = SchemaEnums["fit_proficiency_level"]
 export type ConfidenceLevel = SchemaEnums["confidence_level"]
 export type ClientStatus = SchemaEnums["client_status"]
+export type ClientPlan = SchemaEnums["client_plan"]
 export type JobStatus = SchemaEnums["job_status"]
 export type CompetencyType = SchemaEnums["competency_type"]
 export type PipelineStage = SchemaEnums["pipeline_stage"]
