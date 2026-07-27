@@ -1,12 +1,9 @@
 import { AnalyticsSection } from "@/components/agents/analytics/analytics-section"
-import { AnalyticsStatCard } from "@/components/agents/analytics/analytics-stat-card"
-import { ScreeningsBarChartCard } from "@/components/agents/analytics/screenings-bar-chart-card"
-import { HandleTimeLineChartCard } from "@/components/agents/analytics/handle-time-line-chart-card"
+import { SystemHealthPanel } from "@/components/agents/analytics/system-health-panel"
+import { OperationalEfficiencyPanel } from "@/components/agents/analytics/operational-efficiency-panel"
 import { CandidateFunnelCard } from "@/components/agents/analytics/candidate-funnel-card"
 import { RankedBarList } from "@/components/agents/analytics/ranked-bar-list"
 import {
-  SYSTEM_HEALTH_STATS,
-  OPERATIONAL_EFFICIENCY_STATS,
   SUSPICIOUS_ANSWER_RATE_BY_JOB,
   BOT_LIKELIHOOD_BY_JOB,
   COMPLIANCE_ESCALATE_REASONS,
@@ -17,12 +14,7 @@ export default function AgentAnalyticsPage() {
   return (
     <div className="flex flex-col gap-8 p-4">
       <AnalyticsSection title="System Health">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {SYSTEM_HEALTH_STATS.map((stat) => (
-            <AnalyticsStatCard key={stat.label} {...stat} />
-          ))}
-        </div>
-        <ScreeningsBarChartCard />
+        <SystemHealthPanel />
       </AnalyticsSection>
 
       <AnalyticsSection>
@@ -30,12 +22,7 @@ export default function AgentAnalyticsPage() {
       </AnalyticsSection>
 
       <AnalyticsSection title="Operational Efficiency">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {OPERATIONAL_EFFICIENCY_STATS.map((stat) => (
-            <AnalyticsStatCard key={stat.label} {...stat} />
-          ))}
-        </div>
-        <HandleTimeLineChartCard />
+        <OperationalEfficiencyPanel />
       </AnalyticsSection>
 
       <AnalyticsSection title="Trust & Exceptions">

@@ -19,50 +19,79 @@ export type AnalyticsStat = {
   delta?: StatDelta
 }
 
-export type TrendPoint = {
+export type MetricPoint = {
   label: string
   value: number
 }
 
-export type MetricDimension = "job" | "client" | "workflow"
+export type MetricDimension = "job" | "client" | "agent"
 
 export const METRIC_DIMENSIONS: { value: MetricDimension; label: string }[] = [
   { value: "job", label: "Job" },
   { value: "client", label: "Client" },
-  { value: "workflow", label: "Workflow" },
+  { value: "agent", label: "Agent" },
 ]
 
-export const SYSTEM_HEALTH_STATS: AnalyticsStat[] = [
+/** The categories each dimension breaks a metric down by — real job titles/client names/agents, not time. */
+const JOB_NAMES = [
+  "Senior Full-Stack Engineer",
+  "Data Engineer",
+  "Staff Backend Engineer",
+  "Sales Account Executive",
+  "Customer Success Manager",
+]
+const CLIENT_NAMES = [
+  "Northwind Logistics",
+  "Acme Fintech",
+  "Globex Media",
+  "Solstice Health",
+  "Vertex Robotics",
+]
+const AGENT_NAMES = ["Screening Agent", "Interview Agent"]
+
+function byDimension(job: number[], client: number[], agent: number[]) {
+  const toPoints = (labels: string[], values: number[]) =>
+    labels.map((label, i) => ({ label, value: values[i] }))
+  return {
+    job: toPoints(JOB_NAMES, job),
+    client: toPoints(CLIENT_NAMES, client),
+    agent: toPoints(AGENT_NAMES, agent),
+  }
+}
+
+export type SystemHealthMetricKey =
+  | "completionRate"
+  | "escalationRate"
+  | "qualificationRate"
+  | "manualReviewVolume"
+
+/** Clicking a System Health stat card shows that metric's own by-Job/Client/Agent breakdown below it. */
+export const SYSTEM_HEALTH_STATS: (AnalyticsStat & { key: SystemHealthMetricKey })[] = [
   {
+    key: "completionRate",
     label: "Completion Rate",
     value: "95%",
     delta: { text: "+5%", direction: "up", goodDirection: "up" },
   },
   {
+    key: "escalationRate",
     label: "Escalation Rate",
     value: "15%",
     delta: { text: "-5%", direction: "down", goodDirection: "down" },
   },
-  { label: "Qualification Rate", value: "75%" },
-  { label: "Manual Review Volume", value: "75%" },
+  { key: "qualificationRate", label: "Qualification Rate", value: "75%" },
+  { key: "manualReviewVolume", label: "Manual Review Volume", value: "75%" },
 ]
 
-const WEEK_LABELS = ["Wk 1", "Wk 2", "Wk 3", "Wk 4", "Wk 5", "Wk 6", "Wk 7", "Wk 8"]
-
-/** Screenings completed per week, by dimension the toggle scopes to. */
-export const SCREENINGS_TREND: Record<MetricDimension, TrendPoint[]> = {
-  job: [210, 235, 198, 260, 275, 250, 290, 268].map((value, i) => ({
-    label: WEEK_LABELS[i],
-    value,
-  })),
-  client: [180, 205, 220, 215, 240, 260, 255, 280].map((value, i) => ({
-    label: WEEK_LABELS[i],
-    value,
-  })),
-  workflow: [240, 220, 260, 245, 230, 275, 265, 300].map((value, i) => ({
-    label: WEEK_LABELS[i],
-    value,
-  })),
+/** Each System Health metric's own value (all percentages, 0-100) broken down by job/client/agent. */
+export const SYSTEM_HEALTH_BREAKDOWNS: Record<
+  SystemHealthMetricKey,
+  Record<MetricDimension, MetricPoint[]>
+> = {
+  completionRate: byDimension([93, 96, 91, 97, 94], [92, 95, 90, 96, 93], [95, 93]),
+  escalationRate: byDimension([14, 18, 12, 16, 15], [17, 13, 19, 15, 14], [15, 17]),
+  qualificationRate: byDimension([72, 78, 68, 76, 74], [70, 75, 66, 79, 73], [75, 71]),
+  manualReviewVolume: byDimension([74, 70, 78, 72, 76], [71, 77, 69, 75, 73], [73, 78]),
 }
 
 export type SankeyNode = {
@@ -158,35 +187,59 @@ export const AGENT_CANDIDATE_FUNNELS: Record<AgentType, AgentFunnel> = {
   interview: INTERVIEW_AGENT_FUNNEL,
 }
 
-export const OPERATIONAL_EFFICIENCY_STATS: AnalyticsStat[] = [
+export type OperationalEfficiencyMetricKey =
+  | "totalScreeningsCompleted"
+  | "averageHandleTime"
+  | "timeSaved"
+  | "candidateCSAT"
+
+/** Clicking an Operational Efficiency stat card shows that metric's own by-Job/Client/Agent breakdown below it. */
+export const OPERATIONAL_EFFICIENCY_STATS: (AnalyticsStat & {
+  key: OperationalEfficiencyMetricKey
+})[] = [
   {
+    key: "totalScreeningsCompleted",
     label: "Total Screenings Completed",
     value: "95",
     delta: { text: "+5%", direction: "up", goodDirection: "up" },
   },
   {
+    key: "averageHandleTime",
     label: "Average Handle Time",
     value: "15:30 min",
     delta: { text: "-8%", direction: "down", goodDirection: "down" },
   },
-  { label: "Time Saved", value: "16 hrs" },
-  { label: "Candidate CSAT", value: "75%" },
+  { key: "timeSaved", label: "Time Saved", value: "16 hrs" },
+  { key: "candidateCSAT", label: "Candidate CSAT", value: "75%" },
 ]
 
-/** Average handle time (minutes) per week, by dimension. */
-export const HANDLE_TIME_TREND: Record<MetricDimension, TrendPoint[]> = {
-  job: [18, 17, 16.5, 15, 15.8, 14.5, 15.3, 13.9].map((value, i) => ({
-    label: WEEK_LABELS[i],
-    value,
-  })),
-  client: [19, 18.2, 17, 16.5, 16, 15.5, 14.8, 15.2].map((value, i) => ({
-    label: WEEK_LABELS[i],
-    value,
-  })),
-  workflow: [16.5, 17, 15.9, 16.2, 14.7, 15, 13.8, 14.1].map((value, i) => ({
-    label: WEEK_LABELS[i],
-    value,
-  })),
+/** Chart y-axis shape per metric — each is a different unit, so each gets its own scale. */
+export const OPERATIONAL_EFFICIENCY_CHART_CONFIG: Record<
+  OperationalEfficiencyMetricKey,
+  { yMax: number; yTicks: number[]; valueSuffix: string }
+> = {
+  totalScreeningsCompleted: { yMax: 50, yTicks: [0, 10, 20, 30, 40, 50], valueSuffix: "" },
+  averageHandleTime: { yMax: 20, yTicks: [0, 5, 10, 15, 20], valueSuffix: " min" },
+  timeSaved: { yMax: 12, yTicks: [0, 3, 6, 9, 12], valueSuffix: " hrs" },
+  candidateCSAT: { yMax: 100, yTicks: [0, 25, 50, 75, 100], valueSuffix: "%" },
+}
+
+export const OPERATIONAL_EFFICIENCY_BREAKDOWNS: Record<
+  OperationalEfficiencyMetricKey,
+  Record<MetricDimension, MetricPoint[]>
+> = {
+  totalScreeningsCompleted: byDimension(
+    [22, 18, 15, 25, 15],
+    [20, 24, 16, 19, 16],
+    [58, 37]
+  ),
+  averageHandleTime: byDimension(
+    [15.2, 17.8, 13.9, 16.5, 14.7],
+    [16.1, 14.3, 18.2, 15.5, 13.8],
+    [14.9, 16.7]
+  ),
+  timeSaved: byDimension([3.5, 2.8, 4.2, 2.5, 3.0], [3.2, 3.8, 2.6, 3.4, 3.0], [10, 6]),
+  candidateCSAT: byDimension([78, 72, 80, 70, 76], [74, 79, 71, 77, 73], [77, 73]),
 }
 
 export type RankedItem = {
