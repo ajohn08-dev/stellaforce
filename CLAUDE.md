@@ -59,6 +59,9 @@ evaluation-criteria → scorecard → workflow model with a two-tier pipeline
 - `fit_proficiency_level`: **aware | proficient | expert** (job_competencies.recommended_level, achieved_proficiency — a distinct scale from proficiency_level)
 - `confidence_level`: **low | medium | high** (scorecard + fit confidence fields)
 - `client_status`: **active | paused | churned**
+- `client_plan`: **basic | standard | premium** — gates feature access and usage
+  caps for a client's account; enforced app-side (Server Actions check
+  `clients.plan` before allowing plan-gated actions), not via RLS
 - `job_status`: **draft | open | paused | filled | closed** (was open|on_hold|filled|closed)
 - `competency_type`: **technical | behavioral | hybrid | leadership**
 - `pipeline_stage`: **source | screen | interview | offer | close** (fixed Tier-1 canonical stages, never vary — used for cross-job audit/rollup)
@@ -101,35 +104,56 @@ replaced by the flat columns above plus the child tables below._
 **candidate_work_experiences** — `candidate_id` (fk), `display_order` (0 =
 most recent, unique per candidate), `company_name`, `title` (not null),
 `employment_type` (enum), `location`, `is_remote`, `start_date` (not null),
-`end_date`, `is_current`, `description`.
+`end_date`, `is_current`, `description`, `source_resume_id` (fk →
+`resumes.id`, nullable — set when this row came from resume ingestion, null
+for manual/recruiter entry; lets a resume reprocess safely replace only the
+rows it produced, see Resume ingestion pipeline below).
 
 **candidate_education** — `candidate_id` (fk), `institution_name` (not null),
 `degree`, `field_of_study`, `start_date`, `end_date`, `is_current`, `gpa`,
-`description`.
+`description`, `source_resume_id` (fk → `resumes.id`, nullable — same
+purpose as above).
 
 **candidate_certifications** — `candidate_id` (fk), `name` (not null),
 `issuing_organization`, `issue_date`, `expiry_date`, `credential_id`,
-`credential_url` (url).
+`credential_url` (url), `source_resume_id` (fk → `resumes.id`, nullable —
+same purpose as above).
 
 **candidate_links** — `candidate_id` (fk), `label`, `url` (not null),
-`link_type`.
+`link_type`. Unique(candidate_id, url) — lets ingestion upsert with
+`onConflict` instead of blind-inserting duplicates on retry.
 
 **skills** / **tools** (global lookups, shared across candidates)
-`id` (uuid pk), `name` (unique), `skill_type` (enum, `skills` only),
-`category` (text). _Was per-candidate free-text `skill_name`; now a
-deduplicated, controlled lookup._
+`id` (uuid pk), `name` (**case-insensitive unique**, via a `unique(lower(name))`
+index rather than a plain unique constraint — resume ingestion has no
+controlled vocabulary on the n8n/LLM side, so "Python" and "python" must
+resolve to the same row; app code matches case-insensitively too, see
+`findOrCreateLookupRows` in `src/lib/server/candidate-ingest.ts`),
+`skill_type` (enum, `skills` only), `category` (text). _Was per-candidate
+free-text `skill_name`; now a deduplicated, controlled lookup._
 
 **candidate_skills** / **candidate_tools** (junctions)
 `candidate_id` (fk), `skill_id`/`tool_id` (fk, restrict on delete),
 `proficiency_level` (enum), `years_of_experience` (int), and on
 `candidate_skills` only: `assessment_score` (numeric), `scorecard` (jsonb),
-`ai_literacy_signal` (jsonb: tool_used/how_used/measurable_outcome).
+`ai_literacy_signal` (jsonb: tool_used/how_used/measurable_outcome). Each
+unique(candidate_id, skill_id) / unique(candidate_id, tool_id) — same
+upsert-safety purpose as `candidate_links` above.
 
 ### Client & job domain
 
 **clients**
-`client_id` (uuid pk), `client_name` (not null), `status` (enum), `notes`
-(text), `industry` (text), `website_url` (url).
+`client_id` (uuid pk), `client_name` (not null), `status` (enum), `plan`
+(enum, default `basic` — see Plans below), `notes` (text), `industry`
+(text), `website_url` (url).
+
+**Plans.** `clients.plan` (basic/standard/premium) is stored but **not yet
+enforced** — which features/usage caps each tier actually gates hasn't been
+specified. Once specified, enforcement is app-side (Server Actions check
+the acting profile's `client_id → clients.plan` before allowing a
+plan-gated action or exceeding a cap), not via RLS — mirrors the
+role/client_role split, another known, deferred follow-up pass (see
+Auth below for the client-scoped RLS gap).
 
 **job_orders**
 `job_id` (uuid pk), `client_id` (fk), `title` (not null), `status` (enum,
@@ -303,11 +327,19 @@ the application layer to match V3.2 is a separate, not-yet-started pass.
      (`src/lib/resume-upload.ts`, raw XHR for progress reporting; path
      `{user_id}/{timestamp}-{filename}`) → Server Action `notifyResumeUploaded`
      POSTs `{storage_path, user_id, filename}` to the n8n webhook
-     (`N8N_WEBHOOK_URL`, header `Authorization: Bearer N8N_WEBHOOK_SECRET`) for
-     parsing. _Upload + dispatch implemented; n8n's parsed response is not yet
-     consumed — no `resumes` row is written, no draft is shown, and the
-     candidate is not created. That wiring (n8n → draft review → confirm →
-     `resumes`/`candidates` write, mirroring the paste-text path above) is the
+     (`N8N_WEBHOOK_URL`, header `Authorization: Bearer N8N_WEBHOOK_SECRET`),
+     which extracts text, calls the LLM, and separately calls back into
+     `POST /api/candidates/ingest` with the structured result. All persistence
+     (candidate/resume/skills/tools/experience writes) happens on the Next.js
+     side in that route handler — n8n itself no longer writes to Supabase.
+     _Implemented: `src/app/api/candidates/ingest/route.ts`,
+     `src/lib/server/candidate-ingest.ts`, `src/lib/ingest/{schema,normalize}.ts`.
+     There is no recruiter draft-review step for this path (unlike paste-text
+     above) — writes happen directly with `data_provenance = ai_parsed`;
+     incomplete/ambiguous parses are written anyway and flagged via
+     `ingestion_jobs.status = 'needs_review'` / `resumes.parse_status =
+     'needs_review'` rather than blocked, so a recruiter can review afterward.
+     There is no recruiter-facing "review ingestion jobs" UI yet — that's the
      next step._
 
 3. **ADD-TO-ORDER / REFER & UPDATE** — attach a candidate to a `job_order` as an
@@ -352,7 +384,14 @@ SQL lives in `supabase/migrations/` (0001 extensions+enums → 0002 tables →
 0007 client profiles → V3.2 migrations: new enums, skills/tools
 restructure, candidates normalization, clients/job_orders/applications
 alterations, Layer 1-4 job/eval/scorecard/fit tables, candidate child
-tables, profiles two-sided identity, indexes + RLS for all new tables).
+tables, profiles two-sided identity, indexes + RLS for all new tables →
+resumes storage bucket/table → `20260727120000_ingestion_pipeline.sql`
+(`ingestion_jobs` table, `resumes.storage_path`/`candidate_links`/
+`candidate_skills`/`candidate_tools` unique constraints, `source_resume_id`
+on the three resume-sourced child tables, `resumes.parse_status` gains
+`needs_review`) → `20260727130000_skills_tools_case_insensitive.sql`
+(collapses existing case-variant duplicate skills/tools rows, replaces
+their plain `unique(name)` with `unique(lower(name))`)).
 Applied directly via the Supabase MCP (`apply_migration`); pull the schema
 history with the Supabase CLI (`supabase db pull`) to sync local migration
 files if needed. RLS is minimal: authenticated users read/write all core
@@ -389,19 +428,57 @@ replace a candidate's resume regardless of who originally uploaded it.)
 
 **resumes** (candidate resume history — Postgres table, metadata only)
 `id` (uuid pk), `candidate_id` (fk → `candidates.candidate_id`, cascade
-delete), `storage_path` (not null — the Storage object path described
-above), `filename` (not null, original upload name), `file_size` (bigint,
-nullable), `mime_type` (nullable), `parsed_data` (jsonb, nullable —
-structured output from the n8n resume-parsing webhook), `parse_status`
-(text, default `pending`, check `pending | parsed | failed` — a plain check
-constraint rather than a Postgres enum, unlike every other status field in
-this schema), `parse_error` (text, nullable — set when `parse_status =
-failed`), `is_current` (bool, default true — a partial unique index
-enforces at most one current resume per candidate), `version` (int, default
-1), `superseded_at` (timestamptz, nullable — set when a newer upload
-replaces this one as current), `created_at`/`updated_at`. RLS: permissive
-`ALL` for any authenticated user, matching every other V3.2 table (access
-control for the actual file bytes lives at the Storage layer above, not
-here). The `candidates.resume_path` column predates this table and is
-superseded by it — not yet removed, not yet wired up app-side (see Build
+delete), `storage_path` (not null, **unique** — the Storage object path
+described above; the unique constraint is what makes resume ingestion
+idempotent, see below), `filename` (not null, original upload name),
+`file_size` (bigint, nullable), `mime_type` (nullable), `parsed_data` (jsonb,
+nullable — structured output from the n8n resume-parsing webhook),
+`parse_status` (text, default `pending`, check `pending | parsed | failed |
+needs_review` — a plain check constraint rather than a Postgres enum, unlike
+every other status field in this schema), `parse_error` (text, nullable —
+set when `parse_status = failed`), `is_current` (bool, default true — a
+partial unique index enforces at most one current resume per candidate),
+`version` (int, default 1), `superseded_at` (timestamptz, nullable — set
+when a newer upload replaces this one as current), `created_at`/`updated_at`.
+RLS: permissive `ALL` for any authenticated user, matching every other V3.2
+table (access control for the actual file bytes lives at the Storage layer
+above, not here). The `candidates.resume_path` column predates this table and
+is superseded by it — not yet removed, not yet wired up app-side (see Build
 order).
+
+### Resume ingestion pipeline
+
+**ingestion_jobs** — one row per resume-ingestion webhook delivery from n8n,
+keyed by `storage_path` (unique — the idempotency key: retried/duplicate
+deliveries for the same uploaded file are a no-op rather than a duplicate
+candidate). `id` (uuid pk), `storage_path` (not null, unique), `filename`
+(not null), `user_id` (fk → `profiles.id`, nullable — the uploader),
+`status` (text check `received | processing | completed | failed |
+needs_review`), `stage` (text, nullable — the last write step reached, e.g.
+`upsert_skills`, so a failure's exact location is always logged), `error_message`
+(text, nullable), `needs_review_reasons` (text[], nullable), `candidate_id` /
+`resume_id` (fk, nullable — set once resolved), `attempt_count` (int, default
+1), `webhook_execution_mode` (text, nullable — n8n's `executionMode`),
+`raw_payload` (jsonb, not null — the full validated webhook item, kept for
+audit/replay), `created_at`/`updated_at`. RLS: permissive `ALL` for any
+authenticated user, matching every other V3.2 table.
+
+`POST /api/candidates/ingest` (`src/app/api/candidates/ingest/route.ts`) is
+the receiving end: bearer-auth'd with `N8N_WEBHOOK_SECRET`, validates the
+payload with Zod (`src/lib/ingest/schema.ts`), normalizes it
+(`src/lib/ingest/normalize.ts` — link normalization/backfill, employment-type
+mapping, null-vs-empty handling, dropping rows that can't satisfy a NOT NULL
+column instead of failing the whole ingestion), then calls
+`ingestCandidateResume` (`src/lib/server/candidate-ingest.ts`), which runs a
+sequence of individually-idempotent steps (candidate upsert by
+email-then-linkedin_url identity → resume upsert by `storage_path` →
+links upsert via `unique(candidate_id, url)` → tools/skills resolved
+case-insensitively via `findOrCreateLookupRows` (see **skills**/**tools**
+above) then linked via `unique(candidate_id, skill_id|tool_id)` → work
+experience/education/certifications replaced by `source_resume_id`, never
+touching recruiter-entered rows) using the service-role admin client, since
+this is a privileged write with no acting recruiter session. Uses the admin
+client rather than Postgres RPC/transaction: every step is independently
+safe to retry (upsert-on-conflict or delete-scoped-by-source_resume_id), so a
+crash mid-sequence converges to the same end state on redelivery without
+needing true multi-statement atomicity.

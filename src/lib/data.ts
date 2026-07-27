@@ -11,6 +11,7 @@ import type {
   CandidateWorkExperienceRow,
   ClientRow,
   JobOrderRow,
+  ProfileRow,
 } from "@/lib/supabase/types"
 
 /** A candidate list row decorated with its current role + primary education —
@@ -187,6 +188,30 @@ export async function getCandidate(id: string): Promise<{
     workHistory: (workExperiences ?? []).map(toWorkHistoryEntry),
     addedBy,
   }
+}
+
+/** Every profile (both sides), for the admin "Switch User" menu — grouped/labeled by side in the UI. */
+export type SwitchableProfile = Pick<
+  ProfileRow,
+  "id" | "email" | "full_name" | "side" | "role" | "client_role"
+> & { client_name: string | null }
+
+export async function getSwitchableProfiles(): Promise<SwitchableProfile[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, email, full_name, side, role, client_role, client:clients(client_name)")
+    .order("full_name")
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    email: p.email,
+    full_name: p.full_name,
+    side: p.side,
+    role: p.role,
+    client_role: p.client_role,
+    client_name: p.client?.client_name ?? null,
+  }))
 }
 
 export async function getClients(): Promise<ClientRow[]> {
