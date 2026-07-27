@@ -1,9 +1,6 @@
-import { Badge } from "@/components/ui/badge"
-import { TierBadge } from "@/components/tier-badge"
 import { HighlightCallout } from "@/components/candidates/profile/highlight-callout"
 import { TenureStatTiles } from "@/components/candidates/profile/tenure-stat-tiles"
 import { ExperienceEntry } from "@/components/candidates/profile/experience-entry"
-import { titleCase } from "@/lib/constants"
 import { formatEducationLine } from "@/lib/education"
 import {
   calculateTenureStats,
@@ -28,16 +25,6 @@ export function OverviewTab({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center gap-2">
-        <TierBadge tier={c.candidate_tier} />
-        <Badge variant="outline">{titleCase(c.data_provenance)}</Badge>
-        {c.freshness_score != null && (
-          <Badge variant="secondary">
-            Freshness {Number(c.freshness_score).toFixed(2)}
-          </Badge>
-        )}
-      </div>
-
       {notable && (
         <section className="space-y-2">
           <h2 className="text-sm font-medium text-muted-foreground">
