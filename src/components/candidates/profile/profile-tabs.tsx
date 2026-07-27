@@ -18,7 +18,7 @@ import type {
   CandidateRow,
   CandidateSkillWithSkill,
 } from "@/lib/supabase/types"
-import type { AddedByProfile } from "@/lib/data"
+import type { AddedByProfile, CandidateResumeFile } from "@/lib/data"
 
 export function ProfileTabs({
   candidate,
@@ -28,6 +28,7 @@ export function ProfileTabs({
   workHistory,
   addedBy,
   dateAdded,
+  resume,
   isAddedToJob = false,
 }: {
   candidate: CandidateRow
@@ -37,6 +38,7 @@ export function ProfileTabs({
   workHistory: WorkHistoryEntry[]
   addedBy: AddedByProfile | null
   dateAdded: string
+  resume: CandidateResumeFile | null
   /** Scorecard/Evaluation only apply once a candidate is attached to a job. */
   isAddedToJob?: boolean
 }) {
@@ -95,7 +97,7 @@ export function ProfileTabs({
           <ActivityTab addedBy={addedBy} dateAdded={dateAdded} />
         </TabsPanel>
         <TabsPanel value="files">
-          <FilesTab candidateId={candidate.candidate_id} />
+          <FilesTab resume={resume} />
         </TabsPanel>
       </div>
     </Tabs>

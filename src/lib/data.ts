@@ -140,6 +140,14 @@ export async function getCandidates(
 
 export type AddedByProfile = { full_name: string | null; email: string }
 
+export type CandidateResumeFile = {
+  filename: string
+  fileSize: number | null
+  mimeType: string | null
+  uploadedAt: string
+  signedUrl: string
+}
+
 export async function getCandidate(id: string): Promise<{
   candidate: CandidateRow
   skills: CandidateSkillWithSkill[]
@@ -147,6 +155,7 @@ export async function getCandidate(id: string): Promise<{
   certifications: CandidateCertificationRow[]
   workHistory: WorkHistoryEntry[]
   addedBy: AddedByProfile | null
+  resume: CandidateResumeFile | null
 } | null> {
   if (!isSupabaseConfigured) return null
   const supabase = await createClient()
@@ -184,6 +193,29 @@ export async function getCandidate(id: string): Promise<{
     .eq("candidate_id", id)
     .order("display_order", { ascending: true })
 
+  const { data: resumeRow } = await supabase
+    .from("resumes")
+    .select("filename, file_size, mime_type, storage_path, created_at")
+    .eq("candidate_id", id)
+    .eq("is_current", true)
+    .maybeSingle()
+
+  let resume: CandidateResumeFile | null = null
+  if (resumeRow) {
+    const { data: signed } = await supabase.storage
+      .from("resumes")
+      .createSignedUrl(resumeRow.storage_path, 3600) // 1 hour
+    if (signed?.signedUrl) {
+      resume = {
+        filename: resumeRow.filename,
+        fileSize: resumeRow.file_size,
+        mimeType: resumeRow.mime_type,
+        uploadedAt: resumeRow.created_at,
+        signedUrl: signed.signedUrl,
+      }
+    }
+  }
+
   return {
     candidate: candidateFields,
     skills: (skills ?? []) as CandidateSkillWithSkill[],
@@ -191,6 +223,7 @@ export async function getCandidate(id: string): Promise<{
     certifications: certifications ?? [],
     workHistory: (workExperiences ?? []).map(toWorkHistoryEntry),
     addedBy,
+    resume,
   }
 }
 
