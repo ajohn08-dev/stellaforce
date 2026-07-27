@@ -1,11 +1,13 @@
 import {
+  BarChart3,
   Bot,
   Briefcase,
   Building2,
   Home,
-  Mic,
+  MessageSquare,
   Plug,
   Settings,
+  SlidersHorizontal,
   Users,
   Workflow,
 } from "lucide-react"
@@ -26,8 +28,10 @@ export const NAV_ITEMS: NavItem[] = [
 export const AGENTS_NAV_LABEL = "Agents"
 
 export const AGENTS_NAV_ITEMS: NavItem[] = [
-  { href: "/agents/screening", label: "Screening Agent", icon: Bot },
-  { href: "/agents/interview", label: "Interview Agent", icon: Mic },
+  { href: "/agents/home", label: "Agent Home", icon: Bot },
+  { href: "/agents/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/agents/conversations", label: "Conversations", icon: MessageSquare },
+  { href: "/agents/configurations", label: "Configurations", icon: SlidersHorizontal },
 ]
 
 /** Bottom-pinned nav items, in display order (Settings always last). */

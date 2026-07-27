@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { logout } from "@/app/login/actions"
 import { switchToUser, returnToMyAccount } from "@/app/(app)/switch-user-actions"
-import { NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/lib/nav"
+import { NAV_ITEMS, AGENTS_NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/lib/nav"
 import { useBreadcrumbItems } from "@/lib/breadcrumb-context"
 import { useHeaderActionsContent } from "@/lib/header-actions-context"
 import type { CurrentProfile } from "@/lib/auth"
@@ -57,7 +57,7 @@ function groupSwitchableUsers(users: SwitchableUser[], excludeId: string) {
 }
 
 function currentTitle(pathname: string): string {
-  const item = [...NAV_ITEMS, ...BOTTOM_NAV_ITEMS].find(
+  const item = [...NAV_ITEMS, ...AGENTS_NAV_ITEMS, ...BOTTOM_NAV_ITEMS].find(
     (i) => pathname === i.href || pathname.startsWith(i.href + "/")
   )
   return item?.label ?? ""

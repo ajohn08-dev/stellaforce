@@ -179,6 +179,12 @@ export const WORKFLOW_STATUS_BADGE_CLASS: Record<"draft" | "published", string> 
   published: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
 }
 
+/** Tailwind classes for agent active/inactive badges (used on the Agents pages). */
+export const AGENT_STATUS_BADGE_CLASS: Record<"active" | "inactive", string> = {
+  active: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  inactive: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
+}
+
 /** Human-readable labels for enum values that need prettifying. */
 export function titleCase(value: string): string {
   return value
