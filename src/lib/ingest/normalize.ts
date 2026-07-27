@@ -179,7 +179,13 @@ export function normalizeResumePayload(raw: RawWebhookItem): NormalizedIngestPay
   }
   for (const url of raw.extractedLinks.other) {
     try {
-      candidateLinks.push({ url: new URL(url).toString(), link_type: "other", label: null })
+      const parsed = new URL(url)
+      // The `url` domain constraint (supabase/migrations) requires http(s) —
+      // `new URL()` doesn't throw on other valid schemes like "mailto:" or
+      // "tel:" (both show up in n8n's "other" bucket alongside real links),
+      // so reject those explicitly rather than letting the DB insert fail.
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue
+      candidateLinks.push({ url: parsed.toString(), link_type: "other", label: null })
     } catch {
       // not a usable URL — drop silently, "other" links are best-effort only
     }
