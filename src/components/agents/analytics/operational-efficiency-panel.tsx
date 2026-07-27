@@ -14,7 +14,7 @@ import {
   type OperationalEfficiencyMetricKey,
 } from "@/lib/mock-agent-analytics"
 
-export function OperationalEfficiencyPanel() {
+export function OperationalEfficiencyPanel({ comparisonLabel }: { comparisonLabel: string }) {
   const [selectedKey, setSelectedKey] = React.useState<OperationalEfficiencyMetricKey>(
     OPERATIONAL_EFFICIENCY_STATS[0].key
   )
@@ -32,6 +32,7 @@ export function OperationalEfficiencyPanel() {
           <AnalyticsStatCard
             key={key}
             {...stat}
+            comparisonLabel={comparisonLabel}
             active={key === selectedKey}
             onClick={() => setSelectedKey(key)}
           />

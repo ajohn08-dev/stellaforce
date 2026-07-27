@@ -28,9 +28,12 @@ function TierOptionsList({
 }) {
   return (
     <>
-      <DropdownMenuItem onClick={() => onChange([...TIER_OPTIONS])}>
+      <DropdownMenuCheckboxItem
+        checked={selected.length === TIER_OPTIONS.length}
+        onCheckedChange={() => onChange([...TIER_OPTIONS])}
+      >
         All
-      </DropdownMenuItem>
+      </DropdownMenuCheckboxItem>
       {TIER_OPTIONS.map((t) => (
         <DropdownMenuCheckboxItem
           key={t}

@@ -5,14 +5,16 @@ import Link from "next/link"
 import {
   type Column,
   type ColumnDef,
+  type PaginationState,
   type RowSelectionState,
   type SortingState,
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
-import { ArrowUpDown, Globe } from "lucide-react"
+import { ArrowUpDown, ChevronLeft, ChevronRight, Globe } from "lucide-react"
 
 import {
   Table,
@@ -59,7 +61,7 @@ function DataLink({ href, children }: { href: string; children: React.ReactNode 
       href={href}
       target={href.startsWith("http") ? "_blank" : undefined}
       rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
-      className="block truncate text-brand-purple-600 hover:underline"
+      className="block truncate hover:text-brand-purple-600"
     >
       {children}
     </a>
@@ -73,14 +75,28 @@ function DataLink({ href, children }: { href: string; children: React.ReactNode 
  * on an auto-layout table, which is what caused the overlap bug; this is
  * the library's own documented fix (see "Column Pinning" in their docs).
  */
-function pinnedStyle(column: Column<CandidateListItem, unknown>): React.CSSProperties {
+function pinnedStyle(
+  column: Column<CandidateListItem, unknown>,
+  variant: "header" | "cell"
+): React.CSSProperties {
   const pinned = column.getIsPinned()
   return {
     width: column.getSize(),
     position: pinned ? "sticky" : undefined,
+    // A header cell that declares its own `position: sticky` (for the
+    // horizontal left/right pin below) stops inheriting the ancestor
+    // <thead>'s `sticky top-0` — once an element sets sticky itself, its
+    // vertical stickiness has to be declared on that same element via
+    // `top`, or it just falls back to its static in-flow position.
+    top: pinned && variant === "header" ? 0 : undefined,
     left: pinned === "left" ? `${column.getStart("left")}px` : undefined,
     right: pinned === "right" ? `${column.getAfter("right")}px` : undefined,
-    zIndex: pinned ? 20 : undefined,
+    // Scoped to this row: lets a pinned corner cell sit above the row's own
+    // plain (non-pinned) cells as they scroll underneath it horizontally.
+    // Ordering the header row *as a whole* above pinned body cells is a
+    // separate concern, handled by the parent <thead>'s z-index instead —
+    // see the comment there.
+    zIndex: pinned ? (variant === "header" ? 30 : 20) : undefined,
   }
 }
 
@@ -267,35 +283,56 @@ const columns: ColumnDef<CandidateListItem>[] = [
   },
 ]
 
+const PAGE_SIZE = 25
+
 export function CandidatesTable({ data }: { data: CandidateListItem[] }) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
+  const [pagination, setPagination] = React.useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: PAGE_SIZE,
+  })
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, rowSelection },
+    state: { sorting, rowSelection, pagination },
     onSortingChange: setSorting,
     onRowSelectionChange: setRowSelection,
+    onPaginationChange: setPagination,
     getRowId: (row) => row.candidate_id,
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     initialState: {
       columnPinning: { left: ["select", "full_name"], right: ["actions"] },
     },
   })
 
+  const pageCount = table.getPageCount()
+
   return (
-    <div className="h-full overflow-y-auto rounded-lg border border-border bg-white">
-      <Table className="table-fixed" containerClassName="scrollbar-light">
-        <TableHeader className="sticky top-0 z-10 bg-muted">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-white">
+      <Table
+        className="table-fixed"
+        containerClassName="min-h-0 flex-1 overflow-y-auto scrollbar-light"
+      >
+        {/*
+          z-30, not z-10: pinned body cells below are also `position: sticky`
+          at z-20, and sticky elements always form their own stacking
+          context — so this thead and those cells are compared as siblings,
+          and whichever has the higher z-index paints on top regardless of
+          DOM order. The thead must outrank the highest pinned-cell z-index
+          in the body, or pinned columns bleed through the header on scroll.
+        */}
+        <TableHeader className="sticky top-0 z-30 bg-muted">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (
                 <TableHead
                   key={header.id}
-                  style={pinnedStyle(header.column)}
+                  style={pinnedStyle(header.column, "header")}
                   className={pinnedClassName(header.column, "header")}
                 >
                   {header.isPlaceholder
@@ -316,7 +353,7 @@ export function CandidatesTable({ data }: { data: CandidateListItem[] }) {
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
                     key={cell.id}
-                    style={pinnedStyle(cell.column)}
+                    style={pinnedStyle(cell.column, "cell")}
                     className={pinnedClassName(cell.column, "cell")}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -336,6 +373,36 @@ export function CandidatesTable({ data }: { data: CandidateListItem[] }) {
           )}
         </TableBody>
       </Table>
+
+      {pageCount > 1 && (
+        <div className="flex shrink-0 items-center justify-end gap-4 border-t border-border px-4 py-2">
+          <span className="text-sm text-muted-foreground">
+            Page {pagination.pageIndex + 1} of {pageCount}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Previous page"
+              disabled={!table.getCanPreviousPage()}
+              onClick={() => table.previousPage()}
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Next page"
+              disabled={!table.getCanNextPage()}
+              onClick={() => table.nextPage()}
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

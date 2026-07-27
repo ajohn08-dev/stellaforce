@@ -1984,6 +1984,10 @@ export type CandidateToolRow = SchemaTables["candidate_tools"]["Row"]
 export type CandidateSkillWithSkill = CandidateSkillRow & {
   skill: Pick<SkillRow, "name" | "skill_type" | "category"> | null
 }
+/** A candidate_tools row joined with its global tool definition — the shape `getCandidate` returns. */
+export type CandidateToolWithTool = CandidateToolRow & {
+  tool: Pick<ToolRow, "name"> | null
+}
 
 // ── Client & job domain ──────────────────────────────────────────────────────
 export type ClientRow = SchemaTables["clients"]["Row"]

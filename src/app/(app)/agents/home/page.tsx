@@ -1,5 +1,4 @@
-import { Bot, Activity, Timer } from "lucide-react"
-
+import { AnalyticsStatCard } from "@/components/agents/analytics/analytics-stat-card"
 import { ScreeningAgentCard } from "@/components/agents/screening-agent-card"
 import { ScreeningAgentsList } from "@/components/agents/screening-agents-list"
 import { ScreeningAgentSearch } from "@/components/agents/screening-agent-search"
@@ -35,13 +34,9 @@ export default async function AgentHomePage({
     MOCK_SCREENING_AGENTS.length
 
   const stats = [
-    { label: "Total Agents", value: MOCK_SCREENING_AGENTS.length, icon: Bot },
-    { label: "Active Agents", value: activeCount, icon: Activity },
-    {
-      label: "Average Handle Time",
-      value: `${avgHandleTime.toFixed(1)} min`,
-      icon: Timer,
-    },
+    { label: "Total Agents", value: String(MOCK_SCREENING_AGENTS.length) },
+    { label: "Active Agents", value: String(activeCount) },
+    { label: "Average Handle Time", value: `${avgHandleTime.toFixed(1)} min` },
   ]
 
   return (
@@ -65,17 +60,8 @@ export default async function AgentHomePage({
 
       <div className="space-y-6 p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {stats.map(({ label, value, icon: Icon }) => (
-            <div
-              key={label}
-              className="flex items-center gap-4 rounded-lg border border-border bg-white p-5"
-            >
-              <Icon className="size-5 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-semibold tracking-tight">{value}</p>
-                <p className="text-sm text-muted-foreground">{label}</p>
-              </div>
-            </div>
+          {stats.map((stat) => (
+            <AnalyticsStatCard key={stat.label} {...stat} />
           ))}
         </div>
 

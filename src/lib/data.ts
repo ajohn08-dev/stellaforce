@@ -8,6 +8,7 @@ import type {
   CandidateEducationRow,
   CandidateRow,
   CandidateSkillWithSkill,
+  CandidateToolWithTool,
   CandidateWorkExperienceRow,
   ClientRow,
   JobOrderRow,
@@ -61,11 +62,15 @@ export async function getCandidates(
     .select("*")
     .order("date_added", { ascending: false })
 
-  if (filters.tiers && filters.tiers.length > 0)
-    query = query.in(
-      "candidate_tier",
-      filters.tiers as NonNullable<CandidateRow["candidate_tier"]>[]
-    )
+  if (filters.tiers && filters.tiers.length > 0) {
+    // Untiered candidates (candidate_tier is null — e.g. every resume-upload
+    // ingestion, which has no tier signal to assign) should never be hidden
+    // by a tier filter: `.in()` alone excludes NULLs (SQL semantics), which
+    // would silently disappear anyone not yet tiered. OR in an explicit
+    // is-null check so they stay visible under any tier filter.
+    const tierList = filters.tiers.join(",")
+    query = query.or(`candidate_tier.is.null,candidate_tier.in.(${tierList})`)
+  }
   if (filters.q) query = query.ilike("full_name", `%${filters.q}%`)
   if (filters.location)
     query = query.ilike("location_raw", `%${filters.location}%`)
@@ -136,13 +141,23 @@ export async function getCandidates(
 
 export type AddedByProfile = { full_name: string | null; email: string }
 
+export type CandidateResumeFile = {
+  filename: string
+  fileSize: number | null
+  mimeType: string | null
+  uploadedAt: string
+  signedUrl: string
+}
+
 export async function getCandidate(id: string): Promise<{
   candidate: CandidateRow
   skills: CandidateSkillWithSkill[]
+  tools: CandidateToolWithTool[]
   education: CandidateEducationRow[]
   certifications: CandidateCertificationRow[]
   workHistory: WorkHistoryEntry[]
   addedBy: AddedByProfile | null
+  resume: CandidateResumeFile | null
 } | null> {
   if (!isSupabaseConfigured) return null
   const supabase = await createClient()
@@ -164,6 +179,11 @@ export async function getCandidate(id: string): Promise<{
     .select("*, skill:skills(name, skill_type, category)")
     .eq("candidate_id", id)
 
+  const { data: tools } = await supabase
+    .from("candidate_tools")
+    .select("*, tool:tools(name)")
+    .eq("candidate_id", id)
+
   const { data: education } = await supabase
     .from("candidate_education")
     .select("*")
@@ -180,13 +200,38 @@ export async function getCandidate(id: string): Promise<{
     .eq("candidate_id", id)
     .order("display_order", { ascending: true })
 
+  const { data: resumeRow } = await supabase
+    .from("resumes")
+    .select("filename, file_size, mime_type, storage_path, created_at")
+    .eq("candidate_id", id)
+    .eq("is_current", true)
+    .maybeSingle()
+
+  let resume: CandidateResumeFile | null = null
+  if (resumeRow) {
+    const { data: signed } = await supabase.storage
+      .from("resumes")
+      .createSignedUrl(resumeRow.storage_path, 3600) // 1 hour
+    if (signed?.signedUrl) {
+      resume = {
+        filename: resumeRow.filename,
+        fileSize: resumeRow.file_size,
+        mimeType: resumeRow.mime_type,
+        uploadedAt: resumeRow.created_at,
+        signedUrl: signed.signedUrl,
+      }
+    }
+  }
+
   return {
     candidate: candidateFields,
     skills: (skills ?? []) as CandidateSkillWithSkill[],
+    tools: (tools ?? []) as CandidateToolWithTool[],
     education: education ?? [],
     certifications: certifications ?? [],
     workHistory: (workExperiences ?? []).map(toWorkHistoryEntry),
     addedBy,
+    resume,
   }
 }
 

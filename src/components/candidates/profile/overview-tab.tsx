@@ -1,48 +1,30 @@
-import { Badge } from "@/components/ui/badge"
-import { TierBadge } from "@/components/tier-badge"
 import { HighlightCallout } from "@/components/candidates/profile/highlight-callout"
 import { TenureStatTiles } from "@/components/candidates/profile/tenure-stat-tiles"
 import { ExperienceEntry } from "@/components/candidates/profile/experience-entry"
-import { ProficiencyBadge } from "@/components/candidates/profile/proficiency-badge"
-import { titleCase } from "@/lib/constants"
 import { formatEducationLine } from "@/lib/education"
-import { groupSkillsByCategory } from "@/lib/skill-categories"
 import {
   calculateTenureStats,
   mostRecentRole,
   notableEmployer,
   type WorkHistoryEntry,
 } from "@/lib/work-history"
-import type { CandidateEducationRow, CandidateRow, CandidateSkillWithSkill } from "@/lib/supabase/types"
+import type { CandidateEducationRow, CandidateRow } from "@/lib/supabase/types"
 
 export function OverviewTab({
   candidate: c,
-  skills,
   education,
   workHistory,
 }: {
   candidate: CandidateRow
-  skills: CandidateSkillWithSkill[]
   education: CandidateEducationRow[]
   workHistory: WorkHistoryEntry[]
 }) {
   const notable = notableEmployer(workHistory)
   const recentRole = mostRecentRole(workHistory)
   const educationLine = formatEducationLine(education)
-  const categories = groupSkillsByCategory(skills)
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center gap-2">
-        <TierBadge tier={c.candidate_tier} />
-        <Badge variant="outline">{titleCase(c.data_provenance)}</Badge>
-        {c.freshness_score != null && (
-          <Badge variant="secondary">
-            Freshness {Number(c.freshness_score).toFixed(2)}
-          </Badge>
-        )}
-      </div>
-
       {notable && (
         <section className="space-y-2">
           <h2 className="text-sm font-medium text-muted-foreground">
@@ -84,25 +66,6 @@ export function OverviewTab({
             Education
           </h2>
           <p className="text-sm">{educationLine}</p>
-        </section>
-      )}
-
-      {categories.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Skill Map
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {categories.map(({ category, tier }) => (
-              <div
-                key={category}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5"
-              >
-                <span className="text-sm">{category}</span>
-                <ProficiencyBadge tier={tier} />
-              </div>
-            ))}
-          </div>
         </section>
       )}
     </div>

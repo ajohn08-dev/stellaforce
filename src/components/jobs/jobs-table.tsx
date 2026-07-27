@@ -4,14 +4,16 @@ import * as React from "react"
 import Link from "next/link"
 import {
   type ColumnDef,
+  type PaginationState,
   type RowSelectionState,
   type SortingState,
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
-import { ArrowUpDown, Users } from "lucide-react"
+import { ArrowUpDown, ChevronLeft, ChevronRight, Users } from "lucide-react"
 
 import {
   Table,
@@ -122,26 +124,36 @@ const columns: ColumnDef<MockJob>[] = [
   },
 ]
 
+const PAGE_SIZE = 25
+
 export function JobsTable({ data }: { data: MockJob[] }) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
+  const [pagination, setPagination] = React.useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: PAGE_SIZE,
+  })
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, rowSelection },
+    state: { sorting, rowSelection, pagination },
     onSortingChange: setSorting,
     onRowSelectionChange: setRowSelection,
+    onPaginationChange: setPagination,
     getRowId: (row) => row.job_id,
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   })
 
+  const pageCount = table.getPageCount()
+
   return (
-    <div className="h-full overflow-y-auto rounded-lg border border-border bg-white">
-      <Table>
-        <TableHeader className="sticky top-0 z-10 bg-muted/50">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-white">
+      <Table containerClassName="min-h-0 flex-1 overflow-y-auto">
+        <TableHeader className="sticky top-0 z-10 bg-muted">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (
@@ -186,6 +198,36 @@ export function JobsTable({ data }: { data: MockJob[] }) {
           )}
         </TableBody>
       </Table>
+
+      {pageCount > 1 && (
+        <div className="flex shrink-0 items-center justify-end gap-4 border-t border-border px-4 py-2">
+          <span className="text-sm text-muted-foreground">
+            Page {pagination.pageIndex + 1} of {pageCount}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Previous page"
+              disabled={!table.getCanPreviousPage()}
+              onClick={() => table.previousPage()}
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Next page"
+              disabled={!table.getCanNextPage()}
+              onClick={() => table.nextPage()}
+            >
+              <ChevronRight />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

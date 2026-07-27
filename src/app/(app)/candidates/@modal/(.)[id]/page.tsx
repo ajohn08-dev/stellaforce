@@ -14,7 +14,7 @@ export default async function CandidateProfileModal({
   const result = await getCandidate(id)
   if (!result) notFound()
 
-  const { candidate, skills, education, certifications, workHistory, addedBy } = result
+  const { candidate, skills, tools, education, certifications, workHistory, addedBy, resume } = result
 
   return (
     <CandidateProfileSheet>
@@ -24,11 +24,13 @@ export default async function CandidateProfileModal({
       <ProfileTabs
         candidate={candidate}
         skills={skills}
+        tools={tools}
         education={education}
         certifications={certifications}
         workHistory={workHistory}
         addedBy={addedBy}
         dateAdded={candidate.date_added}
+        resume={resume}
       />
     </CandidateProfileSheet>
   )

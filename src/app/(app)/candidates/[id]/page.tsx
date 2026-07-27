@@ -14,7 +14,7 @@ export default async function CandidateProfilePage({
   const result = await getCandidate(id)
   if (!result) notFound()
 
-  const { candidate, skills, education, certifications, workHistory, addedBy } = result
+  const { candidate, skills, tools, education, certifications, workHistory, addedBy, resume } = result
 
   return (
     <div
@@ -39,11 +39,13 @@ export default async function CandidateProfilePage({
         <ProfileTabs
           candidate={candidate}
           skills={skills}
+          tools={tools}
           education={education}
           certifications={certifications}
           workHistory={workHistory}
           addedBy={addedBy}
           dateAdded={candidate.date_added}
+          resume={resume}
         />
       </div>
     </div>

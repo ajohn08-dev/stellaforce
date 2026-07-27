@@ -21,9 +21,12 @@ export function CandidateActiveFilters() {
     router.push(`/candidates?${sp.toString()}`)
   }
 
-  const label = TIER_OPTIONS.filter((t) => tiers.includes(t))
-    .map(titleCase)
-    .join(", ")
+  const label =
+    tiers.length === TIER_OPTIONS.length
+      ? "All"
+      : TIER_OPTIONS.filter((t) => tiers.includes(t))
+          .map(titleCase)
+          .join(", ")
 
   return (
     <div className="flex items-center gap-2">

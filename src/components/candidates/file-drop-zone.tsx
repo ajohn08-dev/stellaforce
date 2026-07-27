@@ -5,42 +5,57 @@ import { UploadCloud, FileText, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-/** Drag-and-drop file picker. Selecting a file is real; what happens with it is up to the caller. */
-export function FileDropZone({
-  accept,
-  hint,
-  file,
-  onFileChange,
-}: {
-  accept: string
-  hint: string
-  file: File | null
-  onFileChange: (file: File | null) => void
-}) {
+type FileDropZoneProps =
+  | {
+      multiple?: false
+      accept: string
+      hint: string
+      file: File | null
+      onFileChange: (file: File | null) => void
+    }
+  | {
+      multiple: true
+      accept: string
+      hint: string
+      disabled?: boolean
+      onFilesSelected: (files: File[]) => void
+    }
+
+/** Drag-and-drop file picker. Selecting file(s) is real; what happens with them is up to the caller. */
+export function FileDropZone(props: FileDropZoneProps) {
+  const { accept, hint } = props
   const [dragActive, setDragActive] = React.useState(false)
-  const inputRef = React.useRef<HTMLInputElement>(null)
+  const disabled = props.multiple ? !!props.disabled : false
+
+  function handleFiles(list: FileList | null) {
+    if (!list || list.length === 0 || disabled) return
+    if (props.multiple) {
+      props.onFilesSelected(Array.from(list))
+    } else {
+      props.onFileChange(list[0])
+    }
+  }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     setDragActive(false)
-    const dropped = e.dataTransfer.files?.[0]
-    if (dropped) onFileChange(dropped)
+    handleFiles(e.dataTransfer.files)
   }
 
-  if (file) {
+  if (!props.multiple && props.file) {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-border p-4">
         <FileText className="size-8 shrink-0 text-brand-purple-600" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{file.name}</p>
+          <p className="truncate text-sm font-medium">{props.file.name}</p>
           <p className="text-xs text-muted-foreground">
-            {(file.size / 1024).toFixed(0)} KB
+            {(props.file.size / 1024).toFixed(0)} KB
           </p>
         </div>
         <button
           type="button"
           aria-label="Remove file"
-          onClick={() => onFileChange(null)}
+          onClick={() => props.onFileChange(null)}
           className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <X className="size-4" />
@@ -53,15 +68,16 @@ export function FileDropZone({
     <label
       onDragOver={(e) => {
         e.preventDefault()
-        setDragActive(true)
+        if (!disabled) setDragActive(true)
       }}
       onDragLeave={() => setDragActive(false)}
       onDrop={handleDrop}
       className={cn(
-        "flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-8 text-center transition-colors",
-        dragActive
-          ? "border-primary bg-accent"
-          : "border-border hover:border-muted-foreground/50"
+        "flex flex-col items-center gap-2 rounded-lg border-2 border-dashed p-8 text-center transition-colors",
+        disabled
+          ? "cursor-not-allowed opacity-60"
+          : "cursor-pointer hover:border-muted-foreground/50",
+        dragActive && !disabled ? "border-primary bg-accent" : "border-border"
       )}
     >
       <UploadCloud className="size-8 text-muted-foreground" />
@@ -73,11 +89,15 @@ export function FileDropZone({
       </p>
       <p className="text-xs text-muted-foreground">{hint}</p>
       <input
-        ref={inputRef}
         type="file"
         accept={accept}
+        multiple={props.multiple}
+        disabled={disabled}
         className="sr-only"
-        onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+        onChange={(e) => {
+          handleFiles(e.target.files)
+          e.target.value = ""
+        }}
       />
     </label>
   )
