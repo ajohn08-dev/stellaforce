@@ -8,6 +8,7 @@ import type {
   CandidateEducationRow,
   CandidateRow,
   CandidateSkillWithSkill,
+  CandidateToolWithTool,
   CandidateWorkExperienceRow,
   ClientRow,
   JobOrderRow,
@@ -151,6 +152,7 @@ export type CandidateResumeFile = {
 export async function getCandidate(id: string): Promise<{
   candidate: CandidateRow
   skills: CandidateSkillWithSkill[]
+  tools: CandidateToolWithTool[]
   education: CandidateEducationRow[]
   certifications: CandidateCertificationRow[]
   workHistory: WorkHistoryEntry[]
@@ -175,6 +177,11 @@ export async function getCandidate(id: string): Promise<{
   const { data: skills } = await supabase
     .from("candidate_skills")
     .select("*, skill:skills(name, skill_type, category)")
+    .eq("candidate_id", id)
+
+  const { data: tools } = await supabase
+    .from("candidate_tools")
+    .select("*, tool:tools(name)")
     .eq("candidate_id", id)
 
   const { data: education } = await supabase
@@ -219,6 +226,7 @@ export async function getCandidate(id: string): Promise<{
   return {
     candidate: candidateFields,
     skills: (skills ?? []) as CandidateSkillWithSkill[],
+    tools: (tools ?? []) as CandidateToolWithTool[],
     education: education ?? [],
     certifications: certifications ?? [],
     workHistory: (workExperiences ?? []).map(toWorkHistoryEntry),

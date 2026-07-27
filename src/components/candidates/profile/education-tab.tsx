@@ -1,17 +1,25 @@
+import { Wrench } from "lucide-react"
+
 import type {
   CandidateCertificationRow,
   CandidateEducationRow,
   CandidateRow,
+  CandidateSkillWithSkill,
+  CandidateToolWithTool,
 } from "@/lib/supabase/types"
 
 export function EducationTab({
   candidate,
   education,
   certifications,
+  skills,
+  tools,
 }: {
   candidate: CandidateRow
   education: CandidateEducationRow[]
   certifications: CandidateCertificationRow[]
+  skills: CandidateSkillWithSkill[]
+  tools: CandidateToolWithTool[]
 }) {
   const entries = education
   const languages = candidate.languages ?? []
@@ -37,6 +45,31 @@ export function EducationTab({
           </div>
         )}
       </section>
+
+      {(skills.length > 0 || tools.length > 0) && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium text-muted-foreground">Skills</h2>
+          <div className="flex flex-wrap gap-2">
+            {skills.map((s) => (
+              <span
+                key={s.id}
+                className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-sm text-secondary-foreground"
+              >
+                {s.skill?.name}
+              </span>
+            ))}
+            {tools.map((t) => (
+              <span
+                key={t.id}
+                className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-sm text-secondary-foreground"
+              >
+                <Wrench className="size-3.5 text-muted-foreground" />
+                {t.tool?.name}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
 
       {certifications.length > 0 && (
         <section className="space-y-3">

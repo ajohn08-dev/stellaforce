@@ -17,12 +17,14 @@ import type {
   CandidateEducationRow,
   CandidateRow,
   CandidateSkillWithSkill,
+  CandidateToolWithTool,
 } from "@/lib/supabase/types"
 import type { AddedByProfile, CandidateResumeFile } from "@/lib/data"
 
 export function ProfileTabs({
   candidate,
   skills,
+  tools,
   education,
   certifications,
   workHistory,
@@ -33,6 +35,7 @@ export function ProfileTabs({
 }: {
   candidate: CandidateRow
   skills: CandidateSkillWithSkill[]
+  tools: CandidateToolWithTool[]
   education: CandidateEducationRow[]
   certifications: CandidateCertificationRow[]
   workHistory: WorkHistoryEntry[]
@@ -70,7 +73,6 @@ export function ProfileTabs({
         <TabsPanel value="overview">
           <OverviewTab
             candidate={candidate}
-            skills={skills}
             education={education}
             workHistory={workHistory}
           />
@@ -90,6 +92,8 @@ export function ProfileTabs({
             candidate={candidate}
             education={education}
             certifications={certifications}
+            skills={skills}
+            tools={tools}
             workHistory={workHistory}
           />
         </TabsPanel>
