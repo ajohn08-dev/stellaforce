@@ -61,11 +61,15 @@ export async function getCandidates(
     .select("*")
     .order("date_added", { ascending: false })
 
-  if (filters.tiers && filters.tiers.length > 0)
-    query = query.in(
-      "candidate_tier",
-      filters.tiers as NonNullable<CandidateRow["candidate_tier"]>[]
-    )
+  if (filters.tiers && filters.tiers.length > 0) {
+    // Untiered candidates (candidate_tier is null — e.g. every resume-upload
+    // ingestion, which has no tier signal to assign) should never be hidden
+    // by a tier filter: `.in()` alone excludes NULLs (SQL semantics), which
+    // would silently disappear anyone not yet tiered. OR in an explicit
+    // is-null check so they stay visible under any tier filter.
+    const tierList = filters.tiers.join(",")
+    query = query.or(`candidate_tier.is.null,candidate_tier.in.(${tierList})`)
+  }
   if (filters.q) query = query.ilike("full_name", `%${filters.q}%`)
   if (filters.location)
     query = query.ilike("location_raw", `%${filters.location}%`)
