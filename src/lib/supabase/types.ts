@@ -318,6 +318,7 @@ export type Database = {
           issue_date: string | null
           issuing_organization: string | null
           name: string
+          source_resume_id: string | null
         }
         Insert: {
           candidate_id: string
@@ -329,6 +330,7 @@ export type Database = {
           issue_date?: string | null
           issuing_organization?: string | null
           name: string
+          source_resume_id?: string | null
         }
         Update: {
           candidate_id?: string
@@ -340,6 +342,7 @@ export type Database = {
           issue_date?: string | null
           issuing_organization?: string | null
           name?: string
+          source_resume_id?: string | null
         }
         Relationships: [
           {
@@ -348,6 +351,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "candidates"
             referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "candidate_certifications_source_resume_id_fkey"
+            columns: ["source_resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -453,6 +463,7 @@ export type Database = {
           id: string
           institution_name: string
           is_current: boolean | null
+          source_resume_id: string | null
           start_date: string | null
         }
         Insert: {
@@ -466,6 +477,7 @@ export type Database = {
           id?: string
           institution_name: string
           is_current?: boolean | null
+          source_resume_id?: string | null
           start_date?: string | null
         }
         Update: {
@@ -479,6 +491,7 @@ export type Database = {
           id?: string
           institution_name?: string
           is_current?: boolean | null
+          source_resume_id?: string | null
           start_date?: string | null
         }
         Relationships: [
@@ -488,6 +501,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "candidates"
             referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "candidate_education_source_resume_id_fkey"
+            columns: ["source_resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -641,6 +661,7 @@ export type Database = {
           is_current: boolean | null
           is_remote: boolean | null
           location: string | null
+          source_resume_id: string | null
           start_date: string
           title: string
         }
@@ -658,6 +679,7 @@ export type Database = {
           is_current?: boolean | null
           is_remote?: boolean | null
           location?: string | null
+          source_resume_id?: string | null
           start_date: string
           title: string
         }
@@ -675,6 +697,7 @@ export type Database = {
           is_current?: boolean | null
           is_remote?: boolean | null
           location?: string | null
+          source_resume_id?: string | null
           start_date?: string
           title?: string
         }
@@ -685,6 +708,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "candidates"
             referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "candidate_work_experiences_source_resume_id_fkey"
+            columns: ["source_resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -860,6 +890,82 @@ export type Database = {
           website_url?: string | null
         }
         Relationships: []
+      }
+      ingestion_jobs: {
+        Row: {
+          attempt_count: number
+          candidate_id: string | null
+          created_at: string
+          error_message: string | null
+          filename: string
+          id: string
+          needs_review_reasons: string[] | null
+          raw_payload: Json
+          resume_id: string | null
+          stage: string | null
+          status: string
+          storage_path: string
+          updated_at: string
+          user_id: string | null
+          webhook_execution_mode: string | null
+        }
+        Insert: {
+          attempt_count?: number
+          candidate_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          filename: string
+          id?: string
+          needs_review_reasons?: string[] | null
+          raw_payload: Json
+          resume_id?: string | null
+          stage?: string | null
+          status?: string
+          storage_path: string
+          updated_at?: string
+          user_id?: string | null
+          webhook_execution_mode?: string | null
+        }
+        Update: {
+          attempt_count?: number
+          candidate_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          filename?: string
+          id?: string
+          needs_review_reasons?: string[] | null
+          raw_payload?: Json
+          resume_id?: string | null
+          stage?: string | null
+          status?: string
+          storage_path?: string
+          updated_at?: string
+          user_id?: string | null
+          webhook_execution_mode?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_jobs_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "ingestion_jobs_resume_id_fkey"
+            columns: ["resume_id"]
+            isOneToOne: false
+            referencedRelation: "resumes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ingestion_jobs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       interactions: {
         Row: {
@@ -1822,7 +1928,6 @@ export const Constants = {
     },
   },
 } as const
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Hand-written convenience aliases (V3.2) — layered on top of the generated
 // `Database` type above so the rest of the app can import ergonomic names
@@ -1906,3 +2011,11 @@ export type CandidateClientFitEvidenceRow = SchemaTables["candidate_client_fit_e
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export type ProfileRow = SchemaTables["profiles"]["Row"]
+
+// ── Resume ingestion ─────────────────────────────────────────────────────────
+export type ResumeRow = SchemaTables["resumes"]["Row"]
+export type ResumeInsert = SchemaTables["resumes"]["Insert"]
+export type IngestionJobRow = SchemaTables["ingestion_jobs"]["Row"]
+export type IngestionJobInsert = SchemaTables["ingestion_jobs"]["Insert"]
+export type IngestionJobStatus = "received" | "processing" | "completed" | "failed" | "needs_review"
+export type ResumeParseStatus = "pending" | "parsed" | "failed" | "needs_review"
