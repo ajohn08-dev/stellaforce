@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { toast } from "sonner"
-import { FileSpreadsheet, ClipboardList } from "lucide-react"
+import { FileSpreadsheet, ClipboardList, FileText, X } from "lucide-react"
 
 import {
   Dialog,
@@ -15,142 +15,78 @@ import {
 } from "@/components/ui/dialog"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Progress } from "@/components/ui/progress"
 import { FileDropZone } from "@/components/candidates/file-drop-zone"
-import { createClient } from "@/lib/supabase/client"
-import {
-  ResumeValidationError,
-  uploadResumeWithProgress,
-  validateResumeFile,
-} from "@/lib/resume-upload"
-import { notifyResumeUploaded } from "@/app/(app)/candidates/actions"
+import { ResumeValidationError, validateResumeFile } from "@/lib/resume-upload"
+import { useResumeUploadQueue } from "@/lib/resume-upload-queue"
 import { RESUME_ACCEPT } from "@/lib/constants"
 
 type Method = "resume" | "csv"
-type Status = "idle" | "uploading" | "notifying" | "error"
 
-const COPY: Record<
-  Method,
-  { title: string; description: string; accept: string; hint: string }
-> = {
+const COPY: Record<Method, { title: string; description: string }> = {
   resume: {
     title: "Add a candidate",
     description:
-      "Drop a resume and we'll pre-fill a draft for you to review before saving.",
-    accept: RESUME_ACCEPT,
-    hint: "PDF, DOC, or DOCX",
+      "Drop resumes and we'll pre-fill a draft for each one — track progress in the corner tray after you continue.",
   },
   csv: {
     title: "Bulk upload candidates",
     description:
       "Drop a CSV and each row becomes a draft candidate for you to review.",
-    accept: ".csv",
-    hint: "CSV, one candidate per row",
   },
 }
 
 /**
  * Resume upload is the default/primary ingestion method; CSV and manual
- * entry are offered as alternatives below it. Resume upload is fully wired:
- * the file goes straight to the `resumes` Storage bucket from the browser
- * (with progress), then a Server Action hands the storage path to n8n for
- * parsing. CSV upload is still an honest stub — no CSV parsing exists yet.
+ * entry are offered as alternatives below it. This dialog only picks files —
+ * clicking Continue hands them to the global resume-upload queue
+ * (`useResumeUploadQueue`), which uploads + parses them one at a time and
+ * tracks progress in a persistent tray (`ResumeUploadTray`) that survives
+ * this dialog closing and outlives page navigation. CSV upload is still an
+ * honest stub — no CSV parsing exists yet.
  */
 export function AddCandidateDialog() {
   const [open, setOpen] = React.useState(false)
   const [method, setMethod] = React.useState<Method>("resume")
-  const [file, setFile] = React.useState<File | null>(null)
-  const [status, setStatus] = React.useState<Status>("idle")
-  const [progress, setProgress] = React.useState(0)
-  const [errorMessage, setErrorMessage] = React.useState<string | null>(null)
-  const abortRef = React.useRef<(() => void) | null>(null)
-
-  const busy = status === "uploading" || status === "notifying"
+  const [resumeFiles, setResumeFiles] = React.useState<File[]>([])
+  const [csvFile, setCsvFile] = React.useState<File | null>(null)
+  const { enqueueFiles } = useResumeUploadQueue()
 
   function resetState() {
     setMethod("resume")
-    setFile(null)
-    setStatus("idle")
-    setProgress(0)
-    setErrorMessage(null)
+    setResumeFiles([])
+    setCsvFile(null)
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next && status === "uploading") {
-      abortRef.current?.()
-    }
     setOpen(next)
     if (!next) resetState()
   }
 
-  async function handleResumeContinue() {
-    if (!file) return
-    setErrorMessage(null)
-
-    try {
-      validateResumeFile(file)
-    } catch (err) {
-      const message =
-        err instanceof ResumeValidationError ? err.message : "Invalid file."
-      setErrorMessage(message)
-      toast.error(message)
-      return
+  function handleFilesSelected(newFiles: File[]) {
+    const validated: File[] = []
+    for (const file of newFiles) {
+      try {
+        validateResumeFile(file)
+      } catch (err) {
+        const message =
+          err instanceof ResumeValidationError ? err.message : "Invalid file."
+        toast.error(`${file.name}: ${message}`)
+        continue
+      }
+      validated.push(file)
     }
-
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      const message = "You must be signed in to upload a resume."
-      setErrorMessage(message)
-      toast.error(message)
-      return
+    if (validated.length > 0) {
+      setResumeFiles((prev) => [...prev, ...validated])
     }
+  }
 
-    setStatus("uploading")
-    setProgress(0)
+  function removeResumeFile(index: number) {
+    setResumeFiles((prev) => prev.filter((_, i) => i !== index))
+  }
 
-    const { promise, abort } = uploadResumeWithProgress({
-      file,
-      userId: user.id,
-      onProgress: setProgress,
-    })
-    abortRef.current = abort
-
-    let storagePath: string
-    try {
-      const result = await promise
-      storagePath = result.storagePath
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Upload failed."
-      setStatus("error")
-      setErrorMessage(message)
-      toast.error(message)
-      return
-    } finally {
-      abortRef.current = null
-    }
-
-    setStatus("notifying")
-    const toastId = toast.loading("Parsing resume and saving candidate…")
-    const notifyResult = await notifyResumeUploaded(storagePath, file.name)
-    if (!notifyResult.ok) {
-      setStatus("error")
-      setErrorMessage(notifyResult.error)
-      toast.error(notifyResult.error, { id: toastId })
-      return
-    }
-
-    // notifyResumeUploaded runs the full ingestion in-process (n8n replies
-    // synchronously with the parsed data, then we write it to Supabase before
-    // returning) — by the time it resolves, persistence is already done.
-    toast.success(
-      notifyResult.status === "needs_review"
-        ? "Candidate added — flagged for review."
-        : "Success. Candidate Added",
-      { id: toastId }
-    )
+  function handleResumeContinue() {
+    if (resumeFiles.length === 0) return
+    enqueueFiles(resumeFiles)
     handleOpenChange(false)
   }
 
@@ -159,56 +95,64 @@ export function AddCandidateDialog() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button>Add Candidate</Button>} />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
 
-        <FileDropZone
-          accept={copy.accept}
-          hint={copy.hint}
-          file={file}
-          onFileChange={(next) => {
-            setFile(next)
-            setStatus("idle")
-            setErrorMessage(null)
-          }}
-        />
+        {method === "resume" ? (
+          <>
+            <FileDropZone
+              multiple
+              accept={RESUME_ACCEPT}
+              hint="PDF, DOC, or DOCX — drop multiple to add them all"
+              onFilesSelected={handleFilesSelected}
+            />
 
-        {status === "uploading" && (
-          <div className="space-y-1.5">
-            <Progress value={progress} />
-            <p className="text-xs text-muted-foreground">
-              Uploading… {progress}%
-            </p>
-          </div>
-        )}
-        {status === "notifying" && (
-          <div className="space-y-1.5">
-            <Progress value={null} />
-            <p className="text-xs text-muted-foreground">
-              Parsing resume and saving candidate…
-            </p>
-          </div>
-        )}
-        {status === "error" && errorMessage && (
-          <p className="text-sm text-destructive">{errorMessage}</p>
+            {resumeFiles.length > 0 && (
+              <ul className="grid h-64 auto-rows-[5rem] grid-cols-3 gap-2 overflow-y-auto">
+                {resumeFiles.map((file, index) => (
+                  <li
+                    key={`${file.name}-${file.lastModified}-${index}`}
+                    className="relative flex flex-col justify-center gap-1 rounded-lg border border-border p-2"
+                  >
+                    <button
+                      type="button"
+                      aria-label="Remove file"
+                      onClick={() => removeResumeFile(index)}
+                      className="absolute top-1 right-1 shrink-0 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                    <FileText className="size-5 shrink-0 text-brand-purple-600" />
+                    <p className="truncate pr-4 text-xs font-medium">{file.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {(file.size / 1024).toFixed(0)} KB
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <FileDropZone
+            accept=".csv"
+            hint="CSV, one candidate per row"
+            file={csvFile}
+            onFileChange={setCsvFile}
+          />
         )}
 
         <Button
-          disabled={!file || busy}
+          disabled={method === "resume" ? resumeFiles.length === 0 : !csvFile}
           onClick={
             method === "resume"
               ? handleResumeContinue
               : () => toast.info("Not wired up yet — parsing is coming soon.")
           }
         >
-          {status === "uploading"
-            ? "Uploading…"
-            : status === "notifying"
-              ? "Parsing…"
-              : "Continue"}
+          Continue
         </Button>
 
         <div className="flex items-center gap-3">
@@ -221,9 +165,8 @@ export function AddCandidateDialog() {
           {method === "resume" ? (
             <Button
               variant="outline"
-              disabled={busy}
               onClick={() => {
-                setFile(null)
+                setResumeFiles([])
                 setMethod("csv")
               }}
             >
@@ -233,9 +176,8 @@ export function AddCandidateDialog() {
           ) : (
             <Button
               variant="outline"
-              disabled={busy}
               onClick={() => {
-                setFile(null)
+                setCsvFile(null)
                 setMethod("resume")
               }}
             >
@@ -245,14 +187,7 @@ export function AddCandidateDialog() {
           <Link
             href="/candidates/new"
             className={buttonVariants({ variant: "outline" })}
-            aria-disabled={busy}
-            onClick={(e) => {
-              if (busy) {
-                e.preventDefault()
-                return
-              }
-              handleOpenChange(false)
-            }}
+            onClick={() => handleOpenChange(false)}
           >
             <ClipboardList className="size-4" />
             Manual form

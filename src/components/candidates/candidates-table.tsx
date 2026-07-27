@@ -59,7 +59,7 @@ function DataLink({ href, children }: { href: string; children: React.ReactNode 
       href={href}
       target={href.startsWith("http") ? "_blank" : undefined}
       rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
-      className="block truncate text-brand-purple-600 hover:underline"
+      className="block truncate hover:text-brand-purple-600"
     >
       {children}
     </a>
