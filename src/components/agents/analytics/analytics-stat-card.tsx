@@ -5,33 +5,43 @@ import type { AnalyticsStat } from "@/lib/mock-agent-analytics"
  * Plain display by default. Pass `onClick` to make it an active/inactive
  * selector instead (e.g. System Health, where picking a card swaps the
  * trend chart below it) — `active` then controls the selected styling.
+ *
+ * `comparisonLabel` captions the delta with what it's measured against (e.g.
+ * "vs. previous 30 days") — it should track whatever date range the page's
+ * filter bar has selected, not a hardcoded window.
  */
 export function AnalyticsStatCard({
   label,
   value,
   delta,
+  comparisonLabel,
   onClick,
   active,
-}: AnalyticsStat & { onClick?: () => void; active?: boolean }) {
+}: AnalyticsStat & { comparisonLabel?: string; onClick?: () => void; active?: boolean }) {
   const isGood = delta ? delta.direction === delta.goodDirection : null
   const clickable = !!onClick
 
   const content = (
     <>
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <div className="flex items-center gap-2">
-        <p className="text-3xl font-medium tracking-tight text-foreground">{value}</p>
-        {delta && (
-          <span
-            className={cn(
-              "text-sm font-medium",
-              isGood
-                ? "text-emerald-700 dark:text-emerald-400"
-                : "text-brand-orange-700 dark:text-brand-orange-400"
-            )}
-          >
-            {delta.text}
-          </span>
+      <div>
+        <div className="flex items-center gap-2">
+          <p className="text-3xl font-medium tracking-tight text-foreground">{value}</p>
+          {delta && (
+            <span
+              className={cn(
+                "text-sm font-medium",
+                isGood
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : "text-brand-orange-700 dark:text-brand-orange-400"
+              )}
+            >
+              {delta.text}
+            </span>
+          )}
+        </div>
+        {delta && comparisonLabel && (
+          <p className="mt-1 text-xs text-muted-foreground">{comparisonLabel}</p>
         )}
       </div>
     </>

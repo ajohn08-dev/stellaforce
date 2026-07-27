@@ -13,7 +13,7 @@ import {
   type SystemHealthMetricKey,
 } from "@/lib/mock-agent-analytics"
 
-export function SystemHealthPanel() {
+export function SystemHealthPanel({ comparisonLabel }: { comparisonLabel: string }) {
   const [selectedKey, setSelectedKey] = React.useState<SystemHealthMetricKey>(
     SYSTEM_HEALTH_STATS[0].key
   )
@@ -30,6 +30,7 @@ export function SystemHealthPanel() {
           <AnalyticsStatCard
             key={key}
             {...stat}
+            comparisonLabel={comparisonLabel}
             active={key === selectedKey}
             onClick={() => setSelectedKey(key)}
           />
