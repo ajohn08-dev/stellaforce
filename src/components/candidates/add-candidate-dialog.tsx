@@ -24,11 +24,10 @@ import {
   validateResumeFile,
 } from "@/lib/resume-upload"
 import { notifyResumeUploaded } from "@/app/(app)/candidates/actions"
-import { pollIngestionJob } from "@/lib/ingest/poll-ingestion-job"
 import { RESUME_ACCEPT } from "@/lib/constants"
 
 type Method = "resume" | "csv"
-type Status = "idle" | "uploading" | "notifying" | "saving" | "error"
+type Status = "idle" | "uploading" | "notifying" | "error"
 
 const COPY: Record<
   Method,
@@ -66,7 +65,7 @@ export function AddCandidateDialog() {
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null)
   const abortRef = React.useRef<(() => void) | null>(null)
 
-  const busy = status === "uploading" || status === "notifying" || status === "saving"
+  const busy = status === "uploading" || status === "notifying"
 
   function resetState() {
     setMethod("resume")
@@ -134,7 +133,7 @@ export function AddCandidateDialog() {
     }
 
     setStatus("notifying")
-    const toastId = toast.loading("Resume is being parsed…")
+    const toastId = toast.loading("Parsing resume and saving candidate…")
     const notifyResult = await notifyResumeUploaded(storagePath, file.name)
     if (!notifyResult.ok) {
       setStatus("error")
@@ -143,22 +142,11 @@ export function AddCandidateDialog() {
       return
     }
 
-    // n8n has finished extracting + parsing at this point and handed the
-    // result off to POST /api/candidates/ingest — the actual Supabase write
-    // happens there, server-to-server, so poll ingestion_jobs for it to land.
-    setStatus("saving")
-    toast.loading("Resume parsed, now updating database", { id: toastId })
-
-    const outcome = await pollIngestionJob(storagePath)
-    if (outcome.kind === "failed") {
-      setStatus("error")
-      setErrorMessage(outcome.error ?? "Something went wrong while saving the candidate.")
-      toast.error(outcome.error ?? "Something went wrong while saving the candidate.", { id: toastId })
-      return
-    }
-
+    // notifyResumeUploaded runs the full ingestion in-process (n8n replies
+    // synchronously with the parsed data, then we write it to Supabase before
+    // returning) — by the time it resolves, persistence is already done.
     toast.success(
-      outcome.kind === "needs_review"
+      notifyResult.status === "needs_review"
         ? "Candidate added — flagged for review."
         : "Success. Candidate Added",
       { id: toastId }
@@ -200,15 +188,7 @@ export function AddCandidateDialog() {
           <div className="space-y-1.5">
             <Progress value={null} />
             <p className="text-xs text-muted-foreground">
-              Parsing resume…
-            </p>
-          </div>
-        )}
-        {status === "saving" && (
-          <div className="space-y-1.5">
-            <Progress value={null} />
-            <p className="text-xs text-muted-foreground">
-              Resume parsed, now updating database…
+              Parsing resume and saving candidate…
             </p>
           </div>
         )}
@@ -228,9 +208,7 @@ export function AddCandidateDialog() {
             ? "Uploading…"
             : status === "notifying"
               ? "Parsing…"
-              : status === "saving"
-                ? "Saving…"
-                : "Continue"}
+              : "Continue"}
         </Button>
 
         <div className="flex items-center gap-3">

@@ -12,6 +12,8 @@ import {
 import { parseCandidateText, type ParsedCandidate } from "@/lib/ai/parse"
 import { getCurrentProfile } from "@/lib/auth"
 import { serverEnv } from "@/lib/env"
+import { RawIngestPayloadSchema } from "@/lib/ingest/schema"
+import { processIngestionItem } from "@/lib/server/candidate-ingest"
 import type { CandidateTier } from "@/lib/supabase/types"
 
 /**
@@ -255,7 +257,12 @@ export async function createCandidateFromParsed(
 }
 
 export type NotifyResumeResult =
-  | { ok: true; candidateName: string | null }
+  | {
+      ok: true
+      candidateName: string | null
+      status: "completed" | "needs_review"
+      needsReviewReasons: string[]
+    }
   | { ok: false; error: string }
 
 // ── Workflow 2 (resume upload variant): hand an uploaded resume off to n8n
@@ -264,15 +271,13 @@ export type NotifyResumeResult =
 // workflow where to find it. `user_id` is resolved server-side from the
 // session rather than trusted from the client.
 //
-// The n8n workflow is synchronous: it doesn't respond until parsing has
-// finished and the candidate + resume rows are written to Supabase, so a
-// resolved fetch here means the write already happened — there's no
-// separate polling/realtime step. The exact response body shape isn't
-// pinned down yet, so we read a `success`/`candidate_name` field
-// best-effort and fall back to response.ok / a generic message if absent.
-// On `success: false`, an optional `candidate_id` field lets n8n report a
-// row it already inserted before discovering the parse was incomplete —
-// see the cleanup delete below.
+// n8n's workflow is a single synchronous round-trip: it extracts text, calls
+// the LLM, and replies to THIS request with the fully parsed payload via a
+// "Respond to Webhook" node — it never calls back into this app separately.
+// So persistence happens right here, in-process, using the same
+// processIngestionItem() the (currently-unused-by-n8n) POST
+// /api/candidates/ingest route handler calls — one implementation, two
+// possible entry points.
 //
 // Of the three "add a candidate" entry points (resume drag-and-drop, CSV
 // upload, manual form), this n8n webhook is called ONLY by resume
@@ -290,6 +295,7 @@ export async function notifyResumeUploaded(
     return { ok: false, error: "You must be signed in to upload a resume." }
   }
 
+  let rawBody: string
   try {
     const response = await fetch(serverEnv.n8nWebhookUrl, {
       method: "POST",
@@ -303,61 +309,13 @@ export async function notifyResumeUploaded(
         filename,
       }),
     })
-
-    const rawBody = await response.text()
-    let parsedBody: Record<string, unknown> | null = null
-    try {
-      parsedBody = rawBody ? JSON.parse(rawBody) : null
-    } catch {
-      // Not JSON — fall through and treat rawBody as plain text below.
-    }
-
-    const success =
-      typeof parsedBody?.success === "boolean" ? parsedBody.success : response.ok
-
-    if (!success) {
-      const message =
-        (typeof parsedBody?.error === "string" && parsedBody.error) ||
-        (typeof parsedBody?.message === "string" && parsedBody.message) ||
-        rawBody.slice(0, 200)
-
-      // n8n may have already inserted a `candidates` row before discovering
-      // the parse was incomplete (e.g. unreadable text, no extractable work
-      // history). If it reports that row's id, delete it now rather than
-      // leaving a bare, dataless candidate behind — cascades to any child
-      // rows (skills/tools/work history/resume) via FK ON DELETE CASCADE.
-      // n8n's response shape isn't pinned down, so don't rely solely on it
-      // reporting `candidate_id` — fall back to looking up the `resumes` row
-      // it wrote for this exact `storage_path` (it's namespaced per-upload,
-      // see the Storage note in CLAUDE.md, so this is an unambiguous match).
-      const supabase = await createClient()
-      const reportedCandidateId =
-        typeof parsedBody?.candidate_id === "string" ? parsedBody.candidate_id : null
-      let partialCandidateId = reportedCandidateId
-      if (!partialCandidateId) {
-        const { data: resumeRow } = await supabase
-          .from("resumes")
-          .select("candidate_id")
-          .eq("storage_path", storagePath)
-          .maybeSingle()
-        partialCandidateId = resumeRow?.candidate_id ?? null
-      }
-      if (partialCandidateId) {
-        await supabase.from("candidates").delete().eq("candidate_id", partialCandidateId)
-      }
-
+    rawBody = await response.text()
+    if (!response.ok) {
       return {
         ok: false,
-        error: `Resume parsing failed.${message ? ` ${message}` : ""}`,
+        error: `Resume parsing failed (n8n returned ${response.status}). ${rawBody.slice(0, 200)}`,
       }
     }
-
-    const candidateName =
-      (typeof parsedBody?.candidate_name === "string" && parsedBody.candidate_name) ||
-      (typeof parsedBody?.full_name === "string" && parsedBody.full_name) ||
-      null
-
-    return { ok: true, candidateName }
   } catch (err) {
     return {
       ok: false,
@@ -366,5 +324,42 @@ export async function notifyResumeUploaded(
           ? `Could not reach the resume parsing service: ${err.message}`
           : "Could not reach the resume parsing service.",
     }
+  }
+
+  let parsedJson: unknown
+  try {
+    parsedJson = rawBody ? JSON.parse(rawBody) : null
+  } catch {
+    return { ok: false, error: "n8n returned a non-JSON response." }
+  }
+
+  const payload = RawIngestPayloadSchema.safeParse(parsedJson)
+  if (!payload.success) {
+    return {
+      ok: false,
+      error: "n8n's response didn't match the expected parsed-resume shape.",
+    }
+  }
+  const item = payload.data[0]
+
+  const outcome = await processIngestionItem(item)
+  if (outcome.kind === "failed") {
+    return { ok: false, error: `Resume parsing failed. ${outcome.error}` }
+  }
+  if (outcome.kind === "already_processing") {
+    return { ok: false, error: "This resume is already being processed — try again shortly." }
+  }
+
+  const candidateName =
+    [item.output.candidate_profile.first_name, item.output.candidate_profile.last_name]
+      .filter(Boolean)
+      .join(" ") || null
+
+  revalidatePath("/candidates")
+  return {
+    ok: true,
+    candidateName,
+    status: outcome.kind,
+    needsReviewReasons: outcome.needsReviewReasons,
   }
 }

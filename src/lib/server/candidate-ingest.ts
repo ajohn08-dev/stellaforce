@@ -562,3 +562,123 @@ export async function ingestCandidateResume(
 
   return { candidateId, resumeId, status, needsReviewReasons: normalized.needsReviewReasons }
 }
+
+// ── Entry point: claim a job + run the orchestrator, from any caller ─────────
+//
+// Two call sites share this: `POST /api/candidates/ingest` (if n8n is later
+// wired to call back separately) and `notifyResumeUploaded` (the current
+// architecture — n8n replies synchronously to the original kickoff request,
+// so the Server Action itself runs ingestion in-process using the response
+// body it already has, rather than waiting for a second inbound call).
+
+type IngestionJobRow = Database["public"]["Tables"]["ingestion_jobs"]["Row"]
+
+export async function claimOrCreateIngestionJob(
+  supabase: AdminClient,
+  item: RawWebhookItem
+): Promise<{ job: IngestionJobRow; alreadyTerminal: boolean; alreadyInFlight: boolean }> {
+  const { storage_path, filename, user_id } = item.body
+
+  let job: IngestionJobRow | null = null
+  const { data: inserted, error: insertErr } = await supabase
+    .from("ingestion_jobs")
+    .insert({
+      storage_path,
+      filename,
+      user_id,
+      status: "received",
+      raw_payload: item as unknown as Database["public"]["Tables"]["ingestion_jobs"]["Insert"]["raw_payload"],
+      webhook_execution_mode: item.executionMode ?? null,
+    })
+    .select()
+    .single()
+
+  if (insertErr) {
+    // 23505 = unique_violation on storage_path — this exact file was already delivered before.
+    if (insertErr.code !== "23505") throw insertErr
+    const { data: existing, error: selectErr } = await supabase
+      .from("ingestion_jobs")
+      .select()
+      .eq("storage_path", storage_path)
+      .single()
+    if (selectErr || !existing) throw selectErr ?? new Error("ingestion_jobs row vanished mid-request")
+    job = existing
+  } else {
+    job = inserted
+  }
+
+  if (job.status === "completed" || job.status === "needs_review") {
+    return { job, alreadyTerminal: true, alreadyInFlight: false }
+  }
+
+  // Atomically claim it for processing — only one concurrent delivery wins.
+  const { data: claimed } = await supabase
+    .from("ingestion_jobs")
+    .update({
+      status: "processing",
+      // `received` (fresh row, attempt_count already defaults to 1) vs
+      // `failed` (this is a retry, so bump it).
+      attempt_count: job.status === "failed" ? job.attempt_count + 1 : job.attempt_count,
+    })
+    .eq("id", job.id)
+    .in("status", ["received", "failed"])
+    .select()
+    .maybeSingle()
+
+  if (!claimed) {
+    // Someone else (a concurrent retry) already claimed it, or it moved to
+    // completed between our read and write — re-read and report current state.
+    const { data: refreshed } = await supabase.from("ingestion_jobs").select().eq("id", job.id).single()
+    return {
+      job: refreshed ?? job,
+      alreadyTerminal: refreshed?.status === "completed" || refreshed?.status === "needs_review",
+      alreadyInFlight: true,
+    }
+  }
+
+  return { job: claimed, alreadyTerminal: false, alreadyInFlight: false }
+}
+
+export type ProcessIngestionOutcome =
+  | { kind: "completed" | "needs_review"; candidateId: string | null; resumeId: string | null; needsReviewReasons: string[] }
+  | { kind: "already_processing"; candidateId: string | null; resumeId: string | null }
+  | { kind: "failed"; error: string; stage: IngestStage | null }
+
+/** Claim (or reuse) the ingestion_jobs row for this item, then run the orchestrator. Never throws. */
+export async function processIngestionItem(item: RawWebhookItem): Promise<ProcessIngestionOutcome> {
+  const supabase = createAdminClient()
+  const storagePath = item.body.storage_path
+
+  const { job, alreadyTerminal, alreadyInFlight } = await claimOrCreateIngestionJob(supabase, item)
+
+  if (alreadyTerminal) {
+    return {
+      kind: job.status as "completed" | "needs_review",
+      candidateId: job.candidate_id,
+      resumeId: job.resume_id,
+      needsReviewReasons: job.needs_review_reasons ?? [],
+    }
+  }
+  if (alreadyInFlight) {
+    return { kind: "already_processing", candidateId: job.candidate_id, resumeId: job.resume_id }
+  }
+
+  try {
+    const result = await ingestCandidateResume(item, job.id)
+    return {
+      kind: result.status,
+      candidateId: result.candidateId,
+      resumeId: result.resumeId,
+      needsReviewReasons: result.needsReviewReasons,
+    }
+  } catch (err) {
+    const stage = err instanceof IngestStageError ? err.stage : null
+    const message = err instanceof Error ? err.message : "Unknown ingestion error"
+    await supabase
+      .from("ingestion_jobs")
+      .update({ status: "failed", stage, error_message: message })
+      .eq("storage_path", storagePath)
+    console.error(`[candidate-ingest] failed at stage=${stage ?? "unknown"} storage_path=${storagePath}:`, message)
+    return { kind: "failed", error: message, stage }
+  }
+}
