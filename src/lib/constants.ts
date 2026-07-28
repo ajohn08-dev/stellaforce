@@ -7,11 +7,20 @@ import type {
   CandidateTier,
   ClientStatus,
   DataProvenance,
+  DecisionMode,
+  HireRecommendation,
+  InterviewerType,
   JobStatus,
   NurtureStatus,
   PlacementStatus,
   ProficiencyLevel,
+  QuestionSource,
+  SchedulingPolicy,
+  SettingsScope,
   SkillType,
+  StageEntryCondition,
+  StageVisibility,
+  WorkflowTemplateStatus,
 } from "@/lib/supabase/types"
 
 export const CANDIDATE_TIERS: CandidateTier[] = ["gold", "silver", "bronze"]
@@ -59,6 +68,47 @@ export const NURTURE_STATUSES: NurtureStatus[] = [
   "active",
   "dormant",
   "re_engaging",
+]
+
+// ── Workflow-template / settings vocabularies (mirror of the wf_* enums) ──────
+export const STAGE_VISIBILITIES: StageVisibility[] = ["internal", "candidate_facing"]
+
+export const STAGE_ENTRY_CONDITIONS: StageEntryCondition[] = ["manual", "automatic"]
+
+export const INTERVIEWER_TYPES: InterviewerType[] = ["human", "ai", "external"]
+
+export const QUESTION_SOURCES: QuestionSource[] = [
+  "manual",
+  "structured",
+  "ai_assisted",
+]
+
+export const DECISION_MODES: DecisionMode[] = ["single_rater", "multi_rater"]
+
+/** Final-offer-stage decision scale (screen/interview stages reuse RATING_SCALES). */
+export const HIRE_RECOMMENDATIONS: HireRecommendation[] = [
+  "strong_hire",
+  "hire",
+  "no_hire",
+  "strong_no_hire",
+]
+
+export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
+  "recruiter_led",
+  "candidate_self_scheduling",
+  "system_auto_schedule",
+]
+
+export const WORKFLOW_TEMPLATE_STATUSES: WorkflowTemplateStatus[] = [
+  "draft",
+  "published",
+]
+
+export const SETTINGS_SCOPES: SettingsScope[] = [
+  "global",
+  "client",
+  "workflow",
+  "job",
 ]
 
 /**

@@ -5,6 +5,10 @@ truth** for schema, vocabularies, workflows, and conventions. Keep it in sync wi
 `supabase/migrations/` and `src/lib/supabase/types.ts` — if they disagree, this
 file wins and the others must be corrected.
 
+**Companion references:** [DB_Schema.md](DB_Schema.md) — every table, column,
+enum, function, trigger, index, and RLS policy. [n8n.md](n8n.md) — the register
+of n8n workflows (triggers, dependent app functions, runtime-DB consequences).
+
 ## Stack
 - **Next.js (App Router) + TypeScript**, `src/` dir, `@/*` alias
 - **Tailwind CSS v4 + shadcn/ui** (base-nova style, built on `@base-ui/react`)
@@ -41,270 +45,42 @@ file wins and the others must be corrected.
 
 ---
 
-## Frozen schema (V3.2)
+## Data model
 
-UUID PKs via `gen_random_uuid()`. Every table has `created_at` (and
-`updated_at` where rows mutate post-insert). All enums are Postgres enum
-types. snake_case throughout. V3.2 is a substantial normalization over the
-original scaffold: candidates gained real work-history/education/cert/link
-child tables, skills/tools became global lookups, and jobs gained a full
-evaluation-criteria → scorecard → workflow model with a two-tier pipeline
-(fixed Tier-1 stages + variable per-job Tier-2 sub-stages).
+Postgres + pgvector on Supabase. UUID PKs (`gen_random_uuid()`), `created_at`
+everywhere, `updated_at` (trigger-maintained) where rows mutate, snake_case,
+Postgres enums for every controlled vocabulary. **44 tables.**
 
-### Enums (controlled vocabularies)
-- `candidate_tier`: **gold | silver | bronze**
-- `data_provenance`: **ai_parsed | recruiter_confirmed | enriched**
-- `skill_type`: **technical | functional | behavioral** (was hard|soft)
-- `proficiency_level`: **beginner | intermediate | advanced | expert** (candidate_skills/candidate_tools; was novice..expert)
-- `fit_proficiency_level`: **aware | proficient | expert** (job_competencies.recommended_level, achieved_proficiency — a distinct scale from proficiency_level)
-- `confidence_level`: **low | medium | high** (scorecard + fit confidence fields)
-- `client_status`: **active | paused | churned**
-- `client_plan`: **basic | standard | premium** — gates feature access and usage
-  caps for a client's account; enforced app-side (Server Actions check
-  `clients.plan` before allowing plan-gated actions), not via RLS
-- `job_status`: **draft | open | paused | filled | closed** (was open|on_hold|filled|closed)
-- `competency_type`: **technical | behavioral | hybrid | leadership**
-- `pipeline_stage`: **source | screen | interview | offer | close** (fixed Tier-1 canonical stages, never vary — used for cross-job audit/rollup)
-- `stage_format`: **phone | video | onsite | async**
-- `rating_scale`: **star | ten-point | hundred-point**
-- `employment_type`: **full-time | part-time | contract | freelance | internship**
-- `workplace_type`: **on-site | hybrid | remote**
-- `application_status`: **active | hired | rejected | withdrawn | on_hold** (replaces the old `application_stage` enum — stage progression now lives in `applications.current_stage_id`)
-- `eval_status`: **pending | completed**
-- `placement_status`: **active | completed | fell_through**
-- `interaction_type`: **call | email | interview | note**
-- `nurture_status`: **active | dormant | re_engaging**
-- `user_role`: **recruiter | manager | admin** (Stellaforce-side only)
-- `profile_side`: **stellaforce | client** — which side of the platform a profile belongs to
-- `client_role`: **member | admin | reviewer | recruiter** (client-side only)
-- `url` (domain, not enum): `text` CHECK `value ~* '^https?://.+'` — applied to newly-added URL columns only (existing `candidates.linkedin_url`/`portfolio_url` remain plain `text`)
+**Shape.** A two-tier pipeline (fixed Tier-1 `pipeline_stages` → variable
+per-job Tier-2 `job_workflow_sub_stages`) and a four-layer evaluation model —
+L1 job template (`job_competencies`, `job_scorecard_*`) → L2 raw evidence
+(`application_stage_evaluations`) → L3 computed per-application scorecard
+(`application_scorecard_*`) → L4 cross-job fit (`candidate_client_fit`).
+Candidates + skills/tools (global lookups) + child tables form the candidate
+domain; `applications` is the **sole** candidate↔job link
+(`unique(candidate_id, job_id)`), and every candidate added to a job becomes one.
 
-### Candidate domain
+**Workflow templates & settings** layer on top: reusable `workflow_templates` +
+`workflow_template_sub_stages` (Stellaforce-global or per-client) are
+**snapshotted** into a job's `job_workflow_sub_stages` at publish, freezing the
+job's pipeline so later template edits don't touch live jobs. Cross-cutting
+settings (`workflow_settings`, `sla_policies`, `automation_rules`,
+`communication_templates`) inherit via a **global → client → workflow → job**
+cascade (resolver: `src/lib/workflow-settings.ts`). `activity_events` is the
+unified append-only log + transactional outbox (realizes the V3 doc's
+`application_events` with wider scope), with `audit_log` + `ai_interactions` for
+governance / AI-activity. These template/settings/activity/AI/audit tables use
+**tenant-scoped RLS** (client users see only their own client's rows + globals),
+unlike the permissive `authenticated`-ALL policy on the core tables.
 
-**candidates** (core)
-`candidate_id` (uuid pk), `first_name`/`last_name` (not null), `full_name`
-(generated: `first_name || ' ' || last_name`), `headline`, `current_title`,
-`current_company`, `professional_summary`, `email` (unique), `phone`,
-`location_city`/`location_state`/`location_country`/`location_raw`,
-`timezone` (IANA, decoupled from location), `is_open_to_remote`,
-`is_open_to_relocation`, `languages` (text[]), `years_experience` (int, cached
-aggregate), `linkedin_url`, `portfolio_url`, `github_url`, `resume_path`,
-`avatar_url`, `source` (text), `source_metadata` (jsonb),
-`candidate_tier` (enum), `tier_rationale` (text),
-`data_provenance` (enum, default ai_parsed), `data_confidence_score`,
-`data_confidence_breakdown` (jsonb), `freshness_score`, `last_verified`,
-`last_scored_at`, `embedding_vector` (vector(1536)),
-`added_by` (uuid, fk → `profiles.id`, nullable — which recruiter/manager/admin
-added this candidate; app write paths should always set it),
-`date_added`, `last_updated` (legacy, kept alongside `created_at`/`updated_at`
-for existing app code), `created_at`, `updated_at`.
-_The old `contact_info`/`education`/`certifications` jsonb blobs are gone,
-replaced by the flat columns above plus the child tables below._
+> **Full reference — every table, column, enum, function, trigger, index, and
+> RLS policy — is in [DB_Schema.md](DB_Schema.md).** Keep it in sync with
+> `supabase/migrations/` and `src/lib/supabase/types.ts`; if they disagree, this
+> file (CLAUDE.md) wins and the others must be corrected.
 
-**candidate_work_experiences** — `candidate_id` (fk), `display_order` (0 =
-most recent, unique per candidate), `company_name`, `title` (not null),
-`employment_type` (enum), `location`, `is_remote`, `start_date` (not null),
-`end_date`, `is_current`, `description`, `source_resume_id` (fk →
-`resumes.id`, nullable — set when this row came from resume ingestion, null
-for manual/recruiter entry; lets a resume reprocess safely replace only the
-rows it produced, see Resume ingestion pipeline below).
-
-**candidate_education** — `candidate_id` (fk), `institution_name` (not null),
-`degree`, `field_of_study`, `start_date`, `end_date`, `is_current`, `gpa`,
-`description`, `source_resume_id` (fk → `resumes.id`, nullable — same
-purpose as above).
-
-**candidate_certifications** — `candidate_id` (fk), `name` (not null),
-`issuing_organization`, `issue_date`, `expiry_date`, `credential_id`,
-`credential_url` (url), `source_resume_id` (fk → `resumes.id`, nullable —
-same purpose as above).
-
-**candidate_links** — `candidate_id` (fk), `label`, `url` (not null),
-`link_type`. Unique(candidate_id, url) — lets ingestion upsert with
-`onConflict` instead of blind-inserting duplicates on retry.
-
-**skills** / **tools** (global lookups, shared across candidates)
-`id` (uuid pk), `name` (**case-insensitive unique**, via a `unique(lower(name))`
-index rather than a plain unique constraint — resume ingestion has no
-controlled vocabulary on the n8n/LLM side, so "Python" and "python" must
-resolve to the same row; app code matches case-insensitively too, see
-`findOrCreateLookupRows` in `src/lib/server/candidate-ingest.ts`),
-`skill_type` (enum, `skills` only), `category` (text). _Was per-candidate
-free-text `skill_name`; now a deduplicated, controlled lookup._
-
-**candidate_skills** / **candidate_tools** (junctions)
-`candidate_id` (fk), `skill_id`/`tool_id` (fk, restrict on delete),
-`proficiency_level` (enum), `years_of_experience` (int), and on
-`candidate_skills` only: `assessment_score` (numeric), `scorecard` (jsonb),
-`ai_literacy_signal` (jsonb: tool_used/how_used/measurable_outcome). Each
-unique(candidate_id, skill_id) / unique(candidate_id, tool_id) — same
-upsert-safety purpose as `candidate_links` above.
-
-### Client & job domain
-
-**clients**
-`client_id` (uuid pk), `client_name` (not null), `status` (enum), `plan`
-(enum, default `basic` — see Plans below), `notes` (text), `industry`
-(text), `website_url` (url).
-
-**Plans.** `clients.plan` (basic/standard/premium) is stored but **not yet
-enforced** — which features/usage caps each tier actually gates hasn't been
-specified. Once specified, enforcement is app-side (Server Actions check
-the acting profile's `client_id → clients.plan` before allowing a
-plan-gated action or exceeding a cap), not via RLS — mirrors the
-role/client_role split, another known, deferred follow-up pass (see
-Auth below for the client-scoped RLS gap).
-
-**job_orders**
-`job_id` (uuid pk), `client_id` (fk), `title` (not null), `status` (enum,
-default `draft`), `workplace_type` (enum), `office_location` (hidden when
-workplace_type=remote), `location` (general, from Add Job dialog),
-`description`, `description_file_path`, `requisition_file_path`, `company`,
-`industry`, `job_function`, `employment_type` (enum), `experience_required`,
-`education_required`, `salary_from`/`salary_to` (numeric), `salary_currency`
-(default USD). _`required_skills`/`salary_range` jsonb are gone — superseded
-by `job_competencies.skills[]` and the flat salary columns._
-
-**job_notes** — `job_id` (fk), `content`, `file_path`.
-
-**job_competencies** (Layer 1 — Evaluation Criteria)
-`job_id` (fk), `type` (competency_type), `description` (not null),
-`recommended_level` (fit_proficiency_level), `skills`/`tools` (text[] chip
-lists). Referenced by scorecard + workflow sub-stages — never invented
-elsewhere.
-
-**job_competency_level_descriptions** — `competency_id` (fk), `level`
-(fit_proficiency_level), `description` (not null). Unique(competency_id, level).
-
-**job_scorecard_categories** (Layer 1 — Scorecard)
-`job_id` (fk), `name`, `weight` (numeric %, must sum to 100 per job).
-
-**job_scorecard_category_competencies** (junction)
-`category_id` + `competency_id` (composite pk). Unique(competency_id) — a
-competency belongs to exactly one category.
-
-**job_team_members**
-`job_id` (fk), `profile_id` (fk → profiles, nullable — set once the person
-has a platform login), `name` (not null), `email` (not null), `role` (text:
-Hiring Manager | Interviewer | HR Manager | Approver — client-defined,
-distinct from `profiles.role`/`client_role`).
-
-**pipeline_stages** (Tier 1 — fixed canonical, seeded exactly 5 rows)
-`key` (pipeline_stage enum, unique), `name`, `description`, `display_order`,
-`color`, `sla_target_days`. Never varies per job; exists so every job's
-sub-stages roll up to a common set for cross-job audit.
-
-**job_workflow_sub_stages** ("Job stages" in the UI — Tier 2, variable per job)
-`job_id` (fk), `pipeline_stage_id` (fk → pipeline_stages, restrict — which
-fixed Tier-1 stage houses this sub-stage), `name` (not null), `purpose`,
-`duration_minutes`, `format` (stage_format), `questions`, `rating_scale`,
-`allowed_outcomes` (text[]: advance/hold/reject/remove),
-`needs_final_approval`, `display_order`, `config` (jsonb — flexible
-per-sub-stage expansion without further migrations).
-
-**job_workflow_sub_stage_details** — `sub_stage_id` (fk), `detail_type` (e.g.
-instruction/attachment/question_set/criterion), `label`, `content`,
-`file_path`, `metadata` (jsonb), `display_order`.
-
-**job_workflow_sub_stage_competencies** / **job_workflow_sub_stage_reviewers**
-(junctions) — link a sub-stage to the competencies it assesses and the
-`job_team_members` reviewing it.
-
-### Pipeline & evaluation
-
-**applications** (link layer: candidate ↔ job)
-`application_id` (uuid pk), `candidate_id` (fk), `job_id` (fk), `client_id`
-(fk, denormalized), `current_stage_id` (fk → job_workflow_sub_stages, set
-null — roll up via `pipeline_stage_id` for the canonical Tier-1 stage),
-`status` (application_status, default `active`), `job_fit_score` (numeric,
-role-relevance — distinct from candidate `data_confidence_score` and from
-`candidate_client_fit.fit_score`), `status_reason` (text), `human_review_flag`
-(bool, default false), `date_applied`, `date_updated`. Unique(candidate_id,
-job_id). _The old fixed `stage` enum column is gone, replaced by
-`current_stage_id` since workflow stages are now configurable per job._
-
-**application_stage_evaluations** (Layer 2 — raw evidence)
-One row per actual interview/meeting: `application_id` (fk), `sub_stage_id`
-(fk), `status` (eval_status), `interviewer_id` (fk → job_team_members),
-`interview_date`, `mode` (stage_format), `rubric_score`, `summary`.
-
-**application_stage_evaluation_notes** — `evaluation_id` (fk), `note` (not
-null), `display_order`.
-
-**application_scorecard_categories** / **application_scorecard_competencies**
-(Layer 3 — computed, system-generated per application by rolling up Layer 2
-evidence against the job's Layer 1 template — never data entered directly)
-Per application: `category_id`/`competency_id` (fk →
-job_scorecard_categories/job_competencies), `current_score`/`target_score`,
-`achieved_proficiency` (fit_proficiency_level), `confidence`, `summary`
-(AI-synthesized), `data_provenance`. Unique per (application, category) and
-per (category, competency).
-
-**application_scorecard_evidence** — `scorecard_competency_id` (fk),
-`evaluation_id` (fk → the specific Layer 2 meeting that produced this), `note`
-(cited excerpt, not null).
-
-**candidate_client_fit** (Layer 4 — redeployment, cross-job rollup)
-`id` (uuid pk), `candidate_id` (fk), `client_id` (fk), `fit_score` (numeric),
-`confidence` (enum), `rationale` (text), `data_provenance` (enum),
-`last_evaluated_at`. Unique(candidate_id, client_id). Aggregates across *all*
-of a candidate's applications with a client — not tied to one job.
-
-**candidate_client_fit_evidence** — `fit_id` (fk), `scorecard_competency_id`
-(fk → a real Layer 3 scored competency — never invented text at fit level),
-`weight` (numeric).
-
-**placements**
-`placement_id` (uuid pk), `candidate_id` (fk), `client_id` (fk), `job_id` (fk),
-`role_placed`, `salary` (numeric), `placement_date` (date), `guarantee_period`
-(text), `status` (enum).
-
-**interactions** (CRM log)
-`interaction_id` (uuid pk), `candidate_id` (fk), `type` (enum), `body` (text),
-`interaction_at` (timestamptz), `communication_preferences` (jsonb), `consent`
-(bool), `relationship_strength` (numeric), `nurture_status` (enum).
-
-### Auth
-
-**profiles** (auth — one row per `auth.users` row, auto-created by trigger)
-`id` (uuid pk, fk → `auth.users.id`), `email` (not null), `full_name`,
-`avatar_url`, `role` (enum, Stellaforce-side only — now **nullable**, null
-when side=client), `side` (enum, default `stellaforce`), `client_id` (fk →
-`clients.client_id`, nullable — set for client-side profiles only),
-`client_role` (enum, nullable — set for client-side profiles only),
-`created_at`, `updated_at`. A check constraint enforces exactly one branch:
-`side='stellaforce' AND role IS NOT NULL AND client_role IS NULL AND client_id
-IS NULL`, or `side='client' AND role IS NULL AND client_role IS NOT NULL AND
-client_id IS NOT NULL`. No public sign-up: users are created manually in the
-Supabase dashboard (Auth → Users, Auto Confirm on); `handle_new_user()`
-inserts the matching profile row defaulted to the Stellaforce side with
-`role = 'recruiter'` (the least-privileged role — required so the insert
-satisfies `chk_profiles_side_consistency`, which needs `role IS NOT NULL`
-for `side='stellaforce'`); elevate to `manager`/`admin`, or reassign to
-`side`/`client_id`/`client_role` (client-side, when onboarding a new
-client), by hand via SQL afterward. All of this is
-stored but **not yet enforced** — every authenticated user, Stellaforce or
-client-side, has full CRUD via the existing permissive RLS policies.
-Role-based and client-scoped restriction is a known, deferred follow-up pass.
-
-### Indexes
-FK indexes on every fk column across all tables above; filter indexes on
-`candidates.candidate_tier`, `job_orders.status`; **ivfflat** on
-`candidates.embedding_vector` (`vector_cosine_ops`, lists=100).
-
-### Skill taxonomy note
-`skills.name` is now a global, deduplicated lookup (was free-text
-`skill_name` per candidate row). Starter list lives in `SKILL_TAXONOMY`
-(`src/lib/constants.ts`) and steers AI parsing / seeds the lookup; the
-taxonomy is now enforced at the DB level via `skills`/`tools` rather than by
-convention alone.
-
-### ⚠️ App code is out of sync with this schema
-This migration changed table/column shapes that `src/lib/data.ts`,
-`src/app/(app)/candidates/actions.ts`, `src/lib/ai/parse.ts`, and every
-candidate/job component still reference under the old shape (`contact_info`
-jsonb, `skill_name`, `current_title`, `applications.stage`, etc.). Updating
-the application layer to match V3.2 is a separate, not-yet-started pass.
+**⚠️ Legacy app-code drift.** Some candidate/job components still reference
+pre-V3.2 shapes (`contact_info` jsonb, `skill_name`, `applications.stage`);
+migrating the full app layer to V3.2 is an ongoing pass.
 
 ---
 
@@ -379,28 +155,28 @@ Left sidebar (`src/components/app-sidebar.tsx`) + top header
 4. **Refer/update loop** — applications, interactions, candidate_client_fit (TODO)
 
 ## Migrations
-SQL lives in `supabase/migrations/` (0001 extensions+enums → 0002 tables →
-0003 indexes → 0004 RLS → 0005 auth roles → 0006 candidates.added_by →
-0007 client profiles → V3.2 migrations: new enums, skills/tools
-restructure, candidates normalization, clients/job_orders/applications
-alterations, Layer 1-4 job/eval/scorecard/fit tables, candidate child
-tables, profiles two-sided identity, indexes + RLS for all new tables →
-resumes storage bucket/table → `20260727120000_ingestion_pipeline.sql`
-(`ingestion_jobs` table, `resumes.storage_path`/`candidate_links`/
-`candidate_skills`/`candidate_tools` unique constraints, `source_resume_id`
-on the three resume-sourced child tables, `resumes.parse_status` gains
-`needs_review`) → `20260727130000_skills_tools_case_insensitive.sql`
-(collapses existing case-variant duplicate skills/tools rows, replaces
-their plain `unique(name)` with `unique(lower(name))`)).
-Applied directly via the Supabase MCP (`apply_migration`); pull the schema
-history with the Supabase CLI (`supabase db pull`) to sync local migration
-files if needed. RLS is minimal: authenticated users read/write all core
-tables (including the V3.2 additions) via a permissive `ALL` policy per
-table — **except `profiles`**, which only has a `SELECT`-for-authenticated
-policy; profile rows are written exclusively by the `handle_new_user()`
-security-definer trigger, never by an authenticated user's own request.
-Anonymous users get nothing (PII not public); the service-role key bypasses
-RLS for privileged operations (seeding, backfills).
+SQL lives in `supabase/migrations/`, applied directly via the Supabase MCP
+(`apply_migration`); `supabase db pull` syncs local files. History: `0001`–`0007`
+(extensions/enums, tables, indexes, RLS, auth roles, `candidates.added_by`,
+client profiles) → the **V3.2** set (new enums, skills/tools restructure,
+candidate normalization + child tables, Layer 1–4 job/eval/scorecard/fit tables,
+two-sided profiles, indexes/RLS) → resumes bucket/table →
+`20260727120000_ingestion_pipeline` (`ingestion_jobs`, idempotency uniques,
+`source_resume_id`) → `20260727130000_skills_tools_case_insensitive` → the
+**workflow-templates feature**: `20260728100000_wf_enums`, `_100100_wf_templates`
+(templates + sub-stages, promoted columns on `job_workflow_sub_stages`,
+`job_orders.workflow_template_id`/`_version`), `_100200_wf_settings` (settings
+cascade + seeded globals), `_100300_wf_activity_runtime` (`activity_events`,
+`application_stage_history`, `audit_log`, `ai_interactions`,
+`applications.owner_profile_id`), `_100500_wf_tenant_rls` (`current_profile_*`
+helpers + tenant-scoped RLS + denormalized `client_id` on settings tables).
+
+**RLS.** Permissive `authenticated`-ALL on core tables; **tenant-scoped** on the
+workflow-template / settings / activity / AI / audit tables (client users see
+only their own client's rows + globals); `profiles` is SELECT-only (rows written
+by the `handle_new_user()` trigger). Anonymous: no access; the service-role key
+bypasses RLS for privileged work (seeding, n8n ingestion). Full table / enum /
+function / trigger / index / RLS reference: **[DB_Schema.md](DB_Schema.md)**.
 
 ## Auth
 Supabase Auth, email/password only, no public sign-up — Stellaforce-side
@@ -410,8 +186,11 @@ convention) + `src/lib/supabase/middleware.ts` refresh the session and
 redirect signed-out requests to `/login`. `src/lib/auth.ts`
 (`getCurrentProfile`) resolves the signed-in user's `profiles` row
 server-side; `src/app/login/` holds the login page and the `login`/`logout`
-Server Actions. See the **profiles** table above for role provisioning
-(Stellaforce-side) and client onboarding (client-side).
+Server Actions. See the **profiles** table in
+[DB_Schema.md](DB_Schema.md#auth) for role provisioning (Stellaforce-side) and
+client onboarding (client-side); no public sign-up — users are created manually
+in the Supabase dashboard and the `handle_new_user()` trigger inserts the
+matching profile row (defaulted Stellaforce/recruiter, elevated by hand).
 
 ## Storage
 Supabase Storage bucket **`resumes`** (private, `public = false`) holds
@@ -426,42 +205,18 @@ client-side profiles have no access at all. (There is no per-object
 doesn't fit a candidate-keyed path, since any Stellaforce user may need to
 replace a candidate's resume regardless of who originally uploaded it.)
 
-**resumes** (candidate resume history — Postgres table, metadata only)
-`id` (uuid pk), `candidate_id` (fk → `candidates.candidate_id`, cascade
-delete), `storage_path` (not null, **unique** — the Storage object path
-described above; the unique constraint is what makes resume ingestion
-idempotent, see below), `filename` (not null, original upload name),
-`file_size` (bigint, nullable), `mime_type` (nullable), `parsed_data` (jsonb,
-nullable — structured output from the n8n resume-parsing webhook),
-`parse_status` (text, default `pending`, check `pending | parsed | failed |
-needs_review` — a plain check constraint rather than a Postgres enum, unlike
-every other status field in this schema), `parse_error` (text, nullable —
-set when `parse_status = failed`), `is_current` (bool, default true — a
-partial unique index enforces at most one current resume per candidate),
-`version` (int, default 1), `superseded_at` (timestamptz, nullable — set
-when a newer upload replaces this one as current), `created_at`/`updated_at`.
-RLS: permissive `ALL` for any authenticated user, matching every other V3.2
-table (access control for the actual file bytes lives at the Storage layer
-above, not here). The `candidates.resume_path` column predates this table and
-is superseded by it — not yet removed, not yet wired up app-side (see Build
-order).
+The **`resumes`** metadata/history table (columns in
+[DB_Schema.md](DB_Schema.md#storage--resume-ingestion)) is keyed by a unique
+`storage_path` (the ingestion idempotency key), with `is_current` (partial
+unique — one current resume per candidate) and `parse_status`
+(`pending|parsed|failed|needs_review`). `candidates.resume_path` predates it and
+is superseded (not yet removed).
 
 ### Resume ingestion pipeline
 
-**ingestion_jobs** — one row per resume-ingestion webhook delivery from n8n,
-keyed by `storage_path` (unique — the idempotency key: retried/duplicate
-deliveries for the same uploaded file are a no-op rather than a duplicate
-candidate). `id` (uuid pk), `storage_path` (not null, unique), `filename`
-(not null), `user_id` (fk → `profiles.id`, nullable — the uploader),
-`status` (text check `received | processing | completed | failed |
-needs_review`), `stage` (text, nullable — the last write step reached, e.g.
-`upsert_skills`, so a failure's exact location is always logged), `error_message`
-(text, nullable), `needs_review_reasons` (text[], nullable), `candidate_id` /
-`resume_id` (fk, nullable — set once resolved), `attempt_count` (int, default
-1), `webhook_execution_mode` (text, nullable — n8n's `executionMode`),
-`raw_payload` (jsonb, not null — the full validated webhook item, kept for
-audit/replay), `created_at`/`updated_at`. RLS: permissive `ALL` for any
-authenticated user, matching every other V3.2 table.
+**ingestion_jobs** (columns in [DB_Schema.md](DB_Schema.md#storage--resume-ingestion))
+records one row per n8n resume webhook delivery, keyed by `storage_path` (unique
+idempotency key), with `status`/`stage`/`attempt_count` for failure tracing.
 
 `POST /api/candidates/ingest` (`src/app/api/candidates/ingest/route.ts`) is
 the receiving end: bearer-auth'd with `N8N_WEBHOOK_SECRET`, validates the
@@ -473,8 +228,9 @@ column instead of failing the whole ingestion), then calls
 sequence of individually-idempotent steps (candidate upsert by
 email-then-linkedin_url identity → resume upsert by `storage_path` →
 links upsert via `unique(candidate_id, url)` → tools/skills resolved
-case-insensitively via `findOrCreateLookupRows` (see **skills**/**tools**
-above) then linked via `unique(candidate_id, skill_id|tool_id)` → work
+case-insensitively via `findOrCreateLookupRows` (the `skills`/`tools`
+case-insensitive lookups — see [DB_Schema.md](DB_Schema.md)) then linked via
+`unique(candidate_id, skill_id|tool_id)` → work
 experience/education/certifications replaced by `source_resume_id`, never
 touching recruiter-entered rows) using the service-role admin client, since
 this is a privileged write with no acting recruiter session. Uses the admin
@@ -482,3 +238,12 @@ client rather than Postgres RPC/transaction: every step is independently
 safe to retry (upsert-on-conflict or delete-scoped-by-source_resume_id), so a
 crash mid-sequence converges to the same end state on redelivery without
 needing true multi-statement atomicity.
+
+## n8n integration
+Resume ingestion is one of several n8n workflows. n8n handles **external
+side-effects** (calendar, email, STT, enrichment) and **scheduled SLA/timer
+crons**; pure state transitions stay in Server Actions. Event-driven workflows
+drain the `activity_events` outbox (`dispatched_at IS NULL`); system events set
+`actor_type='system'` + `system_source='n8n:<workflow>'`. The full register of
+every workflow we have/need — triggers, the app functions that depend on each,
+and their runtime-DB consequences (Jobs + related) — is in **[n8n.md](n8n.md)**.

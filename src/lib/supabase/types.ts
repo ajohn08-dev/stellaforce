@@ -14,6 +14,193 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_events: {
+        Row: {
+          actor_profile_id: string | null
+          actor_type: Database["public"]["Enums"]["actor_type"]
+          application_id: string | null
+          candidate_id: string | null
+          client_id: string | null
+          created_at: string
+          dispatched_at: string | null
+          event_type: Database["public"]["Enums"]["activity_event_type"]
+          id: string
+          idempotency_key: string | null
+          job_id: string | null
+          payload: Json
+          reverses_event_id: string | null
+          severity: Database["public"]["Enums"]["event_severity"]
+          sub_stage_id: string | null
+          system_source: string | null
+        }
+        Insert: {
+          actor_profile_id?: string | null
+          actor_type?: Database["public"]["Enums"]["actor_type"]
+          application_id?: string | null
+          candidate_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          dispatched_at?: string | null
+          event_type: Database["public"]["Enums"]["activity_event_type"]
+          id?: string
+          idempotency_key?: string | null
+          job_id?: string | null
+          payload?: Json
+          reverses_event_id?: string | null
+          severity?: Database["public"]["Enums"]["event_severity"]
+          sub_stage_id?: string | null
+          system_source?: string | null
+        }
+        Update: {
+          actor_profile_id?: string | null
+          actor_type?: Database["public"]["Enums"]["actor_type"]
+          application_id?: string | null
+          candidate_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          dispatched_at?: string | null
+          event_type?: Database["public"]["Enums"]["activity_event_type"]
+          id?: string
+          idempotency_key?: string | null
+          job_id?: string | null
+          payload?: Json
+          reverses_event_id?: string | null
+          severity?: Database["public"]["Enums"]["event_severity"]
+          sub_stage_id?: string | null
+          system_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_events_actor_profile_id_fkey"
+            columns: ["actor_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_events_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["application_id"]
+          },
+          {
+            foreignKeyName: "activity_events_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "activity_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "activity_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "activity_events_reverses_event_id_fkey"
+            columns: ["reverses_event_id"]
+            isOneToOne: false
+            referencedRelation: "activity_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_events_sub_stage_id_fkey"
+            columns: ["sub_stage_id"]
+            isOneToOne: false
+            referencedRelation: "job_workflow_sub_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_interactions: {
+        Row: {
+          application_id: string | null
+          candidate_id: string | null
+          capability: string
+          client_id: string | null
+          confidence: number | null
+          created_at: string
+          id: string
+          input_ref: Json
+          latency_ms: number | null
+          model: string | null
+          output_ref: Json
+          prompt_version: string | null
+          sub_stage_id: string | null
+          tokens: number | null
+        }
+        Insert: {
+          application_id?: string | null
+          candidate_id?: string | null
+          capability: string
+          client_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          input_ref?: Json
+          latency_ms?: number | null
+          model?: string | null
+          output_ref?: Json
+          prompt_version?: string | null
+          sub_stage_id?: string | null
+          tokens?: number | null
+        }
+        Update: {
+          application_id?: string | null
+          candidate_id?: string | null
+          capability?: string
+          client_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          input_ref?: Json
+          latency_ms?: number | null
+          model?: string | null
+          output_ref?: Json
+          prompt_version?: string | null
+          sub_stage_id?: string | null
+          tokens?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_interactions_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["application_id"]
+          },
+          {
+            foreignKeyName: "ai_interactions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "ai_interactions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "ai_interactions_sub_stage_id_fkey"
+            columns: ["sub_stage_id"]
+            isOneToOne: false
+            referencedRelation: "job_workflow_sub_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_scorecard_categories: {
         Row: {
           application_id: string
@@ -230,6 +417,64 @@ export type Database = {
           },
         ]
       }
+      application_stage_history: {
+        Row: {
+          application_id: string
+          created_at: string
+          decided_by: string | null
+          entered_at: string
+          exited_at: string | null
+          id: string
+          outcome: string | null
+          sla_breached: boolean
+          sub_stage_id: string
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          decided_by?: string | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: string
+          outcome?: string | null
+          sla_breached?: boolean
+          sub_stage_id: string
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          decided_by?: string | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: string
+          outcome?: string | null
+          sla_breached?: boolean
+          sub_stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_stage_history_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["application_id"]
+          },
+          {
+            foreignKeyName: "application_stage_history_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "application_stage_history_sub_stage_id_fkey"
+            columns: ["sub_stage_id"]
+            isOneToOne: false
+            referencedRelation: "job_workflow_sub_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       applications: {
         Row: {
           application_id: string
@@ -242,6 +487,7 @@ export type Database = {
           human_review_flag: boolean
           job_fit_score: number | null
           job_id: string
+          owner_profile_id: string | null
           status: Database["public"]["Enums"]["application_status"]
           status_reason: string | null
           updated_at: string
@@ -257,6 +503,7 @@ export type Database = {
           human_review_flag?: boolean
           job_fit_score?: number | null
           job_id: string
+          owner_profile_id?: string | null
           status?: Database["public"]["Enums"]["application_status"]
           status_reason?: string | null
           updated_at?: string
@@ -272,6 +519,7 @@ export type Database = {
           human_review_flag?: boolean
           job_fit_score?: number | null
           job_id?: string
+          owner_profile_id?: string | null
           status?: Database["public"]["Enums"]["application_status"]
           status_reason?: string | null
           updated_at?: string
@@ -304,6 +552,108 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "job_orders"
             referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "applications_owner_profile_id_fkey"
+            columns: ["owner_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_log: {
+        Row: {
+          action: string
+          actor_profile_id: string | null
+          client_id: string | null
+          created_at: string
+          diff: Json
+          entity_id: string | null
+          entity_type: string
+          id: string
+        }
+        Insert: {
+          action: string
+          actor_profile_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          diff?: Json
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor_profile_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          diff?: Json
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_actor_profile_id_fkey"
+            columns: ["actor_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
+      automation_rules: {
+        Row: {
+          actions: Json
+          client_id: string | null
+          conditions: Json
+          created_at: string
+          enabled: boolean
+          id: string
+          scope: Database["public"]["Enums"]["settings_scope"]
+          scope_id: string | null
+          trigger_event_type: Database["public"]["Enums"]["activity_event_type"]
+          updated_at: string
+        }
+        Insert: {
+          actions?: Json
+          client_id?: string | null
+          conditions?: Json
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          scope: Database["public"]["Enums"]["settings_scope"]
+          scope_id?: string | null
+          trigger_event_type: Database["public"]["Enums"]["activity_event_type"]
+          updated_at?: string
+        }
+        Update: {
+          actions?: Json
+          client_id?: string | null
+          conditions?: Json
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          scope_id?: string | null
+          trigger_event_type?: Database["public"]["Enums"]["activity_event_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_rules_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
           },
         ]
       }
@@ -891,6 +1241,59 @@ export type Database = {
         }
         Relationships: []
       }
+      communication_templates: {
+        Row: {
+          body: string | null
+          channel: string
+          client_id: string | null
+          created_at: string
+          enabled: boolean
+          id: string
+          recipients: Json
+          scope: Database["public"]["Enums"]["settings_scope"]
+          scope_id: string | null
+          subject: string | null
+          trigger_event_type: Database["public"]["Enums"]["activity_event_type"]
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          channel?: string
+          client_id?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          recipients?: Json
+          scope: Database["public"]["Enums"]["settings_scope"]
+          scope_id?: string | null
+          subject?: string | null
+          trigger_event_type: Database["public"]["Enums"]["activity_event_type"]
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          channel?: string
+          client_id?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          recipients?: Json
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          scope_id?: string | null
+          subject?: string | null
+          trigger_event_type?: Database["public"]["Enums"]["activity_event_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communication_templates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
       ingestion_jobs: {
         Row: {
           attempt_count: number
@@ -1141,6 +1544,8 @@ export type Database = {
           status: Database["public"]["Enums"]["job_status"]
           title: string
           updated_at: string
+          workflow_template_id: string | null
+          workflow_template_version: number | null
           workplace_type: Database["public"]["Enums"]["workplace_type"] | null
         }
         Insert: {
@@ -1166,6 +1571,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_status"]
           title: string
           updated_at?: string
+          workflow_template_id?: string | null
+          workflow_template_version?: number | null
           workplace_type?: Database["public"]["Enums"]["workplace_type"] | null
         }
         Update: {
@@ -1191,6 +1598,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_status"]
           title?: string
           updated_at?: string
+          workflow_template_id?: string | null
+          workflow_template_version?: number | null
           workplace_type?: Database["public"]["Enums"]["workplace_type"] | null
         }
         Relationships: [
@@ -1200,6 +1609,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "job_orders_workflow_template_id_fkey"
+            columns: ["workflow_template_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_templates"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1414,51 +1830,97 @@ export type Database = {
       job_workflow_sub_stages: {
         Row: {
           allowed_outcomes: string[]
+          capture_feedback_form: boolean
+          capture_transcript: boolean
+          collaborator_role: string | null
           config: Json
           created_at: string
+          decision_mode: Database["public"]["Enums"]["decision_mode"]
+          decision_owner: string | null
           display_order: number
           duration_minutes: number | null
+          entry_conditions: Database["public"]["Enums"]["stage_entry_condition"][]
           format: Database["public"]["Enums"]["stage_format"] | null
+          hire_recommendation_enabled: boolean
           id: string
+          interviewer_type: Database["public"]["Enums"]["interviewer_type"]
           job_id: string
           name: string
           needs_final_approval: boolean
+          override_enabled: boolean
+          override_roles: string | null
+          owner_role: string | null
           pipeline_stage_id: string
           purpose: string | null
+          question_source: Database["public"]["Enums"]["question_source"] | null
           questions: string | null
           rating_scale: Database["public"]["Enums"]["rating_scale"] | null
+          required_questions: string | null
+          visibility: Database["public"]["Enums"]["stage_visibility"]
         }
         Insert: {
           allowed_outcomes?: string[]
+          capture_feedback_form?: boolean
+          capture_transcript?: boolean
+          collaborator_role?: string | null
           config?: Json
           created_at?: string
+          decision_mode?: Database["public"]["Enums"]["decision_mode"]
+          decision_owner?: string | null
           display_order?: number
           duration_minutes?: number | null
+          entry_conditions?: Database["public"]["Enums"]["stage_entry_condition"][]
           format?: Database["public"]["Enums"]["stage_format"] | null
+          hire_recommendation_enabled?: boolean
           id?: string
+          interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
           job_id: string
           name: string
           needs_final_approval?: boolean
+          override_enabled?: boolean
+          override_roles?: string | null
+          owner_role?: string | null
           pipeline_stage_id: string
           purpose?: string | null
+          question_source?:
+            | Database["public"]["Enums"]["question_source"]
+            | null
           questions?: string | null
           rating_scale?: Database["public"]["Enums"]["rating_scale"] | null
+          required_questions?: string | null
+          visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
         Update: {
           allowed_outcomes?: string[]
+          capture_feedback_form?: boolean
+          capture_transcript?: boolean
+          collaborator_role?: string | null
           config?: Json
           created_at?: string
+          decision_mode?: Database["public"]["Enums"]["decision_mode"]
+          decision_owner?: string | null
           display_order?: number
           duration_minutes?: number | null
+          entry_conditions?: Database["public"]["Enums"]["stage_entry_condition"][]
           format?: Database["public"]["Enums"]["stage_format"] | null
+          hire_recommendation_enabled?: boolean
           id?: string
+          interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
           job_id?: string
           name?: string
           needs_final_approval?: boolean
+          override_enabled?: boolean
+          override_roles?: string | null
+          owner_role?: string | null
           pipeline_stage_id?: string
           purpose?: string | null
+          question_source?:
+            | Database["public"]["Enums"]["question_source"]
+            | null
           questions?: string | null
           rating_scale?: Database["public"]["Enums"]["rating_scale"] | null
+          required_questions?: string | null
+          visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
         Relationships: [
           {
@@ -1701,6 +2163,53 @@ export type Database = {
         }
         Relationships: []
       }
+      sla_policies: {
+        Row: {
+          client_id: string | null
+          config: Json
+          created_at: string
+          enabled: boolean
+          id: string
+          scope: Database["public"]["Enums"]["settings_scope"]
+          scope_id: string | null
+          sla_type: string
+          threshold_hours: number | null
+          updated_at: string
+        }
+        Insert: {
+          client_id?: string | null
+          config?: Json
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          scope: Database["public"]["Enums"]["settings_scope"]
+          scope_id?: string | null
+          sla_type: string
+          threshold_hours?: number | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string | null
+          config?: Json
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          scope_id?: string | null
+          sla_type?: string
+          threshold_hours?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sla_policies_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
       tools: {
         Row: {
           category: string | null
@@ -1722,14 +2231,266 @@ export type Database = {
         }
         Relationships: []
       }
+      workflow_settings: {
+        Row: {
+          category: string
+          client_id: string | null
+          config: Json
+          created_at: string
+          id: string
+          scope: Database["public"]["Enums"]["settings_scope"]
+          scope_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          client_id?: string | null
+          config?: Json
+          created_at?: string
+          id?: string
+          scope: Database["public"]["Enums"]["settings_scope"]
+          scope_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          client_id?: string | null
+          config?: Json
+          created_at?: string
+          id?: string
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          scope_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_settings_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
+      workflow_template_sub_stages: {
+        Row: {
+          allowed_outcomes: string[]
+          capture_feedback_form: boolean
+          capture_transcript: boolean
+          collaborator_role: string | null
+          config: Json
+          created_at: string
+          decision_mode: Database["public"]["Enums"]["decision_mode"]
+          decision_owner: string | null
+          display_order: number
+          duration_minutes: number | null
+          entry_conditions: Database["public"]["Enums"]["stage_entry_condition"][]
+          format: Database["public"]["Enums"]["stage_format"] | null
+          hire_recommendation_enabled: boolean
+          id: string
+          interviewer_type: Database["public"]["Enums"]["interviewer_type"]
+          name: string
+          needs_final_approval: boolean
+          override_enabled: boolean
+          override_roles: string | null
+          owner_role: string | null
+          pipeline_stage_id: string
+          purpose: string | null
+          question_source: Database["public"]["Enums"]["question_source"] | null
+          rating_scale: Database["public"]["Enums"]["rating_scale"] | null
+          required_questions: string | null
+          template_id: string
+          visibility: Database["public"]["Enums"]["stage_visibility"]
+        }
+        Insert: {
+          allowed_outcomes?: string[]
+          capture_feedback_form?: boolean
+          capture_transcript?: boolean
+          collaborator_role?: string | null
+          config?: Json
+          created_at?: string
+          decision_mode?: Database["public"]["Enums"]["decision_mode"]
+          decision_owner?: string | null
+          display_order?: number
+          duration_minutes?: number | null
+          entry_conditions?: Database["public"]["Enums"]["stage_entry_condition"][]
+          format?: Database["public"]["Enums"]["stage_format"] | null
+          hire_recommendation_enabled?: boolean
+          id?: string
+          interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
+          name: string
+          needs_final_approval?: boolean
+          override_enabled?: boolean
+          override_roles?: string | null
+          owner_role?: string | null
+          pipeline_stage_id: string
+          purpose?: string | null
+          question_source?:
+            | Database["public"]["Enums"]["question_source"]
+            | null
+          rating_scale?: Database["public"]["Enums"]["rating_scale"] | null
+          required_questions?: string | null
+          template_id: string
+          visibility?: Database["public"]["Enums"]["stage_visibility"]
+        }
+        Update: {
+          allowed_outcomes?: string[]
+          capture_feedback_form?: boolean
+          capture_transcript?: boolean
+          collaborator_role?: string | null
+          config?: Json
+          created_at?: string
+          decision_mode?: Database["public"]["Enums"]["decision_mode"]
+          decision_owner?: string | null
+          display_order?: number
+          duration_minutes?: number | null
+          entry_conditions?: Database["public"]["Enums"]["stage_entry_condition"][]
+          format?: Database["public"]["Enums"]["stage_format"] | null
+          hire_recommendation_enabled?: boolean
+          id?: string
+          interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
+          name?: string
+          needs_final_approval?: boolean
+          override_enabled?: boolean
+          override_roles?: string | null
+          owner_role?: string | null
+          pipeline_stage_id?: string
+          purpose?: string | null
+          question_source?:
+            | Database["public"]["Enums"]["question_source"]
+            | null
+          rating_scale?: Database["public"]["Enums"]["rating_scale"] | null
+          required_questions?: string | null
+          template_id?: string
+          visibility?: Database["public"]["Enums"]["stage_visibility"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_template_sub_stages_pipeline_stage_id_fkey"
+            columns: ["pipeline_stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_template_sub_stages_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_templates: {
+        Row: {
+          client_id: string | null
+          config: Json
+          created_at: string
+          created_by: string | null
+          department: string | null
+          description: string | null
+          hiring_type: Database["public"]["Enums"]["employment_type"] | null
+          id: string
+          name: string
+          status: Database["public"]["Enums"]["workflow_template_status"]
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          client_id?: string | null
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          department?: string | null
+          description?: string | null
+          hiring_type?: Database["public"]["Enums"]["employment_type"] | null
+          id?: string
+          name: string
+          status?: Database["public"]["Enums"]["workflow_template_status"]
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          client_id?: string | null
+          config?: Json
+          created_at?: string
+          created_by?: string | null
+          department?: string | null
+          description?: string | null
+          hiring_type?: Database["public"]["Enums"]["employment_type"] | null
+          id?: string
+          name?: string
+          status?: Database["public"]["Enums"]["workflow_template_status"]
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_templates_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "workflow_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      current_profile_client_id: { Args: never; Returns: string }
+      current_profile_side: {
+        Args: never
+        Returns: Database["public"]["Enums"]["profile_side"]
+      }
     }
     Enums: {
+      activity_event_type:
+        | "application_created"
+        | "candidate_added_to_stage"
+        | "candidate_data_updated"
+        | "candidate_leaves_stage"
+        | "candidate_withdraws"
+        | "candidate_fast_tracked"
+        | "candidate_reassigned"
+        | "note_added"
+        | "interview_scheduled"
+        | "interview_rescheduled"
+        | "interview_reminder_sent"
+        | "interview_completed"
+        | "scorecard_link_sent"
+        | "transcript_submitted"
+        | "interview_canceled"
+        | "interview_no_show_candidate"
+        | "interview_no_show_interviewer"
+        | "interview_feedback_submitted"
+        | "all_required_evaluations_completed"
+        | "evaluation_overdue"
+        | "stage_sla_breached"
+        | "candidate_advanced"
+        | "candidate_rejected"
+        | "offer_decision"
+        | "offer_created"
+        | "offer_accepted"
+        | "offer_declined"
+        | "offer_expired"
+        | "offer_rescinded"
+        | "application_closed"
+        | "application_reopened"
+        | "candidate_created"
+        | "resume_ingested"
+        | "job_created"
+        | "job_published"
+        | "job_workflow_snapshotted"
+      actor_type: "user" | "system" | "candidate"
       application_status:
         | "active"
         | "hired"
@@ -1743,6 +2504,7 @@ export type Database = {
       competency_type: "technical" | "behavioral" | "hybrid" | "leadership"
       confidence_level: "low" | "medium" | "high"
       data_provenance: "ai_parsed" | "recruiter_confirmed" | "enriched"
+      decision_mode: "single_rater" | "multi_rater"
       employment_type:
         | "full-time"
         | "part-time"
@@ -1750,18 +2512,30 @@ export type Database = {
         | "freelance"
         | "internship"
       eval_status: "pending" | "completed"
+      event_severity: "info" | "action_needed" | "alert"
       fit_proficiency_level: "aware" | "proficient" | "expert"
+      hire_recommendation: "strong_hire" | "hire" | "no_hire" | "strong_no_hire"
       interaction_type: "call" | "email" | "interview" | "note"
+      interviewer_type: "human" | "ai" | "external"
       job_status: "draft" | "open" | "paused" | "filled" | "closed"
       nurture_status: "active" | "dormant" | "re_engaging"
       pipeline_stage: "source" | "screen" | "interview" | "offer" | "close"
       placement_status: "active" | "completed" | "fell_through"
       proficiency_level: "beginner" | "intermediate" | "advanced" | "expert"
       profile_side: "stellaforce" | "client"
+      question_source: "manual" | "structured" | "ai_assisted"
       rating_scale: "star" | "ten-point" | "hundred-point"
+      scheduling_policy:
+        | "recruiter_led"
+        | "candidate_self_scheduling"
+        | "system_auto_schedule"
+      settings_scope: "global" | "client" | "workflow" | "job"
       skill_type: "technical" | "functional" | "behavioral"
+      stage_entry_condition: "manual" | "automatic"
       stage_format: "phone" | "video" | "onsite" | "async"
+      stage_visibility: "internal" | "candidate_facing"
       user_role: "recruiter" | "manager" | "admin"
+      workflow_template_status: "draft" | "published"
       workplace_type: "on-site" | "hybrid" | "remote"
     }
     CompositeTypes: {
@@ -1890,6 +2664,45 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      activity_event_type: [
+        "application_created",
+        "candidate_added_to_stage",
+        "candidate_data_updated",
+        "candidate_leaves_stage",
+        "candidate_withdraws",
+        "candidate_fast_tracked",
+        "candidate_reassigned",
+        "note_added",
+        "interview_scheduled",
+        "interview_rescheduled",
+        "interview_reminder_sent",
+        "interview_completed",
+        "scorecard_link_sent",
+        "transcript_submitted",
+        "interview_canceled",
+        "interview_no_show_candidate",
+        "interview_no_show_interviewer",
+        "interview_feedback_submitted",
+        "all_required_evaluations_completed",
+        "evaluation_overdue",
+        "stage_sla_breached",
+        "candidate_advanced",
+        "candidate_rejected",
+        "offer_decision",
+        "offer_created",
+        "offer_accepted",
+        "offer_declined",
+        "offer_expired",
+        "offer_rescinded",
+        "application_closed",
+        "application_reopened",
+        "candidate_created",
+        "resume_ingested",
+        "job_created",
+        "job_published",
+        "job_workflow_snapshotted",
+      ],
+      actor_type: ["user", "system", "candidate"],
       application_status: [
         "active",
         "hired",
@@ -1904,6 +2717,7 @@ export const Constants = {
       competency_type: ["technical", "behavioral", "hybrid", "leadership"],
       confidence_level: ["low", "medium", "high"],
       data_provenance: ["ai_parsed", "recruiter_confirmed", "enriched"],
+      decision_mode: ["single_rater", "multi_rater"],
       employment_type: [
         "full-time",
         "part-time",
@@ -1912,18 +2726,31 @@ export const Constants = {
         "internship",
       ],
       eval_status: ["pending", "completed"],
+      event_severity: ["info", "action_needed", "alert"],
       fit_proficiency_level: ["aware", "proficient", "expert"],
+      hire_recommendation: ["strong_hire", "hire", "no_hire", "strong_no_hire"],
       interaction_type: ["call", "email", "interview", "note"],
+      interviewer_type: ["human", "ai", "external"],
       job_status: ["draft", "open", "paused", "filled", "closed"],
       nurture_status: ["active", "dormant", "re_engaging"],
       pipeline_stage: ["source", "screen", "interview", "offer", "close"],
       placement_status: ["active", "completed", "fell_through"],
       proficiency_level: ["beginner", "intermediate", "advanced", "expert"],
       profile_side: ["stellaforce", "client"],
+      question_source: ["manual", "structured", "ai_assisted"],
       rating_scale: ["star", "ten-point", "hundred-point"],
+      scheduling_policy: [
+        "recruiter_led",
+        "candidate_self_scheduling",
+        "system_auto_schedule",
+      ],
+      settings_scope: ["global", "client", "workflow", "job"],
       skill_type: ["technical", "functional", "behavioral"],
+      stage_entry_condition: ["manual", "automatic"],
       stage_format: ["phone", "video", "onsite", "async"],
+      stage_visibility: ["internal", "candidate_facing"],
       user_role: ["recruiter", "manager", "admin"],
+      workflow_template_status: ["draft", "published"],
       workplace_type: ["on-site", "hybrid", "remote"],
     },
   },
@@ -2023,3 +2850,31 @@ export type IngestionJobRow = SchemaTables["ingestion_jobs"]["Row"]
 export type IngestionJobInsert = SchemaTables["ingestion_jobs"]["Insert"]
 export type IngestionJobStatus = "received" | "processing" | "completed" | "failed" | "needs_review"
 export type ResumeParseStatus = "pending" | "parsed" | "failed" | "needs_review"
+
+// ── Workflow templates / settings / activity (workflow-templates feature) ────
+export type StageVisibility = SchemaEnums["stage_visibility"]
+export type StageEntryCondition = SchemaEnums["stage_entry_condition"]
+export type InterviewerType = SchemaEnums["interviewer_type"]
+export type QuestionSource = SchemaEnums["question_source"]
+export type DecisionMode = SchemaEnums["decision_mode"]
+export type HireRecommendation = SchemaEnums["hire_recommendation"]
+export type SchedulingPolicy = SchemaEnums["scheduling_policy"]
+export type WorkflowTemplateStatus = SchemaEnums["workflow_template_status"]
+export type SettingsScope = SchemaEnums["settings_scope"]
+export type ActorType = SchemaEnums["actor_type"]
+export type EventSeverity = SchemaEnums["event_severity"]
+export type ActivityEventType = SchemaEnums["activity_event_type"]
+
+export type WorkflowTemplateRow = SchemaTables["workflow_templates"]["Row"]
+export type WorkflowTemplateInsert = SchemaTables["workflow_templates"]["Insert"]
+export type WorkflowTemplateSubStageRow = SchemaTables["workflow_template_sub_stages"]["Row"]
+export type WorkflowTemplateSubStageInsert = SchemaTables["workflow_template_sub_stages"]["Insert"]
+export type WorkflowSettingRow = SchemaTables["workflow_settings"]["Row"]
+export type SlaPolicyRow = SchemaTables["sla_policies"]["Row"]
+export type AutomationRuleRow = SchemaTables["automation_rules"]["Row"]
+export type CommunicationTemplateRow = SchemaTables["communication_templates"]["Row"]
+export type ActivityEventRow = SchemaTables["activity_events"]["Row"]
+export type ActivityEventInsert = SchemaTables["activity_events"]["Insert"]
+export type ApplicationStageHistoryRow = SchemaTables["application_stage_history"]["Row"]
+export type AuditLogRow = SchemaTables["audit_log"]["Row"]
+export type AiInteractionRow = SchemaTables["ai_interactions"]["Row"]

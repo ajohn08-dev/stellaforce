@@ -3,6 +3,7 @@ import "server-only"
 import { createClient } from "@/lib/supabase/server"
 import { isSupabaseConfigured } from "@/lib/env"
 import type {
+  ActivityEventRow,
   ApplicationRow,
   CandidateCertificationRow,
   CandidateEducationRow,
@@ -12,7 +13,11 @@ import type {
   CandidateWorkExperienceRow,
   ClientRow,
   JobOrderRow,
+  JobWorkflowSubStageRow,
+  PipelineStageRow,
   ProfileRow,
+  WorkflowTemplateRow,
+  WorkflowTemplateSubStageRow,
 } from "@/lib/supabase/types"
 
 /** A candidate list row decorated with its current role + primary education —
@@ -311,4 +316,111 @@ export async function getJobOrder(id: string): Promise<
       candidate: CandidateRow | null
     })[],
   }
+}
+
+// ── Workflow templates ───────────────────────────────────────────────────────
+
+/** Templates visible to a client: Stellaforce-global (client_id null) + the
+ * client's own. Pass clientId = null for a Stellaforce-side user (sees all —
+ * RLS already scopes reads, this just orders/labels). */
+export async function getWorkflowTemplates(
+  opts: { clientId?: string | null } = {}
+): Promise<(WorkflowTemplateRow & { client: ClientRow | null })[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  let query = supabase
+    .from("workflow_templates")
+    .select("*, client:clients(*)")
+    .order("updated_at", { ascending: false })
+  if (opts.clientId) query = query.or(`client_id.is.null,client_id.eq.${opts.clientId}`)
+  const { data } = await query
+  return (data ?? []) as (WorkflowTemplateRow & { client: ClientRow | null })[]
+}
+
+export type WorkflowTemplateSubStageWithStage = WorkflowTemplateSubStageRow & {
+  pipeline_stage: PipelineStageRow | null
+}
+
+export async function getWorkflowTemplate(id: string): Promise<
+  | (WorkflowTemplateRow & {
+      client: ClientRow | null
+      sub_stages: WorkflowTemplateSubStageWithStage[]
+    })
+  | null
+> {
+  if (!isSupabaseConfigured) return null
+  const supabase = await createClient()
+
+  const { data: template, error } = await supabase
+    .from("workflow_templates")
+    .select("*, client:clients(*)")
+    .eq("id", id)
+    .single()
+  if (error || !template) return null
+
+  const { data: subStages } = await supabase
+    .from("workflow_template_sub_stages")
+    .select("*, pipeline_stage:pipeline_stages(*)")
+    .eq("template_id", id)
+    .order("display_order", { ascending: true })
+
+  return {
+    ...(template as WorkflowTemplateRow & { client: ClientRow | null }),
+    sub_stages: (subStages ?? []) as WorkflowTemplateSubStageWithStage[],
+  }
+}
+
+// ── Pipeline board + activity timelines ──────────────────────────────────────
+
+/** A published job's snapshotted sub-stages + its applications, for the board. */
+export async function getJobPipeline(jobId: string): Promise<{
+  subStages: (JobWorkflowSubStageRow & { pipeline_stage: PipelineStageRow | null })[]
+  applications: (ApplicationRow & { candidate: CandidateRow | null })[]
+}> {
+  if (!isSupabaseConfigured) return { subStages: [], applications: [] }
+  const supabase = await createClient()
+  const [subRes, appRes] = await Promise.all([
+    supabase
+      .from("job_workflow_sub_stages")
+      .select("*, pipeline_stage:pipeline_stages(*)")
+      .eq("job_id", jobId)
+      .order("display_order", { ascending: true }),
+    supabase
+      .from("applications")
+      .select("*, candidate:candidates(*)")
+      .eq("job_id", jobId)
+      .order("date_applied", { ascending: false }),
+  ])
+  return {
+    subStages: (subRes.data ?? []) as (JobWorkflowSubStageRow & {
+      pipeline_stage: PipelineStageRow | null
+    })[],
+    applications: (appRes.data ?? []) as (ApplicationRow & {
+      candidate: CandidateRow | null
+    })[],
+  }
+}
+
+/** All activity for one candidate (across every application) — compliance/analytics timeline. */
+export async function getCandidateTimeline(candidateId: string): Promise<ActivityEventRow[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("activity_events")
+    .select("*")
+    .eq("candidate_id", candidateId)
+    .order("created_at", { ascending: false })
+  return data ?? []
+}
+
+/** All activity for one job — compliance/analytics timeline. */
+export async function getJobActivity(jobId: string): Promise<ActivityEventRow[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("activity_events")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: false })
+  return data ?? []
 }
