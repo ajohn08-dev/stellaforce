@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 
-/** Wraps the candidate profile in a wide left-side panel, closing back to the candidates list. */
+/** Wraps the candidate profile in a wide right-side panel, closing back to the candidates list. */
 export function CandidateProfileSheet({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(true)
@@ -26,7 +26,7 @@ export function CandidateProfileSheet({ children }: { children: React.ReactNode 
     >
       <SheetContent
         container={container}
-        side="left"
+        side="right"
         className="max-w-4xl gap-0 bg-white p-0"
       >
         <div
