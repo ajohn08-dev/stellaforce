@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   type Column,
   type ColumnDef,
@@ -286,6 +287,7 @@ const columns: ColumnDef<CandidateListItem>[] = [
 const PAGE_SIZE = 25
 
 export function CandidatesTable({ data }: { data: CandidateListItem[] }) {
+  const router = useRouter()
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [pagination, setPagination] = React.useState<PaginationState>({
@@ -349,7 +351,19 @@ export function CandidatesTable({ data }: { data: CandidateListItem[] }) {
         <TableBody>
           {table.getRowModel().rows.length ? (
             table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id} className="group hover:bg-muted">
+              <TableRow
+                key={row.id}
+                className="group cursor-pointer hover:bg-muted"
+                onClick={(e) => {
+                  // Row click previews the candidate — but not when the
+                  // click lands on an interactive control nested in the row
+                  // (checkbox, name link, shortlist/preview/full-view
+                  // actions), which each already have their own behavior.
+                  const target = e.target as HTMLElement
+                  if (target.closest("a, button, [role='checkbox'], input")) return
+                  router.push(`/candidates/${row.original.candidate_id}`)
+                }}
+              >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
                     key={cell.id}
