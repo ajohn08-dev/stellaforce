@@ -19,7 +19,6 @@ import {
 import type { Competency } from "@/components/jobs/draft/steps/competency-data"
 import type { Member } from "@/components/jobs/draft/steps/team-member-data"
 import {
-  MOCK_WORKFLOWS,
   SCALE_OPTIONS,
   type MockWorkflow,
   type SubStageScale,
@@ -221,16 +220,21 @@ function blankStage(id: string, name: string): WorkflowStage {
 export function WorkflowStep({
   competencies,
   members,
+  templates,
+  selectedTemplateId,
+  onSelectTemplate,
 }: {
   competencies: Competency[]
   members: Member[]
+  templates: { id: string; name: string; status: string }[]
+  selectedTemplateId?: string
+  onSelectTemplate: (id: string) => void
 }) {
-  const [selectedWorkflowId, setSelectedWorkflowId] = React.useState<string | undefined>(
-    undefined
-  )
-  const selectedWorkflow = MOCK_WORKFLOWS.find((w) => w.workflow_id === selectedWorkflowId)
+  // Real workflow_templates carry their sub-stages server-side; the scale
+  // preview here just falls back to empty (undefined workflow).
+  const selectedWorkflow: MockWorkflow | undefined = undefined
 
-  const [workflowName, setWorkflowName] = React.useState("A10 Workflow (Product)")
+  const [workflowName, setWorkflowName] = React.useState("Untitled Workflow")
   const [editingName, setEditingName] = React.useState(false)
   const [nameDraft, setNameDraft] = React.useState(workflowName)
 
@@ -246,14 +250,15 @@ export function WorkflowStep({
 
   const selectedStage = stages.find((s) => s.id === selectedStageId) ?? null
 
-  function selectWorkflowTemplate(workflowId: string | null) {
-    if (!workflowId) return
-    setSelectedWorkflowId(workflowId)
-    const workflow = MOCK_WORKFLOWS.find((w) => w.workflow_id === workflowId)
-    if (!workflow) return
-    setWorkflowName(workflow.name)
-    setNameDraft(workflow.name)
-    setStages(createInitialStages(competencies, members, workflow))
+  function selectWorkflowTemplate(templateId: string | null) {
+    if (!templateId) return
+    onSelectTemplate(templateId)
+    const t = templates.find((x) => x.id === templateId)
+    if (t) {
+      setWorkflowName(t.name)
+      setNameDraft(t.name)
+    }
+    setStages(createInitialStages(competencies, members, undefined))
     setSelectedStageId(STAGE_TEMPLATES[0].id)
   }
 
@@ -293,14 +298,20 @@ export function WorkflowStep({
   return (
     <div className="flex flex-col gap-4">
       <Field label="Workflow Template" className="max-w-xs">
-        <Select value={selectedWorkflowId} onValueChange={selectWorkflowTemplate}>
+        <Select value={selectedTemplateId} onValueChange={selectWorkflowTemplate}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Select a workflow template" />
           </SelectTrigger>
           <SelectContent>
-            {MOCK_WORKFLOWS.map((w) => (
-              <SelectItem key={w.workflow_id} value={w.workflow_id}>
-                {w.name}
+            {templates.length === 0 && (
+              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                No templates yet — create one in Workflows.
+              </div>
+            )}
+            {templates.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {t.name}
+                {t.status === "draft" ? " (draft)" : ""}
               </SelectItem>
             ))}
           </SelectContent>

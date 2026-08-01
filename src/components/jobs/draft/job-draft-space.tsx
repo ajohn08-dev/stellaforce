@@ -1,11 +1,15 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { StepProgressBar, type Step } from "@/components/jobs/draft/step-progress-bar"
-import { RoleDefinitionStep } from "@/components/jobs/draft/steps/role-definition-step"
+import {
+  RoleDefinitionStep,
+  type RoleInitialValues,
+} from "@/components/jobs/draft/steps/role-definition-step"
 import { EvaluationCriteriaStep } from "@/components/jobs/draft/steps/evaluation-criteria-step"
 import { ScoreCardStep } from "@/components/jobs/draft/steps/score-card-step"
 import { TeamMembersStep } from "@/components/jobs/draft/steps/team-members-step"
@@ -13,7 +17,10 @@ import { WorkflowStep } from "@/components/jobs/draft/steps/workflow-step"
 import { INITIAL_COMPETENCIES } from "@/components/jobs/draft/steps/competency-data"
 import { INITIAL_MEMBERS, type Member } from "@/components/jobs/draft/steps/team-member-data"
 import { useSidebarDefaultCollapsed } from "@/lib/sidebar-context"
+import { publishJob } from "@/app/(app)/jobs/actions"
 import type { MockJob } from "@/lib/mock-jobs"
+
+export type WorkflowTemplateOption = { id: string; name: string; status: string }
 
 const STEPS: Step[] = [
   {
@@ -51,13 +58,40 @@ const STEPS: Step[] = [
  * still in "draft" status. Step content is a placeholder for now; each
  * step's actual fields will be defined later.
  */
-export function JobDraftSpace({ job }: { job: MockJob }) {
+export function JobDraftSpace({
+  job,
+  templates,
+  roleInitial,
+}: {
+  job: MockJob
+  templates: WorkflowTemplateOption[]
+  roleInitial?: RoleInitialValues
+}) {
+  const router = useRouter()
   const [stepIndex, setStepIndex] = React.useState(0)
   const [competencies, setCompetencies] = React.useState(INITIAL_COMPETENCIES)
   const [members, setMembers] = React.useState<Member[]>(INITIAL_MEMBERS)
+  const [templateId, setTemplateId] = React.useState<string | undefined>(undefined)
+  const [publishing, setPublishing] = React.useState(false)
   const isLastStep = stepIndex === STEPS.length - 1
 
   useSidebarDefaultCollapsed(true)
+
+  async function handlePublish() {
+    if (!templateId) {
+      toast.error("Select a workflow template on the Workflow step before publishing.")
+      return
+    }
+    setPublishing(true)
+    const res = await publishJob(job.job_id, { workflow_template_id: templateId })
+    setPublishing(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    toast.success("Job published — you can now add candidates.")
+    router.refresh()
+  }
 
   return (
     <div
@@ -88,17 +122,16 @@ export function JobDraftSpace({ job }: { job: MockJob }) {
                 Back
               </Button>
               <Button
+                disabled={publishing}
                 onClick={() => {
                   if (isLastStep) {
-                    toast.info(
-                      "Not wired up yet — publishing this job is coming soon."
-                    )
+                    handlePublish()
                   } else {
                     setStepIndex((i) => Math.min(STEPS.length - 1, i + 1))
                   }
                 }}
               >
-                {isLastStep ? "Publish job" : "Next"}
+                {isLastStep ? (publishing ? "Publishing…" : "Publish job") : "Next"}
               </Button>
             </div>
 
@@ -112,7 +145,7 @@ export function JobDraftSpace({ job }: { job: MockJob }) {
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {STEPS[stepIndex].key === "role-definition" ? (
-              <RoleDefinitionStep />
+              <RoleDefinitionStep initial={roleInitial} />
             ) : STEPS[stepIndex].key === "evaluation-criteria" ? (
               <EvaluationCriteriaStep
                 competencies={competencies}
@@ -123,7 +156,13 @@ export function JobDraftSpace({ job }: { job: MockJob }) {
             ) : STEPS[stepIndex].key === "team-members" ? (
               <TeamMembersStep members={members} setMembers={setMembers} />
             ) : STEPS[stepIndex].key === "workflow" ? (
-              <WorkflowStep competencies={competencies} members={members} />
+              <WorkflowStep
+                competencies={competencies}
+                members={members}
+                templates={templates}
+                selectedTemplateId={templateId}
+                onSelectTemplate={setTemplateId}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
                 Setup for this step is coming soon.

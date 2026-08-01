@@ -57,6 +57,8 @@ type InterviewerType = "human" | "ai" | "external"
 type InteractionMode = "phone" | "video" | "in_person" | "async"
 type QuestionSource = "manual" | "structured" | "ai_assisted"
 type DecisionMode = "single_rater" | "multi_rater"
+/** How an External Tool stage is wired up — a direct link, or one of the pre-integrated services. */
+type ExternalToolMode = "url" | "integration"
 
 /** A Tier-2 sub-stage — variable per workflow, grouped under one of the fixed main stages above. */
 type SubStage = {
@@ -70,7 +72,11 @@ type SubStage = {
   /** Multi-select — a stage can be entered either manually or automatically, not exclusively one or the other. */
   entryConditions: EntryCondition[]
   interviewerType: InterviewerType
+  /** Only meaningful for interviewerType "human"/"ai" — see externalTool* fields for "external". */
   interactionMode: InteractionMode
+  externalToolMode: ExternalToolMode
+  externalToolUrl: string
+  externalToolIntegrationId: string | null
   questionSource: QuestionSource
   requiredQuestionsEnabled: boolean
   requiredQuestions: string
@@ -139,16 +145,43 @@ const INTERVIEWER_OPTIONS: { value: InterviewerType; label: string; description:
   },
 ]
 
-const INTERACTION_MODE_OPTIONS: { value: InteractionMode; label: string; description: string }[] = [
-  { value: "phone", label: "Phone Call", description: "The interaction happens over a phone call." },
-  { value: "video", label: "Video Interview", description: "The interaction happens over a video call." },
-  { value: "in_person", label: "In-Person", description: "The interaction happens face to face." },
+/**
+ * Interaction Mode options depend on who's running the stage — a human can
+ * do any of the four, an AI interviewer only makes sense over phone or a
+ * simulated video call, and an External Tool stage doesn't have an
+ * interaction mode at all (see EXTERNAL_TOOL_INTEGRATIONS instead).
+ */
+const INTERACTION_MODE_OPTIONS_BY_INTERVIEWER: Record<
+  "human" | "ai",
+  { value: InteractionMode; label: string; description: string }[]
+> = {
+  human: [
+    { value: "phone", label: "Phone Call", description: "The interaction happens over a phone call." },
+    { value: "video", label: "Video Interview", description: "The interaction happens over a video call." },
+    { value: "in_person", label: "In-Person", description: "The interaction happens face to face." },
+    {
+      value: "async",
+      label: "Async",
+      description: "The interaction happens asynchronously (take-home assignments or written responses).",
+    },
+  ],
+  ai: [
+    { value: "phone", label: "Phone Call", description: "An AI agent conducts the conversation over a phone call." },
+    { value: "video", label: "Video Simulation", description: "An AI agent conducts a simulated video interview." },
+  ],
+}
+
+const EXTERNAL_TOOL_MODE_OPTIONS: { value: ExternalToolMode; label: string; description: string }[] = [
+  { value: "url", label: "Add URL", description: "Link directly to the assessment or assignment platform." },
   {
-    value: "async",
-    label: "Async",
-    description: "The interaction happens asynchronously (take-home assignments or written responses).",
+    value: "integration",
+    label: "Integrated Service",
+    description: "Use one of the third-party services already connected to Stella Force.",
   },
 ]
+
+/** UI-preview list — no integrations table yet (see CLAUDE.md build order). */
+const EXTERNAL_TOOL_INTEGRATIONS = ["HackerRank", "Codility", "CodeSignal", "Karat", "Calendly"]
 
 const QUESTION_SOURCE_OPTIONS: { value: QuestionSource; label: string; description: string }[] = [
   {
@@ -194,6 +227,9 @@ function makeSubStage(
     entryConditions: ["manual"],
     interviewerType: "human",
     interactionMode: "phone",
+    externalToolMode: "url",
+    externalToolUrl: "",
+    externalToolIntegrationId: null,
     questionSource: "ai_assisted",
     requiredQuestionsEnabled: true,
     requiredQuestions: DEFAULT_REQUIRED_QUESTIONS,
@@ -231,8 +267,19 @@ function formatFromInteractionMode(mode: InteractionMode): "phone" | "video" | "
   return mode === "in_person" ? "onsite" : mode
 }
 
+/**
+ * External Tool stages have no interaction mode, so their setup (a direct
+ * URL, or a chosen third-party integration) rides in the sub-stage's
+ * flexible `config` jsonb instead of a dedicated column — same pattern
+ * CLAUDE.md documents for job_workflow_sub_stages.config.
+ */
+type ExternalToolConfig = {
+  external_tool?: { mode: ExternalToolMode; url?: string; integration?: string }
+}
+
 /** Hydrates a sub-stage from a real, persisted workflow_template_sub_stages row. */
 function subStageFromTemplateRow(row: WorkflowTemplateSubStageWithStage): SubStage {
+  const externalTool = (row.config as ExternalToolConfig | null)?.external_tool
   return {
     id: row.id,
     mainStage: (row.pipeline_stage?.key ?? "screen") as MainStageKey,
@@ -244,6 +291,9 @@ function subStageFromTemplateRow(row: WorkflowTemplateSubStageWithStage): SubSta
     entryConditions: row.entry_conditions.length ? row.entry_conditions : ["manual"],
     interviewerType: row.interviewer_type,
     interactionMode: interactionModeFromFormat(row.format),
+    externalToolMode: externalTool?.mode ?? "url",
+    externalToolUrl: externalTool?.url ?? "",
+    externalToolIntegrationId: externalTool?.integration ?? null,
     questionSource: row.question_source ?? "ai_assisted",
     requiredQuestionsEnabled: row.required_questions !== null,
     requiredQuestions: row.required_questions ?? DEFAULT_REQUIRED_QUESTIONS,
@@ -260,17 +310,28 @@ function subStageFromTemplateRow(row: WorkflowTemplateSubStageWithStage): SubSta
 
 /** Reverse of subStageFromTemplateRow, for saving back via saveTemplateSubStages. */
 function toTemplateSubStageInput(s: SubStage, displayOrder: number): TemplateSubStageInput {
+  const config: ExternalToolConfig =
+    s.interviewerType === "external"
+      ? {
+          external_tool:
+            s.externalToolMode === "integration"
+              ? { mode: "integration", integration: s.externalToolIntegrationId ?? undefined }
+              : { mode: "url", url: s.externalToolUrl },
+        }
+      : {}
   return {
     pipeline_stage_key: s.mainStage,
     name: s.name,
     purpose: s.purpose || null,
-    format: formatFromInteractionMode(s.interactionMode),
+    // No interaction mode for a third-party-run stage — its setup lives in config instead.
+    format: s.interviewerType === "external" ? null : formatFromInteractionMode(s.interactionMode),
     visibility: s.visibility,
     owner_role: s.owner || null,
     collaborator_role: s.collaborator || null,
     entry_conditions: s.entryConditions,
     interviewer_type: s.interviewerType,
     question_source: s.questionSource,
+    config,
     required_questions: s.requiredQuestionsEnabled ? s.requiredQuestions : null,
     capture_feedback_form: s.captureFeedbackForm,
     capture_transcript: s.captureTranscript,
@@ -681,19 +742,80 @@ function SubStageSettingsPanel({
               </div>
               <RadioCardGroup
                 value={subStage.interviewerType}
-                onValueChange={(value) => onChange((s) => ({ ...s, interviewerType: value }))}
+                onValueChange={(value) =>
+                  onChange((s) => {
+                    // Interaction Mode's allowed values depend on who's running the
+                    // stage — snap to the new type's default rather than leaving a
+                    // now-invalid mode selected (e.g. "In-Person" isn't offered to an
+                    // AI interviewer).
+                    if (value === "external") return { ...s, interviewerType: value }
+                    const allowed = INTERACTION_MODE_OPTIONS_BY_INTERVIEWER[value]
+                    return {
+                      ...s,
+                      interviewerType: value,
+                      interactionMode: allowed.some((o) => o.value === s.interactionMode)
+                        ? s.interactionMode
+                        : allowed[0].value,
+                    }
+                  })
+                }
                 options={INTERVIEWER_OPTIONS}
               />
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Label>Interaction Mode</Label>
-              <RadioCardGroup
-                value={subStage.interactionMode}
-                onValueChange={(value) => onChange((s) => ({ ...s, interactionMode: value }))}
-                options={INTERACTION_MODE_OPTIONS}
-              />
-            </div>
+            {subStage.interviewerType === "external" ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <Label>Assessment Source</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Link to the third-party platform running this stage.
+                  </p>
+                </div>
+                <RadioCardGroup
+                  value={subStage.externalToolMode}
+                  onValueChange={(value) =>
+                    onChange((s) => ({ ...s, externalToolMode: value }))
+                  }
+                  options={EXTERNAL_TOOL_MODE_OPTIONS}
+                />
+                {subStage.externalToolMode === "url" ? (
+                  <Input
+                    value={subStage.externalToolUrl}
+                    onChange={(e) =>
+                      onChange((s) => ({ ...s, externalToolUrl: e.target.value }))
+                    }
+                    placeholder="https://…"
+                  />
+                ) : (
+                  <Select
+                    value={subStage.externalToolIntegrationId ?? undefined}
+                    onValueChange={(value) =>
+                      value && onChange((s) => ({ ...s, externalToolIntegrationId: value }))
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choose a service" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EXTERNAL_TOOL_INTEGRATIONS.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Label>Interaction Mode</Label>
+                <RadioCardGroup
+                  value={subStage.interactionMode}
+                  onValueChange={(value) => onChange((s) => ({ ...s, interactionMode: value }))}
+                  options={INTERACTION_MODE_OPTIONS_BY_INTERVIEWER[subStage.interviewerType]}
+                />
+              </div>
+            )}
           </div>
         ) : activeSubNav === "Evaluation" ? (
           <div className="flex flex-col gap-6">

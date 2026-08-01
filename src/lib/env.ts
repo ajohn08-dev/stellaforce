@@ -45,6 +45,15 @@ export const serverEnv = {
   get n8nWebhookSecret() {
     return required("N8N_WEBHOOK_SECRET", process.env.N8N_WEBHOOK_SECRET)
   },
+  /** n8n "AI job intake" webhook — turns the Add-Job inputs into a structured
+   * role/competencies/scorecard draft. Overridable via env; defaults to the
+   * configured Stellaforce n8n instance. */
+  get n8nJobWebhookUrl() {
+    return (
+      process.env.N8N_JOB_WEBHOOK_URL ??
+      "https://ajzenarate.app.n8n.cloud/webhook/1ef95b54-f506-4007-a2c2-7d2af8ba9400"
+    )
+  },
 }
 
 /** True when the public Supabase config is present (used to guard demo UI). */
