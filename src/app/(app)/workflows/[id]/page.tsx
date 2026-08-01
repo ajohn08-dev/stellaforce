@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { SetWorkflowBreadcrumb } from "@/components/workflows/set-workflow-breadcrumb"
 import { WorkflowDetailHeader } from "@/components/workflows/workflow-detail-header"
 import { WorkflowDetailTabs } from "@/components/workflows/workflow-detail-tabs"
+import { WorkflowEditProvider } from "@/components/workflows/workflow-edit-provider"
 import { MOCK_WORKFLOWS, type MockWorkflow } from "@/lib/mock-workflows"
 import { getWorkflowTemplate } from "@/lib/data"
 
@@ -53,9 +54,11 @@ export default async function WorkflowDetailPage({
       className="flex flex-col overflow-hidden bg-white"
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
-      <SetWorkflowBreadcrumb name={workflow.name} status={workflow.status} />
-      <WorkflowDetailHeader />
-      <WorkflowDetailTabs workflow={workflow} />
+      <WorkflowEditProvider>
+        <SetWorkflowBreadcrumb name={workflow.name} status={workflow.status} />
+        <WorkflowDetailHeader />
+        <WorkflowDetailTabs workflow={workflow} />
+      </WorkflowEditProvider>
     </div>
   )
 }

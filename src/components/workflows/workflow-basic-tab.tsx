@@ -17,6 +17,9 @@ import {
   MOCK_WORKFLOW_DEPARTMENTS,
   type MockWorkflow,
 } from "@/lib/mock-workflows"
+import { updateWorkflowTemplate } from "@/app/(app)/workflows/actions"
+import { useWorkflowEditTab, type TabSaveResult } from "@/components/workflows/workflow-edit-provider"
+import type { EmploymentType } from "@/lib/supabase/types"
 
 const NO_CLIENT_VALUE = "__none__"
 
@@ -43,13 +46,47 @@ function Field({
   )
 }
 
-/** Fields are unwired placeholders, prefilled from the mock workflow — not yet saved anywhere. */
+/**
+ * Name/Description/Department/Hiring Type save via `updateWorkflowTemplate`
+ * (see the workflow-edit save/dirty wiring below). Client stays an unwired
+ * placeholder — `updateWorkflowTemplate` has no `client_id` field yet, and
+ * the dropdown's options are hardcoded mock company names
+ * (`MOCK_WORKFLOW_CLIENTS`), not real `clients.client_id` rows — so there's
+ * nowhere real for a change here to go yet.
+ */
 export function WorkflowBasicTab({ workflow }: { workflow: MockWorkflow }) {
   const [name, setName] = React.useState(workflow.name)
   const [description, setDescription] = React.useState(workflow.description)
   const [client, setClient] = React.useState(workflow.client_name ?? NO_CLIENT_VALUE)
   const [department, setDepartment] = React.useState(workflow.department)
   const [hiringType, setHiringType] = React.useState<string | undefined>(undefined)
+
+  const [baseline, setBaseline] = React.useState({
+    name: workflow.name,
+    description: workflow.description,
+    department: workflow.department,
+    hiringType: undefined as string | undefined,
+  })
+
+  const isDirty =
+    name !== baseline.name ||
+    description !== baseline.description ||
+    department !== baseline.department ||
+    hiringType !== baseline.hiringType
+
+  const save = React.useCallback(async (): Promise<TabSaveResult> => {
+    const res = await updateWorkflowTemplate(workflow.workflow_id, {
+      name: name.trim(),
+      description,
+      department,
+      hiring_type: (hiringType as EmploymentType | undefined) ?? null,
+    })
+    if (!res.ok) return res
+    setBaseline({ name, description, department, hiringType })
+    return { ok: true }
+  }, [workflow.workflow_id, name, description, department, hiringType])
+
+  useWorkflowEditTab("basic", isDirty, save)
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6">

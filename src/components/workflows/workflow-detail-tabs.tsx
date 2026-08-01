@@ -19,22 +19,40 @@ export function WorkflowDetailTabs({ workflow }: { workflow: MockWorkflow }) {
         <TabsTab value="communication">Communication</TabsTab>
       </TabsList>
 
-      <TabsPanel value="basic" className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-4">
+      {/*
+        keepMounted on every panel: these tabs hold local form state with no
+        autosave, so switching tabs must not unmount (and silently discard)
+        whatever the user was mid-typing in the one they're leaving.
+      */}
+      <TabsPanel
+        value="basic"
+        keepMounted
+        className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-4"
+      >
         <WorkflowBasicTab workflow={workflow} />
       </TabsPanel>
-      <TabsPanel value="stages" className="min-h-0 flex-1 overflow-hidden">
+      <TabsPanel value="stages" keepMounted className="min-h-0 flex-1 overflow-hidden">
         <WorkflowStagesTab workflow={workflow} />
       </TabsPanel>
       <TabsPanel
         value="scheduling-policy"
+        keepMounted
         className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-4"
       >
         <WorkflowSchedulingPolicyTab />
       </TabsPanel>
-      <TabsPanel value="ai-automation" className="min-h-0 flex-1 overflow-hidden px-6 pt-6 pb-4">
+      <TabsPanel
+        value="ai-automation"
+        keepMounted
+        className="min-h-0 flex-1 overflow-hidden px-6 pt-6 pb-4"
+      >
         <WorkflowAiAutomationTab />
       </TabsPanel>
-      <TabsPanel value="communication" className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-4">
+      <TabsPanel
+        value="communication"
+        keepMounted
+        className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-4"
+      >
         <WorkflowStubTab label="Communication" />
       </TabsPanel>
     </Tabs>
