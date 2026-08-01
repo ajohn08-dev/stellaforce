@@ -10,16 +10,14 @@ import {
 import { WorkflowActiveFilters } from "@/components/workflows/workflow-active-filters"
 import { WorkflowViewToggle } from "@/components/workflows/workflow-view-toggle"
 import { AddWorkflowButton } from "@/components/workflows/add-workflow-button"
-import {
-  MOCK_WORKFLOWS,
-  MOCK_WORKFLOW_CLIENTS,
-  MOCK_WORKFLOW_DEPARTMENTS,
-} from "@/lib/mock-workflows"
+import type { MockWorkflow } from "@/lib/mock-workflows"
 import {
   parseWorkflowClientsParam,
   parseWorkflowDepartmentsParam,
   parseWorkflowStatusesParam,
 } from "@/lib/workflow-status"
+import { getWorkflowTemplates } from "@/lib/data"
+import { getCurrentProfile } from "@/lib/auth"
 
 export default async function WorkflowsPage({
   searchParams,
@@ -29,15 +27,34 @@ export default async function WorkflowsPage({
   const sp = await searchParams
   const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined)
 
+  const profile = await getCurrentProfile()
+  const templates = await getWorkflowTemplates({ clientId: profile?.client_id ?? null })
+
+  // Map DB rows into the shape the existing grid/table components render.
+  const allWorkflows: MockWorkflow[] = templates.map((t) => ({
+    workflow_id: t.id,
+    name: t.name,
+    status: t.status,
+    description: t.description ?? "",
+    department: t.department ?? "General",
+    client_name: t.client?.client_name ?? null,
+    created_by: "",
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+    stages: [],
+  }))
+
+  const allDepartments = Array.from(new Set(allWorkflows.map((w) => w.department))).sort()
+  const allClients = Array.from(
+    new Set(allWorkflows.map((w) => w.client_name).filter((c): c is string => c !== null))
+  ).sort()
+
   const statuses = parseWorkflowStatusesParam(get("statuses") ?? null)
-  const departments = parseWorkflowDepartmentsParam(
-    get("departments") ?? null,
-    MOCK_WORKFLOW_DEPARTMENTS
-  )
-  const clients = parseWorkflowClientsParam(get("clients") ?? null, MOCK_WORKFLOW_CLIENTS)
+  const departments = parseWorkflowDepartmentsParam(get("departments") ?? null, allDepartments)
+  const clients = parseWorkflowClientsParam(get("clients") ?? null, allClients)
   const q = get("q")?.trim().toLowerCase()
 
-  const workflows = MOCK_WORKFLOWS.filter((workflow) => {
+  const workflows = allWorkflows.filter((workflow) => {
     if (!statuses.includes(workflow.status)) return false
     if (!departments.includes(workflow.department)) return false
     if (workflow.client_name && !clients.includes(workflow.client_name)) return false

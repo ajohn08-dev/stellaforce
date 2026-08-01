@@ -3,7 +3,9 @@ import { notFound } from "next/navigation"
 import { SetWorkflowBreadcrumb } from "@/components/workflows/set-workflow-breadcrumb"
 import { WorkflowDetailHeader } from "@/components/workflows/workflow-detail-header"
 import { WorkflowDetailTabs } from "@/components/workflows/workflow-detail-tabs"
-import { MOCK_WORKFLOWS } from "@/lib/mock-workflows"
+import { WorkflowEditProvider } from "@/components/workflows/workflow-edit-provider"
+import { MOCK_WORKFLOWS, type MockWorkflow } from "@/lib/mock-workflows"
+import { getWorkflowTemplate } from "@/lib/data"
 
 // Layout/content beyond the Basic tab is a placeholder — Stages, Scheduling
 // Policy, AI & Automation, and Communication are stubs to be specified
@@ -22,7 +24,30 @@ export default async function WorkflowDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const workflow = MOCK_WORKFLOWS.find((w) => w.workflow_id === id)
+
+  // Real DB template first; fall back to the mock fixtures for legacy wf-* ids.
+  const template = await getWorkflowTemplate(id)
+  const workflow: MockWorkflow | undefined = template
+    ? {
+        workflow_id: template.id,
+        name: template.name,
+        status: template.status,
+        description: template.description ?? "",
+        department: template.department ?? "General",
+        client_name: template.client?.client_name ?? null,
+        created_by: "",
+        created_at: template.created_at,
+        updated_at: template.updated_at,
+        stages: template.sub_stages.map((s) => ({
+          id: s.id,
+          mainStage: (s.pipeline_stage?.key ?? "screen") as MockWorkflow["stages"][number]["mainStage"],
+          name: s.name,
+          purpose: s.purpose ?? "",
+          scale: s.rating_scale ?? undefined,
+          hireRecommendationEnabled: s.hire_recommendation_enabled,
+        })),
+      }
+    : MOCK_WORKFLOWS.find((w) => w.workflow_id === id)
   if (!workflow) notFound()
 
   return (
@@ -30,9 +55,14 @@ export default async function WorkflowDetailPage({
       className="flex flex-col overflow-hidden bg-white"
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
-      <SetWorkflowBreadcrumb name={workflow.name} status={workflow.status} />
-      <WorkflowDetailHeader />
-      <WorkflowDetailTabs workflow={workflow} />
+      <WorkflowEditProvider>
+        <SetWorkflowBreadcrumb name={workflow.name} status={workflow.status} />
+        <WorkflowDetailHeader />
+        <WorkflowDetailTabs
+          workflow={workflow}
+          initialSubStages={template ? template.sub_stages : null}
+        />
+      </WorkflowEditProvider>
     </div>
   )
 }
