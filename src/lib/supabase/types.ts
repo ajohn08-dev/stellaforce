@@ -1678,6 +1678,38 @@ export type Database = {
           },
         ]
       }
+      job_target_companies: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string
+          name: string
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id: string
+          name: string
+          source?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string
+          name?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_target_companies_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+        ]
+      }
       job_team_members: {
         Row: {
           created_at: string
@@ -2755,12 +2787,8 @@ export const Constants = {
     },
   },
 } as const
-// ─────────────────────────────────────────────────────────────────────────────
-// Hand-written convenience aliases (V3.2) — layered on top of the generated
-// `Database` type above so the rest of the app can import ergonomic names
-// instead of `Database["public"]["Tables"]["x"]["Row"]` everywhere. Regenerate
-// the `Database` type from the live schema; keep this section in sync by hand.
-// ─────────────────────────────────────────────────────────────────────────────
+
+
 
 type SchemaTables = Database["public"]["Tables"]
 type SchemaEnums = Database["public"]["Enums"]
@@ -2878,3 +2906,4 @@ export type ActivityEventInsert = SchemaTables["activity_events"]["Insert"]
 export type ApplicationStageHistoryRow = SchemaTables["application_stage_history"]["Row"]
 export type AuditLogRow = SchemaTables["audit_log"]["Row"]
 export type AiInteractionRow = SchemaTables["ai_interactions"]["Row"]
+export type JobTargetCompanyRow = SchemaTables["job_target_companies"]["Row"]

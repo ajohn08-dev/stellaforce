@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getCurrentProfile } from "@/lib/auth"
 import { resolveWorkflowSettings } from "@/lib/workflow-settings"
+import { serverEnv } from "@/lib/env"
 import type {
   ActivityEventType,
   ActorType,
@@ -72,6 +73,38 @@ export type CreateJobDraftInput = {
   client_id: string
   workflow_template_id?: string | null
   location?: string | null
+  description?: string | null
+  notes?: string | null
+}
+
+/**
+ * Fire the "AI job intake" webhook: hands the raw Add-Job inputs to n8n, which
+ * runs an LLM and (in a later phase) returns a structured role/competencies/
+ * scorecard draft. Best-effort — never blocks job creation if n8n is down.
+ * Configure the n8n Webhook node to "Respond Immediately" so this returns fast
+ * while the LLM work continues asynchronously.
+ */
+async function sendJobIntakeToN8n(payload: {
+  job_id: string
+  title: string
+  client_id: string
+  location: string | null
+  description: string | null
+  notes: string | null
+}) {
+  try {
+    const res = await fetch(serverEnv.n8nJobWebhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serverEnv.n8nWebhookSecret}`,
+      },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) console.error(`[job-intake] n8n webhook responded ${res.status}`)
+  } catch (err) {
+    console.error("[job-intake] n8n webhook failed", err)
+  }
 }
 
 export async function createJobDraft(
@@ -91,6 +124,7 @@ export async function createJobDraft(
       status: "draft",
       workflow_template_id: input.workflow_template_id ?? null,
       location: input.location ?? null,
+      description: input.description ?? null,
     })
     .select("job_id")
     .single()
@@ -103,8 +137,51 @@ export async function createJobDraft(
     actor_profile_id: profile.id,
     payload: { title: input.title },
   })
+
+  // Hand the raw intake to n8n for AI pre-fill (best-effort).
+  await sendJobIntakeToN8n({
+    job_id: data.job_id,
+    title: input.title.trim(),
+    client_id: input.client_id,
+    location: input.location ?? null,
+    description: input.description ?? null,
+    notes: input.notes ?? null,
+  })
+
   revalidatePath("/jobs")
   return { ok: true, job_id: data.job_id }
+}
+
+/**
+ * Delete a job — restricted to `draft` status. A draft has no snapshotted
+ * pipeline or applications yet, so removal is safe; child rows (competencies,
+ * scorecard, target companies) cascade. Published jobs must be closed, not
+ * deleted, to preserve their application history.
+ */
+export async function deleteJob(jobId: string): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+
+  const { data: job } = await supabase
+    .from("job_orders")
+    .select("job_id, status")
+    .eq("job_id", jobId)
+    .single()
+  if (!job) return { ok: false, error: "Job not found." }
+  if (job.status !== "draft")
+    return { ok: false, error: "Only draft jobs can be deleted — close a published job instead." }
+
+  // Remove the job's audit events first (job_id is ON DELETE SET NULL, which
+  // would otherwise leave detached rows) so a discarded draft is fully gone.
+  // Must run before the job delete, while job_id still matches.
+  await supabase.from("activity_events").delete().eq("job_id", jobId)
+
+  const { error } = await supabase.from("job_orders").delete().eq("job_id", jobId)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath("/jobs")
+  return { ok: true }
 }
 
 // ── Publish: snapshot template stages + resolved settings onto the job ────────

@@ -401,6 +401,23 @@ export async function getJobPipeline(jobId: string): Promise<{
   }
 }
 
+/** Target companies for a job (Role Definition step). */
+export async function getJobTargetCompanies(
+  jobId: string
+): Promise<{ name: string; source: "extracted" | "ai_suggested" | "recruiter" }[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("job_target_companies")
+    .select("name, source")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: true })
+  return (data ?? []).map((r) => ({
+    name: r.name,
+    source: (r.source as "extracted" | "ai_suggested" | "recruiter") ?? "ai_suggested",
+  }))
+}
+
 /** All activity for one candidate (across every application) — compliance/analytics timeline. */
 export async function getCandidateTimeline(candidateId: string): Promise<ActivityEventRow[]> {
   if (!isSupabaseConfigured) return []

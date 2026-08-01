@@ -220,6 +220,8 @@ export function AddJobDialog({ clients }: { clients: JobClientOption[] }) {
               title: form.title,
               client_id: form.client_id,
               location: form.location || null,
+              description: form.description || null,
+              notes: form.notes || null,
             })
             setSubmitting(false)
             if (!res.ok) {

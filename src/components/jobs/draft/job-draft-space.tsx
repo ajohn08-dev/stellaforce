@@ -6,7 +6,10 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { StepProgressBar, type Step } from "@/components/jobs/draft/step-progress-bar"
-import { RoleDefinitionStep } from "@/components/jobs/draft/steps/role-definition-step"
+import {
+  RoleDefinitionStep,
+  type RoleInitialValues,
+} from "@/components/jobs/draft/steps/role-definition-step"
 import { EvaluationCriteriaStep } from "@/components/jobs/draft/steps/evaluation-criteria-step"
 import { ScoreCardStep } from "@/components/jobs/draft/steps/score-card-step"
 import { TeamMembersStep } from "@/components/jobs/draft/steps/team-members-step"
@@ -58,9 +61,11 @@ const STEPS: Step[] = [
 export function JobDraftSpace({
   job,
   templates,
+  roleInitial,
 }: {
   job: MockJob
   templates: WorkflowTemplateOption[]
+  roleInitial?: RoleInitialValues
 }) {
   const router = useRouter()
   const [stepIndex, setStepIndex] = React.useState(0)
@@ -140,7 +145,7 @@ export function JobDraftSpace({
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {STEPS[stepIndex].key === "role-definition" ? (
-              <RoleDefinitionStep />
+              <RoleDefinitionStep initial={roleInitial} />
             ) : STEPS[stepIndex].key === "evaluation-criteria" ? (
               <EvaluationCriteriaStep
                 competencies={competencies}

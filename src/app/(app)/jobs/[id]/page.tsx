@@ -9,6 +9,7 @@ import {
   getCandidates,
   getJobOrder,
   getJobPipeline,
+  getJobTargetCompanies,
   getWorkflowTemplates,
 } from "@/lib/data"
 import { getCurrentProfile } from "@/lib/auth"
@@ -25,16 +26,36 @@ export default async function JobWorkspacePage({
 
   const mockJob = toMockJob(job, { candidatesInPipeline: job.applications.length })
 
-  // Draft → the 5-step setup wizard.
+  // Draft → the 5-step setup wizard, pre-filled with any AI-generated role data.
   if (job.status === "draft") {
     const profile = await getCurrentProfile()
-    const templates = await getWorkflowTemplates({ clientId: profile?.client_id ?? null })
+    const [templates, targetCompanies] = await Promise.all([
+      getWorkflowTemplates({ clientId: profile?.client_id ?? null }),
+      getJobTargetCompanies(id),
+    ])
+    const roleInitial = {
+      title: job.title,
+      workplace_type: job.workplace_type,
+      office_location: job.office_location,
+      description: job.description,
+      company: job.company,
+      industry: job.industry,
+      job_function: job.job_function,
+      employment_type: job.employment_type,
+      experience_required: job.experience_required,
+      education_required: job.education_required,
+      salary_from: job.salary_from,
+      salary_to: job.salary_to,
+      salary_currency: job.salary_currency,
+      target_companies: targetCompanies,
+    }
     return (
       <>
         <SetJobBreadcrumb title={job.title} badge={titleCase(job.status)} />
         <JobDraftSpace
           job={mockJob}
           templates={templates.map((t) => ({ id: t.id, name: t.name, status: t.status }))}
+          roleInitial={roleInitial}
         />
       </>
     )
