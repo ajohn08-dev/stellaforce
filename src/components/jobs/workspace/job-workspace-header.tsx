@@ -2,10 +2,21 @@ import { Building2, MapPin } from "lucide-react"
 
 import { JobStatusBadge } from "@/components/jobs/job-status-badge"
 import { JobActions } from "@/components/jobs/job-actions"
-import { AddCandidateToJobButton } from "@/components/jobs/workspace/add-candidate-to-job-button"
+import {
+  AddCandidateToJobDialog,
+  type JobCandidateOption,
+} from "@/components/jobs/workspace/add-candidate-to-job-dialog"
 import type { MockJob } from "@/lib/mock-jobs"
 
-export function JobWorkspaceHeader({ job }: { job: MockJob }) {
+export function JobWorkspaceHeader({
+  job,
+  jobId,
+  candidateOptions,
+}: {
+  job: MockJob
+  jobId: string
+  candidateOptions: JobCandidateOption[]
+}) {
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="space-y-1">
@@ -31,7 +42,9 @@ export function JobWorkspaceHeader({ job }: { job: MockJob }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {job.status === "open" && <AddCandidateToJobButton />}
+        {job.status === "open" && (
+          <AddCandidateToJobDialog jobId={jobId} candidates={candidateOptions} />
+        )}
         <JobActions job={job} />
       </div>
     </div>

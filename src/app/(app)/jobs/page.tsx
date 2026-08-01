@@ -6,7 +6,8 @@ import { JobActiveFilters } from "@/components/jobs/job-active-filters"
 import { AddJobDialog } from "@/components/jobs/add-job-dialog"
 import { JobViewToggle } from "@/components/jobs/job-view-toggle"
 import { parseStatusesParam } from "@/lib/job-status"
-import { MOCK_JOBS } from "@/lib/mock-jobs"
+import { getJobOrders, getClients } from "@/lib/data"
+import { toMockJob } from "@/lib/job-adapter"
 
 export default async function JobsPage({
   searchParams,
@@ -16,10 +17,14 @@ export default async function JobsPage({
   const sp = await searchParams
   const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined)
 
+  const [jobOrders, clients] = await Promise.all([getJobOrders(), getClients()])
+  const allJobs = jobOrders.map((j) => toMockJob(j))
+  const clientOptions = clients.map((c) => ({ id: c.client_id, name: c.client_name }))
+
   const statuses = parseStatusesParam(get("statuses") ?? null)
   const q = get("q")?.trim().toLowerCase()
 
-  const jobs = MOCK_JOBS.filter((job) => {
+  const jobs = allJobs.filter((job) => {
     if (!statuses.includes(job.status)) return false
     if (q) {
       const haystack = `${job.title} ${job.client_name}`.toLowerCase()
@@ -45,7 +50,7 @@ export default async function JobsPage({
             <JobSearch />
             <JobFilterButton />
           </div>
-          <AddJobDialog />
+          <AddJobDialog clients={clientOptions} />
         </div>
       </div>
 

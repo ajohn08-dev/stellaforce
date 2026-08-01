@@ -24,15 +24,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { MOCK_JOB_CLIENTS } from "@/lib/mock-jobs"
+import { createJobDraft } from "@/app/(app)/jobs/actions"
 
 const EMPTY_FORM = {
   title: "",
-  client_name: "",
+  client_id: "",
   location: "",
   description: "",
   notes: "",
 }
+
+export type JobClientOption = { id: string; name: string }
 
 /** Compact upload affordance — a button when empty, a removable filename chip once a file is picked. */
 function InlineFileUpload({
@@ -87,17 +89,18 @@ function InlineFileUpload({
 }
 
 /**
- * UI preview only — this is a static array (src/lib/mock-jobs.ts), not the
- * job_orders table, so "Create job" is an honest stub rather than a write.
- * File uploads are selected but not parsed/stored anywhere yet.
+ * Creates a real `job_orders` draft row via `createJobDraft`, then opens the
+ * new job's draft workspace (the 5-step wizard). File uploads are selected but
+ * not parsed/stored yet.
  */
-export function AddJobDialog() {
+export function AddJobDialog({ clients }: { clients: JobClientOption[] }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [form, setForm] = React.useState(EMPTY_FORM)
   const [descriptionFile, setDescriptionFile] = React.useState<File | null>(null)
   const [requisitionFile, setRequisitionFile] = React.useState<File | null>(null)
   const [notesFile, setNotesFile] = React.useState<File | null>(null)
+  const [submitting, setSubmitting] = React.useState(false)
 
   function handleOpenChange(next: boolean) {
     setOpen(next)
@@ -136,16 +139,16 @@ export function AddJobDialog() {
             <div className="grid gap-1.5">
               <Label>Client</Label>
               <Select
-                value={form.client_name}
-                onValueChange={(v) => setForm({ ...form, client_name: v ?? "" })}
+                value={form.client_id}
+                onValueChange={(v) => setForm({ ...form, client_id: v ?? "" })}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a client" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_JOB_CLIENTS.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -210,18 +213,24 @@ export function AddJobDialog() {
         </div>
 
         <Button
-          disabled={!form.title || !form.client_name || !hasDescription}
-          onClick={() => {
-            toast.info(
-              "Not wired up yet — this opens the sample draft job so you can see what's next."
-            )
+          disabled={!form.title || !form.client_id || !hasDescription || submitting}
+          onClick={async () => {
+            setSubmitting(true)
+            const res = await createJobDraft({
+              title: form.title,
+              client_id: form.client_id,
+              location: form.location || null,
+            })
+            setSubmitting(false)
+            if (!res.ok) {
+              toast.error(res.error)
+              return
+            }
             handleOpenChange(false)
-            // No job_orders write yet — routes to the mock draft job (job-13)
-            // to demonstrate the draft-space handoff after job creation.
-            router.push("/jobs/job-13")
+            router.push(`/jobs/${res.job_id}`)
           }}
         >
-          Create job
+          {submitting ? "Creating…" : "Create job"}
         </Button>
       </DialogContent>
     </Dialog>

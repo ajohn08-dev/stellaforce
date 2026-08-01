@@ -76,12 +76,31 @@ dispatcher to build) · **⛔ Blocked** (needs a follow-on runtime table).
 | 4 | **Scorecard link** | outbox → email | `activity_events.interview_completed` | secure-token generation; `communication_templates` | Emails reviewer an expiring scorecard/transcript link; inserts `scorecard_link_sent` (system) | ⛔ needs `interviews` |
 | 5 | **Transcript / STT** | callback (Deepgram/ElevenLabs) | STT webhook or manual upload | `POST /api/interviews/transcript` (to build) | Writes `interview_transcripts`, sets `interviews.transcript_status`; inserts `transcript_submitted`; embeds for search | ⛔ needs `interview_transcripts` |
 | 6 | **Evaluation overdue** | cron (`n8n:eval_cron`, daily) | `interview_completed` ≥24h ago AND eval still `pending` | reads `application_stage_evaluations`, `sla_policies` (`needs_feedback`) | Inserts `evaluation_overdue` (severity=alert); re-sends scorecard link; escalates to recruiter+HR | ⛔ needs `interviews` + evals wired |
-| 7 | **Stage SLA breached** | cron (`n8n:sla_cron`, daily) | open `application_stage_history` where `now()-entered_at > threshold` | reads `application_stage_history`, `sla_policies` / `pipeline_stages.sla_target_days`, `applications.owner_profile_id` | Inserts `stage_sla_breached` (alert); optional `sla_breached=true` on the history row; emails owner + HR | 🟡 Ready |
+| 7 | **Stage SLA breached** | cron (`n8n:sla_cron`, daily) → `POST /api/cron/sla-check` | open `application_stage_history` where `now()-entered_at > threshold` | `src/app/api/cron/sla-check/route.ts` (finds breaches, records them, returns email list); n8n = Schedule → HTTP Request → IF → Split Out → Email | Inserts `stage_sla_breached` (system, alert, once/day via idempotency_key); sets `sla_breached=true`; emails owner + HR | ✅ Live |
 | 8 | **Offer lifecycle emails** | outbox → email | `offer_created` / `offer_accepted` / `offer_declined` / `offer_rescinded` | (offer actions — follow-on); `communication_templates` | Sends offer / acceptance / decline / rescind comms | ⛔ needs `offers` |
 | 9 | **Offer expired** | cron (`n8n:offer_cron`) | `offers.status='created' AND now() > expiry_date` | reads `offers` | `offers.status='expired'`; inserts `offer_expired` (alert); escalates to recruiter | ⛔ needs `offers` |
 | 10 | **Candidate enrichment** | webhook + callback | manual/scheduled enrich request | `POST /api/candidates/ingest` (or a dedicated route) | Updates `candidates.*` + child tables; inserts `candidate_data_updated`; re-embeds vector | 🟡 Ready (route reuse) |
 | 11 | **Voice-agent pre-screen** | outbox → voice agent + callback | candidate enters a `interviewer_type='ai'` **Pre-Screening** sub-stage | Voice-agent platform; STT | Produces an `interviews` row + transcript; logs `ai_interactions` (model/tokens/confidence); sets `applications.human_review_flag=true` (never auto-advances) | ⛔ needs `interviews`/`interview_transcripts` |
 | 12 | **Voice-agent "Who" interview** | outbox → voice agent + callback | candidate enters the `interviewer_type='ai'` **Who Interview** (video) sub-stage | Voice-agent platform; STT | Same as #11 (video) | ⛔ needs `interviews`/`interview_transcripts` |
+
+### Implemented: Stage SLA breached (#7) — the reference pattern
+n8n owns only the schedule + the email; the app does the DB thinking + recording.
+This is the template for future crons.
+
+- **n8n:** Schedule Trigger (daily) → HTTP Request → IF (`count > 0`) → Split Out (`breaches`) → Send Email.
+- **Endpoint:** `POST /api/cron/sla-check` (`src/app/api/cron/sla-check/route.ts`),
+  bearer-auth'd with `N8N_WEBHOOK_SECRET`, service-role client (system job, no user).
+  - **Request body:** none.
+  - **Does:** finds open `application_stage_history` rows past the job's effective
+    `needs_attention` SLA (job-scope `sla_policies` → global, default 72h); for each,
+    upserts an `activity_events` row (`stage_sla_breached`, `actor_type='system'`,
+    `system_source='n8n:sla_cron'`, `severity='alert'`, `idempotency_key`
+    `stage_sla_breached:<app>:<stage>:<date>` → once/day) and sets
+    `application_stage_history.sla_breached=true`.
+  - **Returns:** `{ ok, count, breaches: [{ candidate_name, client_name, job_title,
+    stage_name, days_in_stage, sla_days, owner_name, owner_email, hr_email }] }`.
+- **n8n Cloud caveat:** it cannot reach `localhost`; use the deployed Vercel URL
+  (add `N8N_WEBHOOK_SECRET` to Vercel env) or a tunnel for local testing.
 
 ---
 

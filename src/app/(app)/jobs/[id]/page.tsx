@@ -5,47 +5,61 @@ import { JobWorkspaceHeader } from "@/components/jobs/workspace/job-workspace-he
 import { PipelineBoard } from "@/components/jobs/workspace/pipeline-board"
 import { SetJobBreadcrumb } from "@/components/jobs/workspace/set-job-breadcrumb"
 import { titleCase } from "@/lib/constants"
-import { getSubStageBoard } from "@/lib/pipeline-candidates"
-import { MOCK_JOBS } from "@/lib/mock-jobs"
+import {
+  getCandidates,
+  getJobOrder,
+  getJobPipeline,
+  getWorkflowTemplates,
+} from "@/lib/data"
+import { getCurrentProfile } from "@/lib/auth"
+import { toBoardStages, toMockJob } from "@/lib/job-adapter"
 
-/**
- * UI-preview data only — renders from MOCK_JOBS (src/lib/mock-jobs.ts), not
- * job_orders/applications. See CandidatesTable's real-data equivalent for
- * how this would eventually be wired to Supabase.
- */
 export default async function JobWorkspacePage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const job = MOCK_JOBS.find((j) => j.job_id === id)
+  const job = await getJobOrder(id)
   if (!job) notFound()
 
+  const mockJob = toMockJob(job, { candidatesInPipeline: job.applications.length })
+
+  // Draft → the 5-step setup wizard.
   if (job.status === "draft") {
+    const profile = await getCurrentProfile()
+    const templates = await getWorkflowTemplates({ clientId: profile?.client_id ?? null })
     return (
       <>
         <SetJobBreadcrumb title={job.title} badge={titleCase(job.status)} />
-        <JobDraftSpace job={job} />
+        <JobDraftSpace
+          job={mockJob}
+          templates={templates.map((t) => ({ id: t.id, name: t.name, status: t.status }))}
+        />
       </>
     )
   }
 
-  const stages = getSubStageBoard(job)
+  // Published/open → the pipeline board fed by real applications.
+  const [pipeline, candidates] = await Promise.all([getJobPipeline(id), getCandidates()])
+  // Request-time timestamp for "days in stage" — legitimate in a server render.
+  // eslint-disable-next-line react-hooks/purity
+  const nowMs = Date.now()
+  const stages = toBoardStages(pipeline, nowMs)
+  const inPipeline = new Set(pipeline.applications.map((a) => a.candidate_id))
+  const candidateOptions = candidates
+    .filter((c) => !inPipeline.has(c.candidate_id))
+    .map((c) => ({
+      id: c.candidate_id,
+      name: c.full_name ?? `${c.first_name} ${c.last_name}`.trim(),
+      title: c.currentRole?.title ?? c.current_title ?? "",
+    }))
 
   return (
-    <div
-      className="flex flex-col overflow-hidden p-4"
-      // Inline style, not an arbitrary Tailwind class: <main> has no padding
-      // of its own, so only the app header (h-14 = 3.5rem) needs
-      // subtracting — this div's own p-4 is included via border-box. Fixed
-      // (not min-) height so the header stays put and the pipeline board
-      // fills the rest.
-      style={{ height: "calc(100vh - 3.5rem)" }}
-    >
+    <div className="flex flex-col overflow-hidden p-4" style={{ height: "calc(100vh - 3.5rem)" }}>
       <SetJobBreadcrumb title={job.title} />
       <div className="shrink-0 pb-4">
-        <JobWorkspaceHeader job={job} />
+        <JobWorkspaceHeader job={mockJob} jobId={id} candidateOptions={candidateOptions} />
       </div>
       <div className="min-h-0 flex-1">
         <PipelineBoard stages={stages} />
