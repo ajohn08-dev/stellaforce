@@ -83,7 +83,10 @@ export function JobDraftSpace({
       return
     }
     setPublishing(true)
-    const res = await publishJob(job.job_id, { workflow_template_id: templateId })
+    const res = await publishJob(job.job_id, {
+      workflow_template_id: templateId,
+      members: members.map(({ name, email, role }) => ({ name, email, role })),
+    })
     setPublishing(false)
     if (!res.ok) {
       toast.error(res.error)

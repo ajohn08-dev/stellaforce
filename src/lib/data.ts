@@ -1,6 +1,7 @@
 import "server-only"
 
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { isSupabaseConfigured } from "@/lib/env"
 import type {
   ActivityEventRow,
@@ -13,6 +14,7 @@ import type {
   CandidateWorkExperienceRow,
   ClientRow,
   JobOrderRow,
+  JobTeamMemberRow,
   JobWorkflowSubStageRow,
   PipelineStageRow,
   ProfileRow,
@@ -416,6 +418,40 @@ export async function getJobTargetCompanies(
     name: r.name,
     source: (r.source as "extracted" | "ai_suggested" | "recruiter") ?? "ai_suggested",
   }))
+}
+
+/**
+ * A job's hiring team, decorated with a derived `connected` boolean for the
+ * Google Calendar consent flow. `google_calendar_connections` has no RLS
+ * policy for `authenticated` (it holds encrypted refresh tokens), so — unlike
+ * every other read in this file — that half of the query goes through the
+ * admin client; only the derived boolean is returned, never the connection
+ * row itself.
+ */
+export async function getJobTeamMembers(
+  jobId: string
+): Promise<(JobTeamMemberRow & { connected: boolean })[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data: members } = await supabase
+    .from("job_team_members")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: true })
+  if (!members || members.length === 0) return []
+
+  const admin = createAdminClient()
+  const { data: connections } = await admin
+    .from("google_calendar_connections")
+    .select("email")
+    .is("revoked_at", null)
+    .in(
+      "email",
+      members.map((m) => m.email.toLowerCase())
+    )
+  const connectedEmails = new Set((connections ?? []).map((c) => c.email.toLowerCase()))
+
+  return members.map((m) => ({ ...m, connected: connectedEmails.has(m.email.toLowerCase()) }))
 }
 
 /** All activity for one candidate (across every application) — compliance/analytics timeline. */

@@ -54,6 +54,35 @@ export const serverEnv = {
       "https://ajzenarate.app.n8n.cloud/webhook/1ef95b54-f506-4007-a2c2-7d2af8ba9400"
     )
   },
+  /** n8n "calendar connect invite" webhook — sends the "connect your Google
+   * Calendar" email when a team member is added to a job. */
+  get n8nCalendarWebhookUrl() {
+    return required("N8N_CALENDAR_WEBHOOK_URL", process.env.N8N_CALENDAR_WEBHOOK_URL)
+  },
+  get googleClientId() {
+    return required("GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID)
+  },
+  get googleClientSecret() {
+    return required("GOOGLE_CLIENT_SECRET", process.env.GOOGLE_CLIENT_SECRET)
+  },
+  /** 32-byte (base64 or hex) key for AES-256-GCM encryption of stored Google
+   * OAuth refresh tokens. Generate with `openssl rand -base64 32`. */
+  get calendarTokenEncryptionKey() {
+    return required(
+      "CALENDAR_TOKEN_ENCRYPTION_KEY",
+      process.env.CALENDAR_TOKEN_ENCRYPTION_KEY
+    )
+  },
+  /** Signing key for the OAuth `state` param (HMAC) — separate from the token
+   * encryption key so rotating one doesn't invalidate the other. */
+  get calendarStateSecret() {
+    return required("CALENDAR_STATE_SECRET", process.env.CALENDAR_STATE_SECRET)
+  },
+  /** Absolute site origin (no trailing slash) — needed server-side to build
+   * the Google OAuth redirect_uri and links embedded in outbound emails. */
+  get siteUrl() {
+    return required("SITE_URL", process.env.SITE_URL)
+  },
 }
 
 /** True when the public Supabase config is present (used to guard demo UI). */

@@ -6,16 +6,19 @@ import {
   AddCandidateToJobDialog,
   type JobCandidateOption,
 } from "@/components/jobs/workspace/add-candidate-to-job-dialog"
+import { JobTeamPanel, type JobTeamMemberItem } from "@/components/jobs/workspace/job-team-panel"
 import type { MockJob } from "@/lib/mock-jobs"
 
 export function JobWorkspaceHeader({
   job,
   jobId,
   candidateOptions,
+  teamMembers,
 }: {
   job: MockJob
   jobId: string
   candidateOptions: JobCandidateOption[]
+  teamMembers: JobTeamMemberItem[]
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -42,6 +45,7 @@ export function JobWorkspaceHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        <JobTeamPanel jobId={jobId} members={teamMembers} />
         {job.status === "open" && (
           <AddCandidateToJobDialog jobId={jobId} candidates={candidateOptions} />
         )}

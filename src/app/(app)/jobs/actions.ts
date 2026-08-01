@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server"
 import { getCurrentProfile } from "@/lib/auth"
 import { resolveWorkflowSettings } from "@/lib/workflow-settings"
 import { serverEnv } from "@/lib/env"
+import { applyAiRoleOutput, parseAiRoleResponse } from "@/lib/server/job-ai-role"
+import { sendCalendarConnectInvite } from "@/lib/server/calendar-invite"
 import type {
   ActivityEventType,
   ActorType,
@@ -78,21 +80,27 @@ export type CreateJobDraftInput = {
 }
 
 /**
- * Fire the "AI job intake" webhook: hands the raw Add-Job inputs to n8n, which
- * runs an LLM and (in a later phase) returns a structured role/competencies/
- * scorecard draft. Best-effort — never blocks job creation if n8n is down.
- * Configure the n8n Webhook node to "Respond Immediately" so this returns fast
- * while the LLM work continues asynchronously.
+ * Send the raw Add-Job inputs to the n8n "generate-role" webhook, then CONSUME
+ * its response (the LLM's structured role + target_companies) and persist it
+ * onto the draft — so the wizard opens pre-filled with no callback node needed.
+ * Best-effort: any failure (n8n down, timeout, bad shape) leaves the draft
+ * created but un-prefilled rather than erroring. n8n holds the connection until
+ * the LLM finishes, so allow a generous timeout.
  */
-async function sendJobIntakeToN8n(payload: {
-  job_id: string
-  title: string
-  client_id: string
-  location: string | null
-  description: string | null
-  notes: string | null
-}) {
+async function requestAndApplyAiRole(
+  supabase: SupabaseServer,
+  payload: {
+    job_id: string
+    title: string
+    client_id: string
+    location: string | null
+    description: string | null
+    notes: string | null
+  }
+) {
   try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 55_000)
     const res = await fetch(serverEnv.n8nJobWebhookUrl, {
       method: "POST",
       headers: {
@@ -100,10 +108,23 @@ async function sendJobIntakeToN8n(payload: {
         Authorization: `Bearer ${serverEnv.n8nWebhookSecret}`,
       },
       body: JSON.stringify(payload),
-    })
-    if (!res.ok) console.error(`[job-intake] n8n webhook responded ${res.status}`)
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout))
+
+    if (!res.ok) {
+      console.error(`[job-intake] n8n webhook responded ${res.status}`)
+      return
+    }
+
+    const raw = await res.json().catch(() => null)
+    const out = parseAiRoleResponse(raw)
+    if (!out) {
+      console.error("[job-intake] n8n response did not match the expected role shape")
+      return
+    }
+    await applyAiRoleOutput(supabase, payload.job_id, out)
   } catch (err) {
-    console.error("[job-intake] n8n webhook failed", err)
+    console.error("[job-intake] n8n intake/apply failed", err)
   }
 }
 
@@ -138,8 +159,9 @@ export async function createJobDraft(
     payload: { title: input.title },
   })
 
-  // Hand the raw intake to n8n for AI pre-fill (best-effort).
-  await sendJobIntakeToN8n({
+  // Hand the raw intake to n8n, consume the LLM response, and pre-fill the
+  // draft (best-effort — never blocks job creation).
+  await requestAndApplyAiRole(supabase, {
     job_id: data.job_id,
     title: input.title.trim(),
     client_id: input.client_id,
@@ -184,11 +206,89 @@ export async function deleteJob(jobId: string): Promise<ActionResult> {
   return { ok: true }
 }
 
+// ── Hiring team ───────────────────────────────────────────────────────────────
+
+export type TeamMemberInput = { name: string; email: string; role: string }
+
+/**
+ * Inserts one job_team_members row, opportunistically linking it to an
+ * existing profile by email match, logs the event, and fires the Google
+ * Calendar connect invite (a no-op if that email is already connected — see
+ * sendCalendarConnectInvite). Shared by addJobTeamMember and publishJob (for
+ * members collected during the draft wizard).
+ */
+async function persistTeamMember(
+  supabase: SupabaseServer,
+  job: { job_id: string; client_id: string },
+  actorProfileId: string,
+  member: TeamMemberInput
+): Promise<ActionResult<{ id: string }>> {
+  const email = member.email.trim().toLowerCase()
+  const { data: matchingProfile } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("email", email)
+    .maybeSingle()
+
+  const { data, error } = await supabase
+    .from("job_team_members")
+    .insert({
+      job_id: job.job_id,
+      profile_id: matchingProfile?.id ?? null,
+      name: member.name.trim(),
+      email,
+      role: member.role.trim(),
+    })
+    .select("id")
+    .single()
+  if (error || !data) return { ok: false, error: error?.message ?? "Could not add team member." }
+
+  await logActivity(supabase, {
+    event_type: "job_team_member_added",
+    client_id: job.client_id,
+    job_id: job.job_id,
+    actor_profile_id: actorProfileId,
+    payload: { name: member.name.trim(), email, role: member.role.trim() },
+  })
+
+  await sendCalendarConnectInvite({
+    email,
+    name: member.name.trim(),
+    jobId: job.job_id,
+    jobTeamMemberId: data.id,
+  })
+
+  return { ok: true, id: data.id }
+}
+
+/** Add a hiring-team member to an already-published job (job workspace "Team" panel). */
+export async function addJobTeamMember(
+  jobId: string,
+  input: TeamMemberInput
+): Promise<ActionResult<{ id: string }>> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  if (!input.name?.trim() || !input.email?.trim() || !input.role?.trim())
+    return { ok: false, error: "Name, email, and role are required." }
+
+  const supabase = await createClient()
+  const { data: job } = await supabase
+    .from("job_orders")
+    .select("job_id, client_id")
+    .eq("job_id", jobId)
+    .single()
+  if (!job) return { ok: false, error: "Job not found." }
+
+  const result = await persistTeamMember(supabase, job, profile.id, input)
+  if (result.ok) revalidatePath(`/jobs/${jobId}`)
+  return result
+}
+
 // ── Publish: snapshot template stages + resolved settings onto the job ────────
 
 export async function publishJob(
   jobId: string,
-  payload: { workflow_template_id?: string | null } = {}
+  payload: { workflow_template_id?: string | null; members?: TeamMemberInput[] } = {}
 ): Promise<ActionResult> {
   const profile = await getCurrentProfile()
   if (!profile) return { ok: false, error: "Not signed in." }
@@ -304,6 +404,14 @@ export async function publishJob(
     })
     .eq("job_id", jobId)
   if (updErr) return { ok: false, error: updErr.message }
+
+  // 4) Persist the hiring team collected during the draft wizard (was
+  // previously kept only in client state and silently dropped on publish),
+  // firing a calendar-connect invite for each one.
+  for (const member of payload.members ?? []) {
+    if (!member.name?.trim() || !member.email?.trim() || !member.role?.trim()) continue
+    await persistTeamMember(supabase, job, profile.id, member)
+  }
 
   await logActivity(supabase, {
     event_type: "job_published",

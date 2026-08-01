@@ -10,6 +10,7 @@ import {
   getJobOrder,
   getJobPipeline,
   getJobTargetCompanies,
+  getJobTeamMembers,
   getWorkflowTemplates,
 } from "@/lib/data"
 import { getCurrentProfile } from "@/lib/auth"
@@ -62,7 +63,11 @@ export default async function JobWorkspacePage({
   }
 
   // Published/open → the pipeline board fed by real applications.
-  const [pipeline, candidates] = await Promise.all([getJobPipeline(id), getCandidates()])
+  const [pipeline, candidates, teamMembers] = await Promise.all([
+    getJobPipeline(id),
+    getCandidates(),
+    getJobTeamMembers(id),
+  ])
   // Request-time timestamp for "days in stage" — legitimate in a server render.
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now()
@@ -80,7 +85,12 @@ export default async function JobWorkspacePage({
     <div className="flex flex-col overflow-hidden p-4" style={{ height: "calc(100vh - 3.5rem)" }}>
       <SetJobBreadcrumb title={job.title} />
       <div className="shrink-0 pb-4">
-        <JobWorkspaceHeader job={mockJob} jobId={id} candidateOptions={candidateOptions} />
+        <JobWorkspaceHeader
+          job={mockJob}
+          jobId={id}
+          candidateOptions={candidateOptions}
+          teamMembers={teamMembers}
+        />
       </div>
       <div className="min-h-0 flex-1">
         <PipelineBoard stages={stages} />

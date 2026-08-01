@@ -24,6 +24,16 @@ Actions (`src/app/(app)/jobs/actions.ts`, `.../workflows/actions.ts`) writing
   (`serverEnv.n8nWebhookUrl` / `.n8nWebhookSecret`, server-only). Outbound POSTs
   send `Authorization: Bearer ${N8N_WEBHOOK_SECRET}`; inbound callbacks are
   bearer-auth'd with the same secret.
+- **`N8N_CALENDAR_WEBHOOK_URL`** (`serverEnv.n8nCalendarWebhookUrl`) — the
+  calendar-consent-invite workflow's webhook, same auth as above.
+- **`GOOGLE_CLIENT_ID`** / **`GOOGLE_CLIENT_SECRET`** — the Google Cloud OAuth
+  2.0 Web Client backing the calendar consent flow (Calendar API enabled,
+  scope `calendar.events`, redirect URI `${SITE_URL}/api/calendar/oauth/callback`).
+- **`CALENDAR_TOKEN_ENCRYPTION_KEY`** — AES-256-GCM key (base64, 32 bytes) for
+  encrypting stored refresh tokens; **`CALENDAR_STATE_SECRET`** — separate HMAC
+  key for signing the OAuth `state` param; **`SITE_URL`** — absolute origin
+  used to build the redirect URI and invite links. All server-only, all in
+  `src/lib/env.ts`.
 
 ### Outbound: Next → n8n (two paths)
 1. **Direct webhook** — a Server Action POSTs to `N8N_WEBHOOK_URL` inline. Used
@@ -43,8 +53,19 @@ Actions (`src/app/(app)/jobs/actions.ts`, `.../workflows/actions.ts`) writing
   live. Validates with `RawIngestPayloadSchema` (`src/lib/ingest/schema.ts`),
   runs `processIngestionItem` (`src/lib/server/candidate-ingest.ts`). Returns
   `{ok, results}` (200 / 207 partial / 401 / 422).
-- Planned callbacks (see workflows below): transcript ingest, calendar sync,
-  enrichment result.
+- **`POST /api/calendar/token`** (`src/app/api/calendar/token/route.ts`) — live.
+  n8n calls this right before making a Calendar API call on someone's behalf;
+  returns a short-lived access token (never the refresh token) minted from the
+  stored `google_calendar_connections` row. On refresh failure, marks the
+  connection revoked and re-sends the connect invite (see #13 below).
+- Planned callbacks (see workflows below): transcript ingest, enrichment
+  result.
+
+### Google OAuth redirect (not n8n — Google calls this directly)
+- **`GET /api/calendar/oauth/callback`** (`src/app/api/calendar/oauth/callback/route.ts`)
+  — Google redirects here after a team member grants/denies calendar access.
+  Not part of the n8n integration; documented here because it's the other half
+  of workflow #13's consent loop.
 
 ### What n8n reads for content/config
 - **`communication_templates`** — email subject/body/recipients, keyed by
@@ -82,6 +103,7 @@ dispatcher to build) · **⛔ Blocked** (needs a follow-on runtime table).
 | 10 | **Candidate enrichment** | webhook + callback | manual/scheduled enrich request | `POST /api/candidates/ingest` (or a dedicated route) | Updates `candidates.*` + child tables; inserts `candidate_data_updated`; re-embeds vector | 🟡 Ready (route reuse) |
 | 11 | **Voice-agent pre-screen** | outbox → voice agent + callback | candidate enters a `interviewer_type='ai'` **Pre-Screening** sub-stage | Voice-agent platform; STT | Produces an `interviews` row + transcript; logs `ai_interactions` (model/tokens/confidence); sets `applications.human_review_flag=true` (never auto-advances) | ⛔ needs `interviews`/`interview_transcripts` |
 | 12 | **Voice-agent "Who" interview** | outbox → voice agent + callback | candidate enters the `interviewer_type='ai'` **Who Interview** (video) sub-stage | Voice-agent platform; STT | Same as #11 (video) | ⛔ needs `interviews`/`interview_transcripts` |
+| 13 | **Calendar consent invite** | webhook | team member added to a job → `addJobTeamMember`/`publishJob` call `sendCalendarConnectInvite` | `sendCalendarConnectInvite` (`src/lib/server/calendar-invite.ts`), `/api/calendar/oauth/callback`, `/api/calendar/token` | Emails the "connect your Google Calendar" invite (direct webhook, like #1 — no-op if that email already has an active connection); Google's own redirect back to `/api/calendar/oauth/callback` writes `google_calendar_connections` + `calendar_connected`; `/api/calendar/token` refresh failures write `calendar_connection_revoked` + re-fire this same invite | 🟡 Ready (app side live; n8n email workflow itself to build) |
 
 ### Implemented: Stage SLA breached (#7) — the reference pattern
 n8n owns only the schedule + the email; the app does the DB thinking + recording.
@@ -117,7 +139,8 @@ job/application runtime.
 | `sla_policies` / `pipeline_stages.sla_target_days` | R by crons 6,7,9 (thresholds) |
 | `communication_templates` | R by all email workflows (2,3,4,6,8) for subject/body/recipients |
 | `job_workflow_sub_stages` | R by 2,3,11,12 (`interviewer_type`, `format`, competencies) |
-| `job_team_members` | R by 2,3 (interviewers/recipients) |
+| `job_team_members` | **W** by `addJobTeamMember`/`publishJob` (Server Actions, not n8n); R by 2,3,13 |
+| `google_calendar_connections` | **W** by `/api/calendar/oauth/callback` (connect), `/api/calendar/token` (revoke on refresh failure); R by `/api/calendar/token`, `getJobTeamMembers` (derived connected/not-connected only — service-role only table, no RLS policy for `authenticated`) |
 | `interviews` *(follow-on)* | **W** by 2,3,4,5,11,12 |
 | `interview_transcripts` *(follow-on)* | **W** by 5,11,12 |
 | `offers` *(follow-on)* | **W** by 8,9 |
@@ -130,7 +153,11 @@ job/application runtime.
   `candidate_advanced`, `candidate_leaves_stage`, `candidate_rejected`,
   `candidate_withdraws`, `application_closed`, `job_published`,
   `job_workflow_snapshotted` (from `addCandidateToPipeline`, `moveCandidate`,
-  `rejectCandidate`, `withdrawCandidate`, `publishJob`).
+  `rejectCandidate`, `withdrawCandidate`, `publishJob`); `job_team_member_added`
+  (from `addJobTeamMember`/`publishJob`); `calendar_connected` (from
+  `/api/calendar/oauth/callback`) and `calendar_connection_revoked` (from
+  `/api/calendar/token`) — these two are app-emitted even though they're
+  triggered by Google/n8n, not a recruiter session.
 - **Pending** (need interview/offer actions): `interview_*`, `scorecard_link_sent`,
   `transcript_submitted`, `offer_*`. Crons (`evaluation_overdue`,
   `stage_sla_breached`, `offer_expired`) are inserted by n8n itself, not app code.
