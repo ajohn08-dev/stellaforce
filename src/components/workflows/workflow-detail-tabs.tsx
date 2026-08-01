@@ -7,8 +7,16 @@ import { WorkflowSchedulingPolicyTab } from "@/components/workflows/workflow-sch
 import { WorkflowStagesTab } from "@/components/workflows/workflow-stages-tab"
 import { WorkflowStubTab } from "@/components/workflows/workflow-stub-tab"
 import type { MockWorkflow } from "@/lib/mock-workflows"
+import type { WorkflowTemplateSubStageWithStage } from "@/lib/data"
 
-export function WorkflowDetailTabs({ workflow }: { workflow: MockWorkflow }) {
+export function WorkflowDetailTabs({
+  workflow,
+  initialSubStages,
+}: {
+  workflow: MockWorkflow
+  /** Real DB sub-stage rows for the Stages tab to save against — null for the MOCK_WORKFLOWS fallback, which has nothing real to persist to. */
+  initialSubStages: WorkflowTemplateSubStageWithStage[] | null
+}) {
   return (
     <Tabs defaultValue="basic" className="min-h-0 flex-1 gap-0">
       <TabsList className="pr-6 pl-3">
@@ -32,7 +40,7 @@ export function WorkflowDetailTabs({ workflow }: { workflow: MockWorkflow }) {
         <WorkflowBasicTab workflow={workflow} />
       </TabsPanel>
       <TabsPanel value="stages" keepMounted className="min-h-0 flex-1 overflow-hidden">
-        <WorkflowStagesTab workflow={workflow} />
+        <WorkflowStagesTab workflow={workflow} initialSubStages={initialSubStages} />
       </TabsPanel>
       <TabsPanel
         value="scheduling-policy"

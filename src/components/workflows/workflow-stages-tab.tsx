@@ -33,6 +33,15 @@ import {
   type MockWorkflowStage,
   type SubStageScale,
 } from "@/lib/mock-workflows"
+import {
+  saveTemplateSubStages,
+  type TemplateSubStageInput,
+} from "@/app/(app)/workflows/actions"
+import {
+  useWorkflowEditTab,
+  type TabSaveResult,
+} from "@/components/workflows/workflow-edit-provider"
+import type { WorkflowTemplateSubStageWithStage } from "@/lib/data"
 
 const MAIN_STAGES: { key: MainStageKey; label: string }[] = [
   { key: "source", label: "Sourced" },
@@ -58,7 +67,8 @@ type SubStage = {
   visibility: Visibility
   owner: string
   collaborator: string
-  entryCondition: EntryCondition
+  /** Multi-select — a stage can be entered either manually or automatically, not exclusively one or the other. */
+  entryConditions: EntryCondition[]
   interviewerType: InterviewerType
   interactionMode: InteractionMode
   questionSource: QuestionSource
@@ -68,7 +78,10 @@ type SubStage = {
   captureTranscript: boolean
   decisionMode: DecisionMode
   decisionOwner: string
+  /** Not applicable to the offer stage — see hireRecommendationEnabled instead. */
   decisionScale: SubStageScale
+  /** Offer-stage sub-stages capture a hire recommendation instead of a rating scale. */
+  hireRecommendationEnabled: boolean
   overrideEnabled: boolean
   overrideRoles: string
 }
@@ -87,10 +100,26 @@ const OVERRIDE_ROLE_OPTIONS = [
   "Admin, Hiring Manager, Recruiter",
 ]
 
-const ENTRY_CONDITION_OPTIONS: { value: EntryCondition; label: string }[] = [
+/** "both" is a UI-only convenience for picking the two-element array — stored/DB entry conditions are always "manual" and/or "automatic", never "both". */
+type EntryConditionOption = EntryCondition | "both"
+
+const ENTRY_CONDITION_OPTIONS: { value: EntryConditionOption; label: string }[] = [
   { value: "manual", label: "Manual" },
   { value: "automatic", label: "Automatic" },
+  { value: "both", label: "Both" },
 ]
+
+function entryConditionOptionFor(conditions: EntryCondition[]): EntryConditionOption {
+  const hasManual = conditions.includes("manual")
+  const hasAutomatic = conditions.includes("automatic")
+  if (hasManual && hasAutomatic) return "both"
+  if (hasAutomatic) return "automatic"
+  return "manual"
+}
+
+function entryConditionsFor(option: EntryConditionOption): EntryCondition[] {
+  return option === "both" ? ["manual", "automatic"] : [option]
+}
 
 const INTERVIEWER_OPTIONS: { value: InterviewerType; label: string; description: string }[] = [
   {
@@ -151,7 +180,8 @@ function makeSubStage(
   mainStage: MainStageKey,
   name: string,
   purpose = "",
-  scale: SubStageScale = SCALE_OPTIONS[0].value
+  scale: SubStageScale = SCALE_OPTIONS[0].value,
+  hireRecommendationEnabled = mainStage === "offer"
 ): SubStage {
   return {
     id: crypto.randomUUID(),
@@ -161,7 +191,7 @@ function makeSubStage(
     visibility: "internal",
     owner: OWNER_OPTIONS[0],
     collaborator: COLLABORATOR_OPTIONS[0],
-    entryCondition: "manual",
+    entryConditions: ["manual"],
     interviewerType: "human",
     interactionMode: "phone",
     questionSource: "ai_assisted",
@@ -172,6 +202,7 @@ function makeSubStage(
     decisionMode: "single_rater",
     decisionOwner: DECISION_OWNER_OPTIONS[0],
     decisionScale: scale,
+    hireRecommendationEnabled,
     overrideEnabled: true,
     overrideRoles: OVERRIDE_ROLE_OPTIONS[0],
   }
@@ -179,27 +210,119 @@ function makeSubStage(
 
 /** Seeds a sub-stage from the workflow template's stored master stage — this is the source of truth a job draft later reads its Scale from. */
 function subStageFromMock(mock: MockWorkflowStage): SubStage {
-  return { ...makeSubStage(mock.mainStage, mock.name, mock.purpose, mock.scale), id: mock.id }
+  return {
+    ...makeSubStage(
+      mock.mainStage,
+      mock.name,
+      mock.purpose,
+      mock.scale,
+      mock.hireRecommendationEnabled
+    ),
+    id: mock.id,
+  }
+}
+
+/** `format`'s DB values are "phone"|"video"|"onsite"|"async" — only the middle name differs from the local InteractionMode ("in_person" vs "onsite"). */
+function interactionModeFromFormat(format: WorkflowTemplateSubStageWithStage["format"]): InteractionMode {
+  if (format === "onsite") return "in_person"
+  return format ?? "phone"
+}
+function formatFromInteractionMode(mode: InteractionMode): "phone" | "video" | "onsite" | "async" {
+  return mode === "in_person" ? "onsite" : mode
+}
+
+/** Hydrates a sub-stage from a real, persisted workflow_template_sub_stages row. */
+function subStageFromTemplateRow(row: WorkflowTemplateSubStageWithStage): SubStage {
+  return {
+    id: row.id,
+    mainStage: (row.pipeline_stage?.key ?? "screen") as MainStageKey,
+    name: row.name,
+    purpose: row.purpose ?? "",
+    visibility: row.visibility,
+    owner: row.owner_role ?? OWNER_OPTIONS[0],
+    collaborator: row.collaborator_role ?? COLLABORATOR_OPTIONS[0],
+    entryConditions: row.entry_conditions.length ? row.entry_conditions : ["manual"],
+    interviewerType: row.interviewer_type,
+    interactionMode: interactionModeFromFormat(row.format),
+    questionSource: row.question_source ?? "ai_assisted",
+    requiredQuestionsEnabled: row.required_questions !== null,
+    requiredQuestions: row.required_questions ?? DEFAULT_REQUIRED_QUESTIONS,
+    captureFeedbackForm: row.capture_feedback_form,
+    captureTranscript: row.capture_transcript,
+    decisionMode: row.decision_mode,
+    decisionOwner: row.decision_owner ?? DECISION_OWNER_OPTIONS[0],
+    decisionScale: row.rating_scale ?? SCALE_OPTIONS[0].value,
+    hireRecommendationEnabled: row.hire_recommendation_enabled,
+    overrideEnabled: row.override_enabled,
+    overrideRoles: row.override_roles ?? OVERRIDE_ROLE_OPTIONS[0],
+  }
+}
+
+/** Reverse of subStageFromTemplateRow, for saving back via saveTemplateSubStages. */
+function toTemplateSubStageInput(s: SubStage, displayOrder: number): TemplateSubStageInput {
+  return {
+    pipeline_stage_key: s.mainStage,
+    name: s.name,
+    purpose: s.purpose || null,
+    format: formatFromInteractionMode(s.interactionMode),
+    visibility: s.visibility,
+    owner_role: s.owner || null,
+    collaborator_role: s.collaborator || null,
+    entry_conditions: s.entryConditions,
+    interviewer_type: s.interviewerType,
+    question_source: s.questionSource,
+    required_questions: s.requiredQuestionsEnabled ? s.requiredQuestions : null,
+    capture_feedback_form: s.captureFeedbackForm,
+    capture_transcript: s.captureTranscript,
+    decision_mode: s.decisionMode,
+    decision_owner: s.decisionOwner || null,
+    // Mutually exclusive per stage — see the SubStage.decisionScale/hireRecommendationEnabled comments.
+    rating_scale: s.mainStage === "offer" ? null : s.decisionScale,
+    hire_recommendation_enabled: s.mainStage === "offer" ? s.hireRecommendationEnabled : false,
+    override_enabled: s.overrideEnabled,
+    override_roles: s.overrideEnabled ? s.overrideRoles : null,
+    display_order: displayOrder,
+  }
 }
 
 /**
  * Two-column Stages editor: fixed main stages on the left (each holding a
  * variable, reorderable list of sub-stages — same Tier-1/Tier-2 shape as
- * pipeline_stages/job_workflow_sub_stages in CLAUDE.md, but there's no
- * workflow_templates table yet, so this is local component state only, not
- * persisted anywhere). Selecting a sub-stage opens its settings on the
- * right. Drag a card by its handle onto another card (or a group header) to
- * reorder within a group or move it into a different main stage entirely —
- * dropping on a card inserts before it; dropping on a header appends to the
- * end of that group.
+ * pipeline_stages/job_workflow_sub_stages in CLAUDE.md). Selecting a
+ * sub-stage opens its settings on the right. Drag a card by its handle onto
+ * another card (or a group header) to reorder within a group or move it
+ * into a different main stage entirely — dropping on a card inserts before
+ * it; dropping on a header appends to the end of that group.
  */
-export function WorkflowStagesTab({ workflow }: { workflow: MockWorkflow }) {
+export function WorkflowStagesTab({
+  workflow,
+  initialSubStages,
+}: {
+  workflow: MockWorkflow
+  /** Real DB rows to hydrate from and save back to — null for the MOCK_WORKFLOWS fallback (legacy wf-* ids), which has no real template row to persist against. */
+  initialSubStages: WorkflowTemplateSubStageWithStage[] | null
+}) {
+  const isRealTemplate = initialSubStages !== null
+
   const [subStages, setSubStages] = React.useState<SubStage[]>(() =>
-    workflow.stages.map(subStageFromMock)
+    initialSubStages ? initialSubStages.map(subStageFromTemplateRow) : workflow.stages.map(subStageFromMock)
   )
-  const [selectedId, setSelectedId] = React.useState<string | null>(
-    workflow.stages[0]?.id ?? null
-  )
+  const [baseline, setBaseline] = React.useState(subStages)
+  const isDirty = JSON.stringify(subStages) !== JSON.stringify(baseline)
+
+  const save = React.useCallback(async (): Promise<TabSaveResult> => {
+    if (!isRealTemplate) return { ok: true }
+    const res = await saveTemplateSubStages(
+      workflow.workflow_id,
+      subStages.map((s, i) => toTemplateSubStageInput(s, i))
+    )
+    if (!res.ok) return res
+    setBaseline(subStages)
+    return { ok: true }
+  }, [isRealTemplate, workflow.workflow_id, subStages])
+
+  useWorkflowEditTab("stages", isDirty, save)
+  const [selectedId, setSelectedId] = React.useState<string | null>(subStages[0]?.id ?? null)
   const [collapsed, setCollapsed] = React.useState<Set<MainStageKey>>(new Set())
   const [dragId, setDragId] = React.useState<string | null>(null)
 
@@ -527,9 +650,13 @@ function SubStageSettingsPanel({
             <div className="flex flex-col gap-1.5">
               <Label>Entry Condition</Label>
               <Select
-                value={subStage.entryCondition}
+                value={entryConditionOptionFor(subStage.entryConditions)}
                 onValueChange={(value) =>
-                  value && onChange((s) => ({ ...s, entryCondition: value as EntryCondition }))
+                  value &&
+                  onChange((s) => ({
+                    ...s,
+                    entryConditions: entryConditionsFor(value as EntryConditionOption),
+                  }))
                 }
               >
                 <SelectTrigger className="w-full">
@@ -710,26 +837,44 @@ function SubStageSettingsPanel({
               </Select>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label>Scale</Label>
-              <Select
-                value={subStage.decisionScale}
-                onValueChange={(value) =>
-                  value && onChange((s) => ({ ...s, decisionScale: value as SubStageScale }))
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCALE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {subStage.mainStage === "offer" ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-4">
+                  <Label>Hire Recommendation</Label>
+                  <Switch
+                    checked={subStage.hireRecommendationEnabled}
+                    onCheckedChange={(checked) =>
+                      onChange((s) => ({ ...s, hireRecommendationEnabled: checked }))
+                    }
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Offer-stage decisions capture a hire recommendation instead of a rating
+                  scale.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <Label>Scale</Label>
+                <Select
+                  value={subStage.decisionScale}
+                  onValueChange={(value) =>
+                    value && onChange((s) => ({ ...s, decisionScale: value as SubStageScale }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCALE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-4">

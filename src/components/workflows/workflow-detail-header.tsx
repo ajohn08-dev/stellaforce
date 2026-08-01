@@ -12,18 +12,15 @@ import { useWorkflowEdit } from "@/components/workflows/workflow-edit-provider"
  * the workflow detail page is mounted, replacing the default
  * notifications/avatar block (see useSetHeaderActions). The breadcrumb
  * (name + status) is set separately — see SetWorkflowBreadcrumb. Run/Publish
- * are still unwired stubs — only the Basic tab currently has a real save
- * path (see WorkflowEditProvider); the other tabs remain a UI shell to be
- * specified further later.
+ * are still unwired stubs. Save persists the Basic and Stages tabs (see
+ * WorkflowEditProvider and each tab's useWorkflowEditTab call) — Scheduling
+ * Policy/AI & Automation/Communication remain a UI shell with no backing
+ * schema yet.
  */
 export function WorkflowDetailHeader() {
   const { saveAll, saving, isDirty } = useWorkflowEdit()
 
   async function handleSave() {
-    if (!isDirty) {
-      toast.info("No changes to save.")
-      return
-    }
     const res = await saveAll()
     if (!res.ok) {
       toast.error(res.error)
@@ -42,7 +39,10 @@ export function WorkflowDetailHeader() {
         <Play className="size-4" />
         Run
       </Button>
-      <Button variant="secondary" onClick={handleSave} disabled={saving}>
+      {/* Disabled (not just while saving) until there's an actual unsaved
+          change — otherwise the button looks identical whether or not any
+          tab is dirty, which reads as "this isn't reacting to my edits." */}
+      <Button variant="secondary" onClick={handleSave} disabled={saving || !isDirty}>
         {saving ? "Saving…" : "Save"}
       </Button>
       <Button onClick={() => toast.info("Not wired up yet — publishing is coming soon.")}>

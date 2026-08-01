@@ -43,7 +43,8 @@ export default async function WorkflowDetailPage({
           mainStage: (s.pipeline_stage?.key ?? "screen") as MockWorkflow["stages"][number]["mainStage"],
           name: s.name,
           purpose: s.purpose ?? "",
-          scale: "star",
+          scale: s.rating_scale ?? undefined,
+          hireRecommendationEnabled: s.hire_recommendation_enabled,
         })),
       }
     : MOCK_WORKFLOWS.find((w) => w.workflow_id === id)
@@ -57,7 +58,10 @@ export default async function WorkflowDetailPage({
       <WorkflowEditProvider>
         <SetWorkflowBreadcrumb name={workflow.name} status={workflow.status} />
         <WorkflowDetailHeader />
-        <WorkflowDetailTabs workflow={workflow} />
+        <WorkflowDetailTabs
+          workflow={workflow}
+          initialSubStages={template ? template.sub_stages : null}
+        />
       </WorkflowEditProvider>
     </div>
   )
