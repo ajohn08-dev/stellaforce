@@ -1,28 +1,38 @@
-import { Check } from "lucide-react"
-
 import { cn } from "@/lib/utils"
 
 export type Step = { key: string; label: string; description?: string }
 
+/**
+ * Three states per step:
+ *  - selected/active → orange (primary)
+ *  - has data (in `dataKeys`) → black (foreground) + freely clickable
+ *  - no data yet → gray (muted) + not clickable
+ * Steps with data can be navigated to directly by clicking.
+ */
 export function StepProgressBar({
   steps,
   currentIndex,
+  dataKeys,
   onStepClick,
   orientation = "horizontal",
 }: {
   steps: Step[]
   currentIndex: number
+  /** Keys of steps that already have data (rendered black + clickable). */
+  dataKeys?: string[]
   onStepClick?: (index: number) => void
   orientation?: "horizontal" | "vertical"
 }) {
   const isVertical = orientation === "vertical"
+  const hasData = (key: string) =>
+    dataKeys ? dataKeys.includes(key) : false
 
   return (
     <ol className={cn("flex", isVertical ? "flex-col gap-1" : "items-center")}>
       {steps.map((step, i) => {
-        const isComplete = i < currentIndex
         const isCurrent = i === currentIndex
-        const clickable = Boolean(onStepClick) && i <= currentIndex
+        const withData = hasData(step.key)
+        const clickable = Boolean(onStepClick) && (isCurrent || withData)
 
         return (
           <li
@@ -44,14 +54,14 @@ export function StepProgressBar({
               <span
                 className={cn(
                   "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
-                  isComplete
-                    ? "bg-primary text-primary-foreground"
-                    : isCurrent
-                      ? "border-2 border-primary text-primary"
+                  isCurrent
+                    ? "border-2 border-primary text-primary"
+                    : withData
+                      ? "border border-foreground text-foreground"
                       : "border border-border text-muted-foreground"
                 )}
               >
-                {isComplete ? <Check className="size-3.5" /> : i + 1}
+                {i + 1}
               </span>
               <span
                 className={cn(
@@ -59,7 +69,7 @@ export function StepProgressBar({
                   isVertical ? "text-left" : "whitespace-nowrap",
                   isCurrent
                     ? "font-medium text-primary"
-                    : isComplete
+                    : withData
                       ? "text-foreground"
                       : "text-muted-foreground"
                 )}
@@ -72,7 +82,7 @@ export function StepProgressBar({
               <span
                 className={cn(
                   "mx-3 h-px flex-1",
-                  isComplete ? "bg-primary" : "bg-border"
+                  withData ? "bg-foreground/30" : "bg-border"
                 )}
               />
             )}

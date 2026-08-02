@@ -31,6 +31,8 @@ export type CandidateListItem = CandidateRow & {
   primaryEducation: CandidateEducationRow | null
 }
 import type { WorkHistoryEntry } from "@/lib/work-history"
+import type { Competency } from "@/components/jobs/draft/steps/competency-data"
+import type { ScoreCardCategory } from "@/components/jobs/draft/steps/score-card-step"
 
 /**
  * Server-side read helpers used by Server Components. Every function degrades
@@ -401,6 +403,82 @@ export async function getJobPipeline(jobId: string): Promise<{
       candidate: CandidateRow | null
     })[],
   }
+}
+
+/** A job's competencies (Evaluation Criteria step), mapped to the wizard shape. */
+export async function getJobCompetencies(jobId: string): Promise<Competency[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data: comps } = await supabase
+    .from("job_competencies")
+    .select("id, type, description, recommended_level, skills, tools")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: true })
+  if (!comps || comps.length === 0) return []
+
+  const { data: levels } = await supabase
+    .from("job_competency_level_descriptions")
+    .select("competency_id, level, description")
+    .in(
+      "competency_id",
+      comps.map((c) => c.id)
+    )
+  const levelByComp = new Map<string, Partial<Record<string, string>>>()
+  for (const l of levels ?? []) {
+    const m = levelByComp.get(l.competency_id) ?? {}
+    m[l.level] = l.description
+    levelByComp.set(l.competency_id, m)
+  }
+
+  return comps.map((c) => {
+    const ld = levelByComp.get(c.id) ?? {}
+    return {
+      id: c.id,
+      type: c.type,
+      description: c.description,
+      recommendedLevel: c.recommended_level,
+      selectedLevel: c.recommended_level,
+      levelDescriptions: {
+        aware: ld.aware ?? "",
+        proficient: ld.proficient ?? "",
+        expert: ld.expert ?? "",
+      },
+      skills: c.skills ?? [],
+      tools: c.tools ?? [],
+    }
+  })
+}
+
+/** A job's scorecard (categories + their competency ids), for the Scorecard step. */
+export async function getJobScorecard(jobId: string): Promise<ScoreCardCategory[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data: cats } = await supabase
+    .from("job_scorecard_categories")
+    .select("id, name, weight")
+    .eq("job_id", jobId)
+  if (!cats || cats.length === 0) return []
+
+  const { data: links } = await supabase
+    .from("job_scorecard_category_competencies")
+    .select("category_id, competency_id")
+    .in(
+      "category_id",
+      cats.map((c) => c.id)
+    )
+  const byCategory = new Map<string, string[]>()
+  for (const l of links ?? []) {
+    const arr = byCategory.get(l.category_id) ?? []
+    arr.push(l.competency_id)
+    byCategory.set(l.category_id, arr)
+  }
+
+  return cats.map((c) => ({
+    id: c.id,
+    name: c.name,
+    weight: Number(c.weight),
+    competencyIds: byCategory.get(c.id) ?? [],
+  }))
 }
 
 /** Target companies for a job (Role Definition step). */

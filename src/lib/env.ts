@@ -54,6 +54,22 @@ export const serverEnv = {
       "https://ajzenarate.app.n8n.cloud/webhook/1ef95b54-f506-4007-a2c2-7d2af8ba9400"
     )
   },
+  /** n8n "generate-competencies" webhook — turns a job's role definition into
+   * evaluation-criteria competencies. Overridable via env. */
+  get n8nCompetenciesWebhookUrl() {
+    return (
+      process.env.N8N_COMPETENCIES_WEBHOOK_URL ??
+      "https://ajzenarate.app.n8n.cloud/webhook/ff025819-345f-4c82-af6b-1ed7a0d6ac2e"
+    )
+  },
+  /** n8n "generate-scorecard" webhook — groups a job's competencies into
+   * weighted scorecard categories. Overridable via env. */
+  get n8nScorecardWebhookUrl() {
+    return (
+      process.env.N8N_SCORECARD_WEBHOOK_URL ??
+      "https://ajzenarate.app.n8n.cloud/webhook/4a43602f-f2cc-41bf-b2db-ac1862f6c5ba"
+    )
+  },
   /** n8n "calendar connect invite" webhook — sends the "connect your Google
    * Calendar" email when a team member is added to a job. */
   get n8nCalendarWebhookUrl() {

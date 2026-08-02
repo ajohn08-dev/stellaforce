@@ -117,13 +117,36 @@ function toWorkplace(v: RoleInitialValues["workplace_type"]): Workplace {
   return "onsite"
 }
 
+/** The step's current values, reported up so "Next" can save + regenerate. */
+export type RoleFormValues = {
+  title: string
+  workplace_type: "on-site" | "hybrid" | "remote"
+  office_location: string
+  description: string
+  industry: string
+  job_function: string
+  employment_type: string
+  experience_required: string
+  education_required: string
+  salary_from: number | null
+  salary_to: number | null
+  salary_currency: string
+  target_companies: TargetCompany[]
+}
+
 /**
  * Role Definition step — controlled + pre-filled from the draft job's persisted
  * values (title/description from intake; the rest from the AI generate-role
  * webhook; target companies from job_target_companies). Edits are local for now;
  * saving on publish is a later pass.
  */
-export function RoleDefinitionStep({ initial }: { initial?: RoleInitialValues }) {
+export function RoleDefinitionStep({
+  initial,
+  onChange,
+}: {
+  initial?: RoleInitialValues
+  onChange?: (values: RoleFormValues) => void
+}) {
   const [title, setTitle] = React.useState(initial?.title ?? "")
   const [workplace, setWorkplace] = React.useState<Workplace>(toWorkplace(initial?.workplace_type))
   const [officeLocation, setOfficeLocation] = React.useState(initial?.office_location ?? "")
@@ -148,6 +171,44 @@ export function RoleDefinitionStep({ initial }: { initial?: RoleInitialValues })
     initial?.target_companies ?? []
   )
   const [newCompany, setNewCompany] = React.useState("")
+
+  // Report current values up so the wizard's "Next" can save + regenerate.
+  React.useEffect(() => {
+    const num = (s: string) => {
+      const n = Number(s)
+      return s.trim() && !Number.isNaN(n) ? n : null
+    }
+    onChange?.({
+      title,
+      workplace_type: workplace === "onsite" ? "on-site" : workplace,
+      office_location: officeLocation,
+      description,
+      industry,
+      job_function: jobFunction,
+      employment_type: employmentType,
+      experience_required: experience,
+      education_required: education,
+      salary_from: num(salaryFrom),
+      salary_to: num(salaryTo),
+      salary_currency: currency,
+      target_companies: targetCompanies,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    title,
+    workplace,
+    officeLocation,
+    description,
+    industry,
+    jobFunction,
+    employmentType,
+    experience,
+    education,
+    salaryFrom,
+    salaryTo,
+    currency,
+    targetCompanies,
+  ])
 
   function addCompany() {
     const name = newCompany.trim()

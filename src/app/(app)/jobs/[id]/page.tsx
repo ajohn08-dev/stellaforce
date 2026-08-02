@@ -7,8 +7,10 @@ import { SetJobBreadcrumb } from "@/components/jobs/workspace/set-job-breadcrumb
 import { titleCase } from "@/lib/constants"
 import {
   getCandidates,
+  getJobCompetencies,
   getJobOrder,
   getJobPipeline,
+  getJobScorecard,
   getJobTargetCompanies,
   getJobTeamMembers,
   getWorkflowTemplates,
@@ -30,10 +32,14 @@ export default async function JobWorkspacePage({
   // Draft → the 5-step setup wizard, pre-filled with any AI-generated role data.
   if (job.status === "draft") {
     const profile = await getCurrentProfile()
-    const [templates, targetCompanies] = await Promise.all([
-      getWorkflowTemplates({ clientId: profile?.client_id ?? null }),
-      getJobTargetCompanies(id),
-    ])
+    const [templates, targetCompanies, competencies, scorecard, teamMembers] =
+      await Promise.all([
+        getWorkflowTemplates({ clientId: profile?.client_id ?? null }),
+        getJobTargetCompanies(id),
+        getJobCompetencies(id),
+        getJobScorecard(id),
+        getJobTeamMembers(id),
+      ])
     const roleInitial = {
       title: job.title,
       workplace_type: job.workplace_type,
@@ -57,6 +63,14 @@ export default async function JobWorkspacePage({
           job={mockJob}
           templates={templates.map((t) => ({ id: t.id, name: t.name, status: t.status }))}
           roleInitial={roleInitial}
+          competenciesInitial={competencies}
+          scorecardInitial={scorecard}
+          membersInitial={teamMembers.map((m) => ({
+            id: m.id,
+            name: m.name,
+            email: m.email,
+            role: m.role,
+          }))}
         />
       </>
     )

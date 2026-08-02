@@ -8,16 +8,22 @@ import { Button } from "@/components/ui/button"
 import { StepProgressBar, type Step } from "@/components/jobs/draft/step-progress-bar"
 import {
   RoleDefinitionStep,
+  type RoleFormValues,
   type RoleInitialValues,
 } from "@/components/jobs/draft/steps/role-definition-step"
 import { EvaluationCriteriaStep } from "@/components/jobs/draft/steps/evaluation-criteria-step"
 import { ScoreCardStep } from "@/components/jobs/draft/steps/score-card-step"
 import { TeamMembersStep } from "@/components/jobs/draft/steps/team-members-step"
 import { WorkflowStep } from "@/components/jobs/draft/steps/workflow-step"
-import { INITIAL_COMPETENCIES } from "@/components/jobs/draft/steps/competency-data"
-import { INITIAL_MEMBERS, type Member } from "@/components/jobs/draft/steps/team-member-data"
+import type { Competency } from "@/components/jobs/draft/steps/competency-data"
+import { type Member } from "@/components/jobs/draft/steps/team-member-data"
 import { useSidebarDefaultCollapsed } from "@/lib/sidebar-context"
-import { publishJob } from "@/app/(app)/jobs/actions"
+import {
+  generateScorecard,
+  publishJob,
+  saveRoleAndGenerateCompetencies,
+} from "@/app/(app)/jobs/actions"
+import type { ScoreCardCategory } from "@/components/jobs/draft/steps/score-card-step"
 import type { MockJob } from "@/lib/mock-jobs"
 
 export type WorkflowTemplateOption = { id: string; name: string; status: string }
@@ -62,20 +68,73 @@ export function JobDraftSpace({
   job,
   templates,
   roleInitial,
+  competenciesInitial,
+  scorecardInitial,
+  membersInitial,
 }: {
   job: MockJob
   templates: WorkflowTemplateOption[]
   roleInitial?: RoleInitialValues
+  competenciesInitial?: Competency[]
+  scorecardInitial?: ScoreCardCategory[]
+  membersInitial?: Member[]
 }) {
   const router = useRouter()
   const [stepIndex, setStepIndex] = React.useState(0)
-  const [competencies, setCompetencies] = React.useState(INITIAL_COMPETENCIES)
-  const [members, setMembers] = React.useState<Member[]>(INITIAL_MEMBERS)
+  const [competencies, setCompetencies] = React.useState<Competency[]>(
+    competenciesInitial ?? []
+  )
+  const [scorecard, setScorecard] = React.useState<ScoreCardCategory[]>(
+    scorecardInitial ?? []
+  )
+  const [members, setMembers] = React.useState<Member[]>(membersInitial ?? [])
   const [templateId, setTemplateId] = React.useState<string | undefined>(undefined)
   const [publishing, setPublishing] = React.useState(false)
+  const [roleValues, setRoleValues] = React.useState<RoleFormValues>()
+  const [generating, setGenerating] = React.useState(false)
   const isLastStep = stepIndex === STEPS.length - 1
 
+  // Which steps already have data (rendered black + freely clickable). Role
+  // Definition always has data (title/description come from job creation).
+  const dataKeys = [
+    "role-definition",
+    ...(competencies.length > 0 ? ["evaluation-criteria"] : []),
+    ...(scorecard.length > 0 ? ["score-card"] : []),
+    ...(members.length > 0 ? ["team-members"] : []),
+    ...(templateId ? ["workflow"] : []),
+  ]
+
   useSidebarDefaultCollapsed(true)
+
+  async function handleNext() {
+    const key = STEPS[stepIndex].key
+
+    // Leaving Role Definition → save values + generate Evaluation Criteria (once).
+    if (key === "role-definition" && roleValues) {
+      setGenerating(true)
+      const res = await saveRoleAndGenerateCompetencies(job.job_id, roleValues)
+      setGenerating(false)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      setCompetencies(res.competencies)
+    }
+
+    // Leaving Evaluation Criteria → generate the Scorecard from competencies (once).
+    if (key === "evaluation-criteria") {
+      setGenerating(true)
+      const res = await generateScorecard(job.job_id)
+      setGenerating(false)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      setScorecard(res.scorecard)
+    }
+
+    setStepIndex((i) => Math.min(STEPS.length - 1, i + 1))
+  }
 
   async function handlePublish() {
     if (!templateId) {
@@ -85,7 +144,6 @@ export function JobDraftSpace({
     setPublishing(true)
     const res = await publishJob(job.job_id, {
       workflow_template_id: templateId,
-      members: members.map(({ name, email, role }) => ({ name, email, role })),
     })
     setPublishing(false)
     if (!res.ok) {
@@ -109,6 +167,7 @@ export function JobDraftSpace({
           <StepProgressBar
             steps={STEPS}
             currentIndex={stepIndex}
+            dataKeys={dataKeys}
             onStepClick={setStepIndex}
             orientation="vertical"
           />
@@ -125,16 +184,20 @@ export function JobDraftSpace({
                 Back
               </Button>
               <Button
-                disabled={publishing}
-                onClick={() => {
-                  if (isLastStep) {
-                    handlePublish()
-                  } else {
-                    setStepIndex((i) => Math.min(STEPS.length - 1, i + 1))
-                  }
-                }}
+                disabled={publishing || generating}
+                onClick={() => (isLastStep ? handlePublish() : handleNext())}
               >
-                {isLastStep ? (publishing ? "Publishing…" : "Publish job") : "Next"}
+                {isLastStep
+                  ? publishing
+                    ? "Publishing…"
+                    : "Publish job"
+                  : generating
+                    ? (STEPS[stepIndex].key === "role-definition"
+                        ? competencies.length > 0
+                        : scorecard.length > 0)
+                      ? "Saving…"
+                      : "Generating…"
+                    : "Next"}
               </Button>
             </div>
 
@@ -148,16 +211,20 @@ export function JobDraftSpace({
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {STEPS[stepIndex].key === "role-definition" ? (
-              <RoleDefinitionStep initial={roleInitial} />
+              <RoleDefinitionStep initial={roleInitial} onChange={setRoleValues} />
             ) : STEPS[stepIndex].key === "evaluation-criteria" ? (
               <EvaluationCriteriaStep
                 competencies={competencies}
                 setCompetencies={setCompetencies}
               />
             ) : STEPS[stepIndex].key === "score-card" ? (
-              <ScoreCardStep competencies={competencies} />
+              <ScoreCardStep
+                competencies={competencies}
+                categories={scorecard}
+                setCategories={setScorecard}
+              />
             ) : STEPS[stepIndex].key === "team-members" ? (
-              <TeamMembersStep members={members} setMembers={setMembers} />
+              <TeamMembersStep jobId={job.job_id} members={members} setMembers={setMembers} />
             ) : STEPS[stepIndex].key === "workflow" ? (
               <WorkflowStep
                 competencies={competencies}

@@ -5,14 +5,24 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getCurrentProfile } from "@/lib/auth"
 import { resolveWorkflowSettings } from "@/lib/workflow-settings"
+import { getJobCompetencies, getJobScorecard } from "@/lib/data"
 import { serverEnv } from "@/lib/env"
+import { applyAiScorecard, parseAiScorecardResponse } from "@/lib/server/job-ai-scorecard"
+import type { Competency } from "@/components/jobs/draft/steps/competency-data"
+import type { ScoreCardCategory } from "@/components/jobs/draft/steps/score-card-step"
 import { applyAiRoleOutput, parseAiRoleResponse } from "@/lib/server/job-ai-role"
+import {
+  applyAiCompetencies,
+  parseAiCompetenciesResponse,
+} from "@/lib/server/job-ai-competencies"
 import { sendCalendarConnectInvite } from "@/lib/server/calendar-invite"
 import type {
   ActivityEventType,
   ActorType,
+  EmploymentType,
   EventSeverity,
   Json,
+  TablesUpdate,
 } from "@/lib/supabase/types"
 
 /**
@@ -128,6 +138,251 @@ async function requestAndApplyAiRole(
   }
 }
 
+/**
+ * Second cascade step: pass the job's persisted role definition to the n8n
+ * "generate-competencies" webhook, consume the response, and replace the job's
+ * competencies (Evaluation Criteria). Best-effort. Reads the role from the DB
+ * so it works both chained after role-generation and as a standalone regenerate.
+ */
+async function requestAndApplyAiCompetencies(supabase: SupabaseServer, jobId: string) {
+  try {
+    const { data: job } = await supabase
+      .from("job_orders")
+      .select(
+        "job_id, title, description, workplace_type, company, industry, job_function, employment_type, experience_required, education_required, salary_from, salary_to, salary_currency"
+      )
+      .eq("job_id", jobId)
+      .single()
+    if (!job) return
+
+    const { data: tc } = await supabase
+      .from("job_target_companies")
+      .select("name")
+      .eq("job_id", jobId)
+
+    const payload = {
+      job_id: jobId,
+      title: job.title,
+      description: job.description,
+      role: {
+        workplace_type: job.workplace_type,
+        company: job.company,
+        industry: job.industry,
+        job_function: job.job_function,
+        employment_type: job.employment_type,
+        experience_required: job.experience_required,
+        education_required: job.education_required,
+        salary_from: job.salary_from,
+        salary_to: job.salary_to,
+        salary_currency: job.salary_currency,
+      },
+      target_companies: (tc ?? []).map((t) => t.name),
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 55_000)
+    const res = await fetch(serverEnv.n8nCompetenciesWebhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serverEnv.n8nWebhookSecret}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout))
+
+    if (!res.ok) {
+      console.error(`[competencies] n8n webhook responded ${res.status}`)
+      return
+    }
+    const raw = await res.json().catch(() => null)
+    const out = parseAiCompetenciesResponse(raw)
+    if (!out) {
+      console.error("[competencies] n8n response did not match the expected shape")
+      return
+    }
+    await applyAiCompetencies(supabase, jobId, out)
+  } catch (err) {
+    console.error("[competencies] n8n request/apply failed", err)
+  }
+}
+
+/**
+ * Third cascade step: pass the job's competencies to the n8n
+ * "generate-scorecard" webhook, consume the response, and replace the job's
+ * scorecard (weighted categories linking competencies). Best-effort.
+ */
+async function requestAndApplyAiScorecard(supabase: SupabaseServer, jobId: string) {
+  try {
+    const { data: job } = await supabase
+      .from("job_orders")
+      .select("title")
+      .eq("job_id", jobId)
+      .single()
+    const { data: comps } = await supabase
+      .from("job_competencies")
+      .select("id, type, description, recommended_level, skills")
+      .eq("job_id", jobId)
+    if (!comps || comps.length === 0) return
+
+    const payload = {
+      job_id: jobId,
+      title: job?.title ?? "",
+      competencies: comps.map((c) => ({
+        id: c.id,
+        type: c.type,
+        description: c.description,
+        recommended_level: c.recommended_level,
+        skills: c.skills,
+      })),
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 55_000)
+    const res = await fetch(serverEnv.n8nScorecardWebhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serverEnv.n8nWebhookSecret}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout))
+
+    if (!res.ok) {
+      console.error(`[scorecard] n8n webhook responded ${res.status}`)
+      return
+    }
+    const raw = await res.json().catch(() => null)
+    const out = parseAiScorecardResponse(raw)
+    if (!out) {
+      console.error("[scorecard] n8n response did not match the expected shape")
+      return
+    }
+    await applyAiScorecard(supabase, jobId, out)
+  } catch (err) {
+    console.error("[scorecard] n8n request/apply failed", err)
+  }
+}
+
+/**
+ * Called from the wizard's "Next" on the Evaluation Criteria step: generate the
+ * Scorecard from the job's competencies — but only if the job has none yet (or
+ * an explicit regenerate), so edits/existing categories aren't clobbered.
+ * Returns the fresh scorecard so the client can update immediately.
+ */
+export async function generateScorecard(
+  jobId: string,
+  opts: { regenerate?: boolean } = {}
+): Promise<ActionResult<{ scorecard: ScoreCardCategory[] }>> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+
+  const { count } = await supabase
+    .from("job_scorecard_categories")
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", jobId)
+  if (opts.regenerate || (count ?? 0) === 0) {
+    await requestAndApplyAiScorecard(supabase, jobId)
+  }
+
+  const scorecard = await getJobScorecard(jobId)
+  revalidatePath(`/jobs/${jobId}`)
+  return { ok: true, scorecard }
+}
+
+/** Standalone trigger for regenerating a job's Evaluation Criteria from its role. */
+export async function generateEvaluationCriteria(jobId: string): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+  await requestAndApplyAiCompetencies(supabase, jobId)
+  revalidatePath(`/jobs/${jobId}`)
+  return { ok: true }
+}
+
+const EMPLOYMENT_TYPES = ["full-time", "part-time", "contract", "freelance", "internship"] as const
+
+export type RoleFormInput = {
+  title?: string
+  workplace_type?: "on-site" | "hybrid" | "remote" | null
+  office_location?: string | null
+  description?: string | null
+  industry?: string | null
+  job_function?: string | null
+  employment_type?: string | null
+  experience_required?: string | null
+  education_required?: string | null
+  salary_from?: number | null
+  salary_to?: number | null
+  salary_currency?: string | null
+  target_companies?: { name: string; source: string }[]
+}
+
+/**
+ * Called from the wizard's "Next" on the Role Definition step: persist the
+ * recruiter's current (possibly-edited) role values + target companies, then
+ * generate the Evaluation Criteria from them. `company` is left untouched (it's
+ * resolved from the client). Best-effort on the AI step.
+ */
+export async function saveRoleAndGenerateCompetencies(
+  jobId: string,
+  values: RoleFormInput,
+  opts: { regenerate?: boolean } = {}
+): Promise<ActionResult<{ competencies: Competency[] }>> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+
+  const update: TablesUpdate<"job_orders"> = {
+    workplace_type: values.workplace_type ?? null,
+    office_location: values.office_location || null,
+    description: values.description || null,
+    industry: values.industry || null,
+    job_function: values.job_function || null,
+    experience_required: values.experience_required || null,
+    education_required: values.education_required || null,
+    salary_from: values.salary_from ?? null,
+    salary_to: values.salary_to ?? null,
+    salary_currency: values.salary_currency || null,
+  }
+  if (values.title?.trim()) update.title = values.title.trim()
+  const emp = values.employment_type?.trim()
+  if (emp && (EMPLOYMENT_TYPES as readonly string[]).includes(emp)) {
+    update.employment_type = emp as EmploymentType
+  } else if (!emp) {
+    update.employment_type = null
+  } // invalid non-empty token → leave the existing value
+
+  const { error } = await supabase.from("job_orders").update(update).eq("job_id", jobId)
+  if (error) return { ok: false, error: error.message }
+
+  // Replace target companies with the current UI list.
+  await supabase.from("job_target_companies").delete().eq("job_id", jobId)
+  const companies = (values.target_companies ?? []).filter((c) => c.name.trim())
+  if (companies.length > 0) {
+    await supabase
+      .from("job_target_companies")
+      .insert(companies.map((c) => ({ job_id: jobId, name: c.name.trim(), source: c.source })))
+  }
+
+  // Generate Evaluation Criteria only if the job has none yet (or an explicit
+  // regenerate was requested) — don't clobber already-generated/edited
+  // competencies on every "Next".
+  const { count } = await supabase
+    .from("job_competencies")
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", jobId)
+  if (opts.regenerate || (count ?? 0) === 0) {
+    await requestAndApplyAiCompetencies(supabase, jobId)
+  }
+
+  const competencies = await getJobCompetencies(jobId)
+  revalidatePath(`/jobs/${jobId}`)
+  return { ok: true, competencies }
+}
+
 export async function createJobDraft(
   input: CreateJobDraftInput
 ): Promise<ActionResult<{ job_id: string }>> {
@@ -159,8 +414,10 @@ export async function createJobDraft(
     payload: { title: input.title },
   })
 
-  // Hand the raw intake to n8n, consume the LLM response, and pre-fill the
-  // draft (best-effort — never blocks job creation).
+  // Generate the role definition to pre-fill the wizard (best-effort). The next
+  // step — Evaluation Criteria — is generated when the recruiter clicks "Next"
+  // on the Role Definition step (saveRoleAndGenerateCompetencies), using their
+  // reviewed/edited role.
   await requestAndApplyAiRole(supabase, {
     job_id: data.job_id,
     title: input.title.trim(),
@@ -221,7 +478,8 @@ async function persistTeamMember(
   supabase: SupabaseServer,
   job: { job_id: string; client_id: string },
   actorProfileId: string,
-  member: TeamMemberInput
+  member: TeamMemberInput,
+  sendInvite = true
 ): Promise<ActionResult<{ id: string }>> {
   const email = member.email.trim().toLowerCase()
   const { data: matchingProfile } = await supabase
@@ -251,12 +509,14 @@ async function persistTeamMember(
     payload: { name: member.name.trim(), email, role: member.role.trim() },
   })
 
-  await sendCalendarConnectInvite({
-    email,
-    name: member.name.trim(),
-    jobId: job.job_id,
-    jobTeamMemberId: data.id,
-  })
+  if (sendInvite) {
+    await sendCalendarConnectInvite({
+      email,
+      name: member.name.trim(),
+      jobId: job.job_id,
+      jobTeamMemberId: data.id,
+    })
+  }
 
   return { ok: true, id: data.id }
 }
@@ -284,11 +544,48 @@ export async function addJobTeamMember(
   return result
 }
 
+/**
+ * Auto-save a team member added in the DRAFT wizard. Persists the row so it
+ * survives navigation/refresh, but does NOT send the calendar-connect invite —
+ * invites fire at publish (a draft may still be discarded).
+ */
+export async function addDraftTeamMember(
+  jobId: string,
+  input: TeamMemberInput
+): Promise<ActionResult<{ id: string }>> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  if (!input.name?.trim() || !input.email?.trim() || !input.role?.trim())
+    return { ok: false, error: "Name, email, and role are required." }
+
+  const supabase = await createClient()
+  const { data: job } = await supabase
+    .from("job_orders")
+    .select("job_id, client_id")
+    .eq("job_id", jobId)
+    .single()
+  if (!job) return { ok: false, error: "Job not found." }
+
+  const result = await persistTeamMember(supabase, job, profile.id, input, false)
+  if (result.ok) revalidatePath(`/jobs/${jobId}`)
+  return result
+}
+
+/** Remove a team member (draft or published job). */
+export async function removeJobTeamMember(memberId: string): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+  const { error } = await supabase.from("job_team_members").delete().eq("id", memberId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 // ── Publish: snapshot template stages + resolved settings onto the job ────────
 
 export async function publishJob(
   jobId: string,
-  payload: { workflow_template_id?: string | null; members?: TeamMemberInput[] } = {}
+  payload: { workflow_template_id?: string | null } = {}
 ): Promise<ActionResult> {
   const profile = await getCurrentProfile()
   if (!profile) return { ok: false, error: "Not signed in." }
@@ -405,12 +702,20 @@ export async function publishJob(
     .eq("job_id", jobId)
   if (updErr) return { ok: false, error: updErr.message }
 
-  // 4) Persist the hiring team collected during the draft wizard (was
-  // previously kept only in client state and silently dropped on publish),
-  // firing a calendar-connect invite for each one.
-  for (const member of payload.members ?? []) {
-    if (!member.name?.trim() || !member.email?.trim() || !member.role?.trim()) continue
-    await persistTeamMember(supabase, job, profile.id, member)
+  // 4) The hiring team was auto-saved during the draft (addDraftTeamMember,
+  // without invites). Now that the job is published, send each member the
+  // Google Calendar connect invite (skipped per-person if already connected).
+  const { data: teamMembers } = await supabase
+    .from("job_team_members")
+    .select("id, name, email")
+    .eq("job_id", jobId)
+  for (const m of teamMembers ?? []) {
+    await sendCalendarConnectInvite({
+      email: m.email,
+      name: m.name,
+      jobId,
+      jobTeamMemberId: m.id,
+    })
   }
 
   await logActivity(supabase, {
