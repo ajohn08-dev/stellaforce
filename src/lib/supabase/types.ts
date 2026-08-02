@@ -2581,7 +2581,7 @@ export type Database = {
         | "on_hold"
       candidate_tier: "gold" | "silver" | "bronze"
       client_plan: "basic" | "standard" | "premium"
-      client_role: "member" | "admin" | "reviewer" | "recruiter"
+      client_role: "reviewer" | "admin" | "hiring_manager" | "recruiter"
       client_status: "active" | "paused" | "churned"
       competency_type: "technical" | "behavioral" | "hybrid" | "leadership"
       confidence_level: "low" | "medium" | "high"
@@ -2797,7 +2797,7 @@ export const Constants = {
       ],
       candidate_tier: ["gold", "silver", "bronze"],
       client_plan: ["basic", "standard", "premium"],
-      client_role: ["member", "admin", "reviewer", "recruiter"],
+      client_role: ["reviewer", "admin", "hiring_manager", "recruiter"],
       client_status: ["active", "paused", "churned"],
       competency_type: ["technical", "behavioral", "hybrid", "leadership"],
       confidence_level: ["low", "medium", "high"],
