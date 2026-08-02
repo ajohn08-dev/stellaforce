@@ -1,55 +1,54 @@
-import Link from "next/link"
-import { Briefcase, Building2, Users } from "lucide-react"
-
-import { getCandidates, getClients, getJobOrders } from "@/lib/data"
+import { getCurrentProfile } from "@/lib/auth"
+import { GenericHomeOverview } from "@/components/home/generic-home-overview"
+import { HomeFilterButton } from "@/components/home/home-filter-button"
+import { HomeDateRangePicker } from "@/components/home/home-date-range-picker"
+import { MomentumCard } from "@/components/home/momentum-card"
+import { TodaysFocusCard } from "@/components/home/todays-focus-card"
+import { RisksCard } from "@/components/home/risks-card"
+import { BenchStrengthCard } from "@/components/home/bench-strength-card"
+import { AgentHealthCard } from "@/components/home/agent-health-card"
+import { HomeChatPanel } from "@/components/home/home-chat-panel"
+import {
+  MOCK_AGENT_HEALTH,
+  MOCK_BENCH_STRENGTH,
+  MOCK_MOMENTUM,
+  MOCK_RISKS,
+  MOCK_TODAYS_FOCUS,
+  SUGGESTED_PROMPTS,
+} from "@/lib/mock-home"
 
 export default async function HomePage() {
-  const [candidates, jobs, clients] = await Promise.all([
-    getCandidates(),
-    getJobOrders(),
-    getClients(),
-  ])
+  const profile = await getCurrentProfile()
+  const isStellaforceRecruiter = profile?.side === "stellaforce" && profile?.role === "recruiter"
 
-  const stats = [
-    {
-      href: "/candidates",
-      label: "Candidates",
-      count: candidates.length,
-      icon: Users,
-    },
-    { href: "/jobs", label: "Jobs", count: jobs.length, icon: Briefcase },
-    {
-      href: "/clients",
-      label: "Clients",
-      count: clients.length,
-      icon: Building2,
-    },
-  ]
+  if (!isStellaforceRecruiter) {
+    return <GenericHomeOverview />
+  }
 
   return (
-    <div className="space-y-6 p-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
-        <p className="text-sm text-muted-foreground">
-          Here&apos;s what&apos;s happening across your pipeline.
-        </p>
+    <div className="space-y-4 p-4">
+      <div className="flex items-center justify-end gap-2">
+        <HomeFilterButton />
+        <HomeDateRangePicker />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {stats.map(({ href, label, count, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="group flex items-center gap-4 rounded-lg border border-border p-5 transition-colors hover:border-primary/40 hover:bg-muted/50"
-          >
-            <Icon className="size-5 text-muted-foreground transition-colors group-hover:text-primary" />
-            <div>
-              <p className="text-2xl font-semibold tracking-tight">{count}</p>
-              <p className="text-sm text-muted-foreground">{label}</p>
-            </div>
-          </Link>
-        ))}
+      <div className="flex flex-col gap-4 lg:h-[497px] lg:flex-row lg:items-stretch">
+        <div className="grid gap-4 lg:w-[300px] lg:shrink-0 lg:grid-rows-2">
+          <MomentumCard data={MOCK_MOMENTUM} />
+          <RisksCard groups={MOCK_RISKS} />
+        </div>
+
+        <div className="lg:min-w-0 lg:flex-1">
+          <TodaysFocusCard items={MOCK_TODAYS_FOCUS} />
+        </div>
+
+        <div className="grid gap-4 lg:w-[300px] lg:shrink-0 lg:grid-rows-2">
+          <BenchStrengthCard data={MOCK_BENCH_STRENGTH} />
+          <AgentHealthCard data={MOCK_AGENT_HEALTH} />
+        </div>
       </div>
+
+      <HomeChatPanel prompts={SUGGESTED_PROMPTS} />
     </div>
   )
 }

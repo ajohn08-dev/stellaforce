@@ -8,6 +8,8 @@ file wins and the others must be corrected.
 **Companion references:** [DB_Schema.md](DB_Schema.md) — every table, column,
 enum, function, trigger, index, and RLS policy. [n8n.md](n8n.md) — the register
 of n8n workflows (triggers, dependent app functions, runtime-DB consequences).
+[home.md](home.md) — the `/home` route per profile: widget-by-widget purpose,
+content, and example copy for the recruiter mission-control layout.
 
 ## Stack
 - **Next.js (App Router) + TypeScript**, `src/` dir, `@/*` alias
@@ -131,7 +133,15 @@ migrating the full app layer to V3.2 is an ongoing pass.
 ---
 
 ## Routes
-- `/home` — dashboard: candidate/job/client counts, links into each list
+- `/home` — role-gated; see **[home.md](home.md)** for the full widget-by-widget
+  spec. Stellaforce-side recruiters (`profiles.side = 'stellaforce'`, `role =
+  'recruiter'`) get the mission control layout: Momentum, Today's Focus,
+  Risks, Bench Strength, Agent Health, and a chat drilldown placeholder —
+  UI-only for now, widgets run on mock data (`src/lib/mock-home.ts`), no data
+  pipeline wired up yet. Every other profile (Stellaforce manager/admin, all
+  client-side roles) gets `GenericHomeOverview` — the original
+  candidate/job/client counts view
+  (`src/components/home/generic-home-overview.tsx`)
 - `/candidates` — TanStack Table list + structured filters
 - `/candidates/[id]` — profile view
 - `/candidates/new` — ingestion flow (manual + AI)
