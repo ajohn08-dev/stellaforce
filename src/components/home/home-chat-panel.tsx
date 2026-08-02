@@ -11,8 +11,8 @@ export function HomeChatPanel({ prompts }: { prompts: string[] }) {
   const [value, setValue] = React.useState("")
 
   return (
-    <div className="mx-auto flex w-[50vw] flex-col gap-3">
-      <div className="flex flex-nowrap gap-2 overflow-x-auto no-scrollbar">
+    <div className="mx-auto flex h-full w-[50vw] flex-col gap-3">
+      <div className="flex shrink-0 flex-nowrap gap-2 overflow-x-auto no-scrollbar">
         {prompts.map((prompt) => (
           <Button
             key={prompt}
@@ -27,13 +27,12 @@ export function HomeChatPanel({ prompts }: { prompts: string[] }) {
           </Button>
         ))}
       </div>
-      <div className="flex items-end gap-2 rounded-lg border border-input bg-white p-2 dark:bg-white">
+      <div className="flex min-h-0 flex-1 items-end gap-2 rounded-lg border border-input bg-white p-2 dark:bg-white">
         <Textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Ask about your pipeline, reqs, or candidates…"
-          className="min-h-28 border-0 bg-transparent dark:bg-transparent"
-          rows={4}
+          className="h-full flex-1 resize-none border-0 bg-transparent field-sizing-fixed dark:bg-transparent"
         />
         <Button type="button" size="icon" disabled={!value.trim()}>
           <Send className="size-4" />

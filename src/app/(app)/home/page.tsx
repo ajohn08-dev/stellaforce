@@ -26,13 +26,13 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex items-center justify-end gap-2">
+    <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-4 overflow-hidden p-4">
+      <div className="flex shrink-0 items-center justify-end gap-2">
         <HomeFilterButton />
         <HomeDateRangePicker />
       </div>
 
-      <div className="flex flex-col gap-4 lg:h-[497px] lg:flex-row lg:items-stretch">
+      <div className="flex shrink-0 flex-col gap-4 lg:h-[497px] lg:flex-row lg:items-stretch">
         <div className="grid gap-4 lg:w-[300px] lg:shrink-0 lg:grid-rows-2">
           <MomentumCard data={MOCK_MOMENTUM} />
           <RisksCard groups={MOCK_RISKS} />
@@ -48,7 +48,9 @@ export default async function HomePage() {
         </div>
       </div>
 
-      <HomeChatPanel prompts={SUGGESTED_PROMPTS} />
+      <div className="min-h-0 flex-1">
+        <HomeChatPanel prompts={SUGGESTED_PROMPTS} />
+      </div>
     </div>
   )
 }
