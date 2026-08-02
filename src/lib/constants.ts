@@ -192,6 +192,13 @@ export const BENCH_COVERAGE_BADGE_CLASS: Record<"strong" | "adequate" | "thin" |
   empty: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200",
 }
 
+/** Tailwind classes for recruiter/client performance-status badges (used on the internal-admin home page's Team & Client Performance card). */
+export const TEAM_PERFORMANCE_BADGE_CLASS: Record<"on_target" | "needs_attention" | "overloaded", string> = {
+  on_target: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  needs_attention: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  overloaded: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200",
+}
+
 /** Human-readable labels for enum values that need prettifying. */
 export function titleCase(value: string): string {
   return value

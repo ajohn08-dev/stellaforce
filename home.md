@@ -6,38 +6,45 @@ Record of what the `/home` route shows, per profile, and why. Cross-ref with
 `profiles.client_role`).
 
 `/home` is **role-gated** (`src/app/(app)/home/page.tsx`, via
-`getCurrentProfile()` in `src/lib/auth.ts`), three ways:
+`getCurrentProfile()` in `src/lib/auth.ts`), four ways:
 
 - **Stellaforce-side recruiters** (`side = 'stellaforce'`, `role =
   'recruiter'`) get **`RecruiterHome`** — the mission-control layout
   documented in [Recruiter](#recruiter-recruiterhome) below.
+- **Stellaforce-side internal admins** (`side = 'stellaforce'`, `role =
+  'admin'`) get **`InternalAdminHome`** — the operations-command-center
+  layout documented in
+  [Internal Admin](#internal-admin-internaladminhome) below. Most internal
+  admins are also active recruiters, so this view deliberately blends
+  individual-contributor content (the admin's own reqs/actions) with
+  oversight content (recruiters/clients/platform).
 - **Client-side admins** (`side = 'client'`, `client_role = 'admin'`) get
   **`ClientAdminHome`** — the oversight-console layout documented in
   [Client Admin](#client-admin-clientadminhome) below.
-- **Every other profile** — Stellaforce managers/admins, client-side
+- **Every other profile** — Stellaforce managers, client-side
   member/hiring_manager/recruiter roles — get `GenericHomeOverview`
   (`src/components/home/generic-home-overview.tsx`): the original simple
   candidate/job/client counts view. It has no widgets of its own to document.
   If a mission-control view is designed for one of these roles later,
   document it here as its own section, following the same pattern.
 
-**Status:** Both mission-control views are UI only — every widget runs on
-static mock data, there is no backend/data pipeline behind any of it yet (see
-CLAUDE.md's build order).
+**Status:** All three mission-control views are UI only — every widget runs
+on static mock data, there is no backend/data pipeline behind any of it yet
+(see CLAUDE.md's build order).
 
-Both personas share the same shell mechanics, established by the recruiter
-view first and reused as-is by the client-admin view:
+All three personas share the same shell mechanics, established by the
+recruiter view first and reused as-is by the other two:
 - Page container: `h-[calc(100vh-3.5rem)] overflow-hidden flex flex-col
   gap-4 p-4` — the whole page fits the viewport under the app header with no
   page-level scroll.
 - Toolbar row (`shrink-0`): a persona-specific **Filter** button + the shared
   **`HomeDateRangePicker`** (`src/components/home/home-date-range-picker.tsx`
-  — a true calendar-grid `Popover` + `Calendar`, reused unchanged by both).
+  — a true calendar-grid `Popover` + `Calendar`, reused unchanged by all three).
 - Widget grid (`shrink-0`, fixed `lg:h-[497px]`): 3-zone layout, `lg:items-stretch`
   + `grid-rows-2` side columns (see [Page structure](#page-structure) below).
 - Chat panel (`min-h-0 flex-1`): the shared **`HomeChatPanel`**
   (`src/components/home/home-chat-panel.tsx`) fills whatever vertical space
-  remains, reused unchanged by both — only the `prompts` array differs.
+  remains, reused unchanged by all three — only the `prompts` array differs.
 
 ---
 
@@ -499,6 +506,255 @@ this persona's oversight questions. No backend yet — sending is a no-op.
 `src/lib/mock-client-home.ts`: `MOCK_CLIENT_MOMENTUM`,
 `MOCK_CLIENT_TODAYS_FOCUS`, `MOCK_RISKS_ACCOUNTABILITY`, `MOCK_COVERAGE`,
 `MOCK_HIRING_PERFORMANCE`, `CLIENT_SUGGESTED_PROMPTS`. Shapes intentionally
-mirror `mock-home.ts` so the two personas' widgets stay structurally
+mirror `mock-home.ts` so all three personas' widgets stay structurally
 consistent even as content diverges. When a real data pipeline is designed
 for any widget, replace the corresponding mock export and the prop it feeds.
+
+---
+
+## Internal Admin (`InternalAdminHome`)
+
+**File:** `src/components/home/internal-admin/internal-admin-home.tsx`. Mock
+data: `src/lib/mock-internal-admin-home.ts`. Widget components live under
+`src/components/home/internal-admin/`.
+
+### Product framing
+
+The internal admin is a hybrid persona — most are also active recruiters, so
+they operate in two modes at once: **individual contributor** (their own
+jobs, candidates, recruiter actions, escalations) and **oversight**
+(recruiter/team/client health, SLAs, platform reliability, permissions,
+integrations, automation quality). This page is their **operations command
+center** — not just a recruiter task board, and not just a system settings
+console.
+
+Design rules (same spirit as the other two views, reframed for a hybrid
+admin/recruiter persona):
+- Action-centric and oversight-oriented — prioritize intervention and
+  supervision over passive analytics.
+- Strong visual hierarchy — the user should know what matters in under 3 seconds.
+- Each section answers a distinct question; no overlap between widgets.
+- Admin-friendly and operations-friendly language — this should not read
+  like a generic analytics dashboard or a settings page.
+- Lists, counts, statuses, and health indicators over charts.
+- Color used sparingly and functionally (positive / warning / neutral).
+- Everything visible above the fold, no dashboard sprawl.
+
+**Emotional flow:** progress first, then high-impact actions, then
+risks/accountability, then system and team/client oversight. Avoid making
+the page feel like a wall of issues.
+
+### Page structure
+
+Structurally identical to the recruiter and client-admin views (same shell,
+same `lg:items-stretch` + `grid-rows-2` equal-height mechanism), different widgets:
+
+1. **Left rail** — Momentum, Risks & Accountability.
+2. **Center** — Today's Focus (dominant, biggest widget) — a combined
+   personal-recruiting + platform-intervention queue.
+3. **Right rail** — Platform Health, Team & Client Performance.
+4. **Below, full width** — Chat drilldown, shared component with the other
+   two views.
+
+The toolbar's Filter button is
+`src/components/home/internal-admin/internal-admin-filter-button.tsx` — same
+`DropdownMenu` + outline `Button` + `Filter` icon pattern as the other two
+views', but with **Recruiter** and **Client** fields (unlike the client-admin
+view, an internal admin oversees multiple recruiters and multiple clients,
+so both are filterable dimensions here). The date-range picker is the same
+shared `HomeDateRangePicker` used everywhere else.
+
+### Widgets
+
+#### 1. Momentum
+**File:** `src/components/home/internal-admin/internal-admin-momentum-card.tsx`
+(same component shape as the recruiter `MomentumCard`)
+
+**Purpose:** Show what moved forward — across both the admin's own work and
+the broader platform/team context — during the selected period. Creates
+confidence before showing delays or issues.
+
+**Content:**
+- Candidates advanced
+- Interviews completed
+- Offers sent
+- Reqs moved from at-risk to on-track
+- Team/client wins
+- Improved SLA compliance
+- Successful automation/agent wins
+- Positive trend vs previous period
+
+**Feel:** Positive, concise, motivating but not cheesy. Reflects both
+personal recruiting and platform/team momentum.
+
+**Content pattern:** One hero summary → 3–4 supporting proof points →
+optional trend delta.
+
+**Example copy:**
+- "18 candidates advanced this week"
+- "6 interviews completed across your reqs"
+- "3 client reqs moved back on track"
+- "Scheduling agent resolved 24 bookings without admin intervention"
+- "SLA compliance improved 6 pts this week"
+
+#### 2. Today's Focus
+**File:** `src/components/home/internal-admin/internal-admin-todays-focus-card.tsx`
+(same component shape as the recruiter `TodaysFocusCard`)
+
+**Purpose:** Show the highest-impact actions the internal admin should take
+today, across both recruiting operations and platform/admin oversight. The
+main work surface — a command center for deciding where to step in today.
+
+**Content:**
+- Personal recruiter actions on priority reqs
+- Escalations requiring admin action
+- Recruiter backlog review
+- Req reassignments
+- User access / permission approvals
+- Integration or workflow issues affecting active recruiting work
+- Client-level issues requiring intervention
+- Decisions about ownership, routing, or corrective action
+
+**Feel:** Operational, intervention-oriented, high leverage.
+
+**Content pattern:** 3–5 prioritized rows. Each row: primary action text,
+secondary context line (req / recruiter / client / workflow), CTA aligned
+right. CTA label varies by action type (Escalate / Review / Resolve /
+Reassign / Approve); the top-ranked row's CTA is solid, the rest outline —
+same priority convention as the other two views.
+
+**Example copy:**
+- "Escalate 2 hiring manager feedback breaches on Zenarate roles" → **Escalate**
+- "Review 3 recruiter backlogs with stalled reqs" → **Review**
+- "Resolve calendar sync failures affecting final-round scheduling" → **Resolve**
+- "Reassign Product Designer req to a recruiter with capacity" → **Reassign**
+- "Grant client admin access for Acme hiring team" → **Approve**
+
+#### 3. Risks & Accountability
+**File:** `src/components/home/internal-admin/admin-risks-accountability-card.tsx`
+
+**Purpose:** Show what is delayed, at risk, overloaded, or broken across
+recruiters, clients, and workflows — and who owns the issue. Root-cause- and
+accountability-oriented, built for triage and intervention, not just reporting.
+
+**Content:**
+- SLA breaches by recruiter / team / client
+- Reqs with no movement
+- Hiring manager delays
+- Recruiter backlog / overloaded owners
+- Candidate-stage aging
+- Offer / scheduling bottlenecks
+- Delay owner attribution: recruiter, hiring manager, client admin,
+  interviewer, or **system** (the one owner type unique to this persona —
+  platform/integration-caused delays)
+- Workflow issues already affecting live hiring operations
+
+**Feel:** Serious, structured, root-cause oriented.
+
+**Content pattern:** Same flat-list-with-hover-tooltip mechanism as the other
+two Risks widgets (icon per row discloses its category on hover: "Breaching
+today" / "Blocked by hiring manager" / "Recruiter overload" /
+"System-caused delays"), plus an explicit owner `Badge` (`variant="outline"`)
+at the right edge of every row.
+
+**Example copy:**
+- "3 reqs breached SLA today" — Zenarate, Naehas — **Hiring Manager**
+- "4 reqs delayed — awaiting hiring manager feedback" — Zenarate, Naehas — **Hiring Manager**
+- "2 recruiters have overloaded backlogs" — Priya Desai, Sam Okafor — **Recruiter**
+- "Calendar integration issues blocked 5 interviews" — Platform-wide — **System**
+- "3 client accounts show rising scheduling delays" — Acme, Zenarate, Naehas — **System**
+
+#### 4. Platform Health
+**File:** `src/components/home/internal-admin/platform-health-card.tsx`
+(same component shape as the recruiter `AgentHealthCard` — hero percentage,
+metric rows, optional degradation note)
+
+**Purpose:** Show whether the platform, integrations, and automations are
+functioning reliably across clients and recruiters — the system/governance
+health view unique to this persona. Useful for catching environment issues
+before they become recruiting failures.
+
+**Content:**
+- Integration health (calendar, email, ATS sync, background systems)
+- Automation success rate
+- Agent exception rate
+- Failed workflows
+- User access / permission issues
+- Missing configuration or mapping issues
+- Sync lag or delivery problems
+- Affected recruiters or client orgs
+
+**Feel:** Compact, trustworthy, system-level — diagnostic rather than noisy.
+
+**Content pattern:** Hero platform-reliability percentage, then 2–4
+supporting metrics, then a small low-key note only if performance degraded.
+A system filter ("All Systems" dropdown: Calendar / Email / ATS Sync) sits
+in the header, mirroring Agent Health's agent filter.
+
+**Example copy:**
+- "96% automation success rate"
+- "2 client orgs affected by calendar sync lag"
+- "5 workflow exceptions need admin review"
+- "3 users blocked by missing permissions"
+- "Email delivery dipped 4% vs last week"
+
+#### 5. Team & Client Performance
+**File:** `src/components/home/internal-admin/team-client-performance-card.tsx`
+(same component shape as the recruiter `BenchStrengthCard` / client-admin
+`CoverageCard` — hero percentage + up to 6 rows; uses a new
+`TEAM_PERFORMANCE_BADGE_CLASS` map in `src/lib/constants.ts` for the On
+Target / Needs Attention / Overloaded status labels, following the same
+pattern as `BENCH_COVERAGE_BADGE_CLASS`)
+
+**Purpose:** Show how recruiters and client portfolios are performing
+overall — the supervision and management view. Focused on coaching,
+balancing, and intervention, more interpretive than analytical.
+
+**Content:**
+- SLA compliance by recruiter/team/client
+- Open reqs by recruiter
+- Recruiter workload / active req load
+- Time to fill by recruiter or client
+- Performance outliers
+- Client portfolio health
+- Roles filled by recruiter/team
+- Accounts or recruiters needing coaching or rebalancing
+
+**Feel:** Compact leadership summary.
+
+**Content pattern:** Hero team-SLA-compliance percentage, then up to 6 rows
+(a small outliers/attention-areas list): recruiter or client name + context
+on the left, a metric value + a status badge (On Target / Needs Attention /
+Overloaded) on the right. A scope filter ("All" dropdown: Recruiters /
+Clients) sits in the header.
+
+**Example copy:**
+- "91% team SLA compliance"
+- "Priya Desai — Recruiter · Engineering — 5.2 days avg — Needs Attention"
+- "Sam Okafor — Recruiter · Design — 14 active reqs — Overloaded"
+- "Acme — Client portfolio — 32% delay rate — Needs Attention"
+- "East Region — Avg time to fill — 34 days — On Target"
+
+#### 6. Chat drilldown
+**File:** `src/components/home/home-chat-panel.tsx` (shared, unchanged
+component — only the `prompts` array differs)
+
+**Purpose:** Placeholder for future natural-language drilldown, scoped to
+intervention, team health, and system diagnosis. No backend yet — sending
+is a no-op.
+
+**Example prompts:**
+- "Which recruiters have the most SLA breaches this week?"
+- "Show clients affected by sync failures"
+- "Which reqs are stalled because of hiring manager response time?"
+
+### Mock data
+
+`src/lib/mock-internal-admin-home.ts`: `MOCK_INTERNAL_ADMIN_MOMENTUM`,
+`MOCK_INTERNAL_ADMIN_TODAYS_FOCUS`, `MOCK_ADMIN_RISKS_ACCOUNTABILITY`,
+`MOCK_PLATFORM_HEALTH`, `MOCK_TEAM_CLIENT_PERFORMANCE`,
+`INTERNAL_ADMIN_SUGGESTED_PROMPTS`. Shapes intentionally mirror
+`mock-home.ts` and `mock-client-home.ts` so all three personas' widgets stay
+structurally consistent even as content diverges. When a real data pipeline
+is designed for any widget, replace the corresponding mock export and the
+prop it feeds.
