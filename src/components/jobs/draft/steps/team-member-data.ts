@@ -13,19 +13,9 @@ export type Member = {
 }
 
 /**
- * Seeded so the Workflow step has real reviewers to pre-assign to stages.
+ * Empty by default — team members are now persisted on publish and each one
+ * triggers a real "connect your Google Calendar" invite email, so this can no
+ * longer be pre-seeded with placeholder people (it previously was, back when
+ * this list was purely local UI state that publish silently discarded).
  */
-export const INITIAL_MEMBERS: Member[] = [
-  {
-    id: "jamie-rivera",
-    name: "Jamie Rivera",
-    email: "jamie@client.com",
-    role: "Hiring Manager",
-  },
-  {
-    id: "alex-kim",
-    name: "Alex Kim",
-    email: "alex@client.com",
-    role: "Interviewer",
-  },
-]
+export const INITIAL_MEMBERS: Member[] = []

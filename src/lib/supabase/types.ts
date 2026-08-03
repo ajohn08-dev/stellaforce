@@ -1294,6 +1294,53 @@ export type Database = {
           },
         ]
       }
+      google_calendar_connections: {
+        Row: {
+          connected_at: string
+          created_at: string
+          email: string
+          google_account_email: string
+          id: string
+          profile_id: string | null
+          refresh_token_encrypted: string
+          revoked_at: string | null
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          connected_at?: string
+          created_at?: string
+          email: string
+          google_account_email: string
+          id?: string
+          profile_id?: string | null
+          refresh_token_encrypted: string
+          revoked_at?: string | null
+          scope: string
+          updated_at?: string
+        }
+        Update: {
+          connected_at?: string
+          created_at?: string
+          email?: string
+          google_account_email?: string
+          id?: string
+          profile_id?: string | null
+          refresh_token_encrypted?: string
+          revoked_at?: string | null
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_connections_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ingestion_jobs: {
         Row: {
           attempt_count: number
@@ -2522,6 +2569,9 @@ export type Database = {
         | "job_created"
         | "job_published"
         | "job_workflow_snapshotted"
+        | "job_team_member_added"
+        | "calendar_connected"
+        | "calendar_connection_revoked"
       actor_type: "user" | "system" | "candidate"
       application_status:
         | "active"
@@ -2531,7 +2581,7 @@ export type Database = {
         | "on_hold"
       candidate_tier: "gold" | "silver" | "bronze"
       client_plan: "basic" | "standard" | "premium"
-      client_role: "member" | "admin" | "reviewer" | "recruiter"
+      client_role: "reviewer" | "admin" | "hiring_manager" | "recruiter"
       client_status: "active" | "paused" | "churned"
       competency_type: "technical" | "behavioral" | "hybrid" | "leadership"
       confidence_level: "low" | "medium" | "high"
@@ -2733,6 +2783,9 @@ export const Constants = {
         "job_created",
         "job_published",
         "job_workflow_snapshotted",
+        "job_team_member_added",
+        "calendar_connected",
+        "calendar_connection_revoked",
       ],
       actor_type: ["user", "system", "candidate"],
       application_status: [
@@ -2744,7 +2797,7 @@ export const Constants = {
       ],
       candidate_tier: ["gold", "silver", "bronze"],
       client_plan: ["basic", "standard", "premium"],
-      client_role: ["member", "admin", "reviewer", "recruiter"],
+      client_role: ["reviewer", "admin", "hiring_manager", "recruiter"],
       client_status: ["active", "paused", "churned"],
       competency_type: ["technical", "behavioral", "hybrid", "leadership"],
       confidence_level: ["low", "medium", "high"],
@@ -2787,9 +2840,6 @@ export const Constants = {
     },
   },
 } as const
-
-
-
 type SchemaTables = Database["public"]["Tables"]
 type SchemaEnums = Database["public"]["Enums"]
 
@@ -2907,3 +2957,5 @@ export type ApplicationStageHistoryRow = SchemaTables["application_stage_history
 export type AuditLogRow = SchemaTables["audit_log"]["Row"]
 export type AiInteractionRow = SchemaTables["ai_interactions"]["Row"]
 export type JobTargetCompanyRow = SchemaTables["job_target_companies"]["Row"]
+export type GoogleCalendarConnectionRow = SchemaTables["google_calendar_connections"]["Row"]
+export type GoogleCalendarConnectionInsert = SchemaTables["google_calendar_connections"]["Insert"]

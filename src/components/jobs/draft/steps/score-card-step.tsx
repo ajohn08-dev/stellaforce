@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select"
 import type { Competency } from "@/components/jobs/draft/steps/competency-data"
 
-type ScoreCardCategory = {
+export type ScoreCardCategory = {
   id: string
   name: string
   weight: number
@@ -22,32 +22,20 @@ type ScoreCardCategory = {
 }
 
 /**
- * Seeded to cover both competencies from the Evaluation Criteria step, with
- * weights that add up to 100%.
- */
-const INITIAL_SCORE_CARD: ScoreCardCategory[] = [
-  {
-    id: "technical-execution",
-    name: "Technical Execution",
-    weight: 60,
-    competencyIds: ["internal-tools"],
-  },
-  {
-    id: "communication-collaboration",
-    name: "Communication & Collaboration",
-    weight: 40,
-    competencyIds: ["stakeholder-communication"],
-  },
-]
-
-/**
  * Score card categories reference competencies by id rather than duplicating
  * their text, so this step can only ever reflect what's defined in
- * Evaluation Criteria — never additional, invented competencies.
+ * Evaluation Criteria — never additional, invented competencies. Categories
+ * are lifted to the wizard (seeded from the AI-generated scorecard).
  */
-export function ScoreCardStep({ competencies }: { competencies: Competency[] }) {
-  const [categories, setCategories] = React.useState(INITIAL_SCORE_CARD)
-
+export function ScoreCardStep({
+  competencies,
+  categories,
+  setCategories,
+}: {
+  competencies: Competency[]
+  categories: ScoreCardCategory[]
+  setCategories: React.Dispatch<React.SetStateAction<ScoreCardCategory[]>>
+}) {
   function removeCategory(id: string) {
     setCategories((prev) => prev.filter((c) => c.id !== id))
   }

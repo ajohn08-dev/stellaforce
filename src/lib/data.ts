@@ -1,6 +1,7 @@
 import "server-only"
 
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { isSupabaseConfigured } from "@/lib/env"
 import type {
   ActivityEventRow,
@@ -13,6 +14,7 @@ import type {
   CandidateWorkExperienceRow,
   ClientRow,
   JobOrderRow,
+  JobTeamMemberRow,
   JobWorkflowSubStageRow,
   PipelineStageRow,
   ProfileRow,
@@ -29,6 +31,8 @@ export type CandidateListItem = CandidateRow & {
   primaryEducation: CandidateEducationRow | null
 }
 import type { WorkHistoryEntry } from "@/lib/work-history"
+import type { Competency } from "@/components/jobs/draft/steps/competency-data"
+import type { ScoreCardCategory } from "@/components/jobs/draft/steps/score-card-step"
 
 /**
  * Server-side read helpers used by Server Components. Every function degrades
@@ -401,6 +405,82 @@ export async function getJobPipeline(jobId: string): Promise<{
   }
 }
 
+/** A job's competencies (Evaluation Criteria step), mapped to the wizard shape. */
+export async function getJobCompetencies(jobId: string): Promise<Competency[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data: comps } = await supabase
+    .from("job_competencies")
+    .select("id, type, description, recommended_level, skills, tools")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: true })
+  if (!comps || comps.length === 0) return []
+
+  const { data: levels } = await supabase
+    .from("job_competency_level_descriptions")
+    .select("competency_id, level, description")
+    .in(
+      "competency_id",
+      comps.map((c) => c.id)
+    )
+  const levelByComp = new Map<string, Partial<Record<string, string>>>()
+  for (const l of levels ?? []) {
+    const m = levelByComp.get(l.competency_id) ?? {}
+    m[l.level] = l.description
+    levelByComp.set(l.competency_id, m)
+  }
+
+  return comps.map((c) => {
+    const ld = levelByComp.get(c.id) ?? {}
+    return {
+      id: c.id,
+      type: c.type,
+      description: c.description,
+      recommendedLevel: c.recommended_level,
+      selectedLevel: c.recommended_level,
+      levelDescriptions: {
+        aware: ld.aware ?? "",
+        proficient: ld.proficient ?? "",
+        expert: ld.expert ?? "",
+      },
+      skills: c.skills ?? [],
+      tools: c.tools ?? [],
+    }
+  })
+}
+
+/** A job's scorecard (categories + their competency ids), for the Scorecard step. */
+export async function getJobScorecard(jobId: string): Promise<ScoreCardCategory[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data: cats } = await supabase
+    .from("job_scorecard_categories")
+    .select("id, name, weight")
+    .eq("job_id", jobId)
+  if (!cats || cats.length === 0) return []
+
+  const { data: links } = await supabase
+    .from("job_scorecard_category_competencies")
+    .select("category_id, competency_id")
+    .in(
+      "category_id",
+      cats.map((c) => c.id)
+    )
+  const byCategory = new Map<string, string[]>()
+  for (const l of links ?? []) {
+    const arr = byCategory.get(l.category_id) ?? []
+    arr.push(l.competency_id)
+    byCategory.set(l.category_id, arr)
+  }
+
+  return cats.map((c) => ({
+    id: c.id,
+    name: c.name,
+    weight: Number(c.weight),
+    competencyIds: byCategory.get(c.id) ?? [],
+  }))
+}
+
 /** Target companies for a job (Role Definition step). */
 export async function getJobTargetCompanies(
   jobId: string
@@ -416,6 +496,40 @@ export async function getJobTargetCompanies(
     name: r.name,
     source: (r.source as "extracted" | "ai_suggested" | "recruiter") ?? "ai_suggested",
   }))
+}
+
+/**
+ * A job's hiring team, decorated with a derived `connected` boolean for the
+ * Google Calendar consent flow. `google_calendar_connections` has no RLS
+ * policy for `authenticated` (it holds encrypted refresh tokens), so — unlike
+ * every other read in this file — that half of the query goes through the
+ * admin client; only the derived boolean is returned, never the connection
+ * row itself.
+ */
+export async function getJobTeamMembers(
+  jobId: string
+): Promise<(JobTeamMemberRow & { connected: boolean })[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data: members } = await supabase
+    .from("job_team_members")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: true })
+  if (!members || members.length === 0) return []
+
+  const admin = createAdminClient()
+  const { data: connections } = await admin
+    .from("google_calendar_connections")
+    .select("email")
+    .is("revoked_at", null)
+    .in(
+      "email",
+      members.map((m) => m.email.toLowerCase())
+    )
+  const connectedEmails = new Set((connections ?? []).map((c) => c.email.toLowerCase()))
+
+  return members.map((m) => ({ ...m, connected: connectedEmails.has(m.email.toLowerCase()) }))
 }
 
 /** All activity for one candidate (across every application) — compliance/analytics timeline. */

@@ -2,7 +2,9 @@
 
 import * as React from "react"
 import { MoreVertical } from "lucide-react"
+import { toast } from "sonner"
 
+import { addDraftTeamMember, removeJobTeamMember } from "@/app/(app)/jobs/actions"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -41,9 +43,11 @@ import {
  * assigning reviewers.
  */
 export function TeamMembersStep({
+  jobId,
   members,
   setMembers,
 }: {
+  jobId: string
   members: Member[]
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>
 }) {
@@ -52,28 +56,40 @@ export function TeamMembersStep({
   const [name, setName] = React.useState("")
   const [email, setEmail] = React.useState("")
   const [role, setRole] = React.useState("")
+  const [saving, setSaving] = React.useState(false)
 
   const canAddMember =
-    name.trim() !== "" && email.trim() !== "" && role.trim() !== ""
+    name.trim() !== "" && email.trim() !== "" && role.trim() !== "" && !saving
 
-  function addMember() {
+  // Auto-save the member to the job draft (no invite yet — that fires at publish).
+  async function addMember() {
     if (!canAddMember) return
-    setMembers((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), name: name.trim(), email: email.trim(), role },
-    ])
+    setSaving(true)
+    const res = await addDraftTeamMember(jobId, {
+      name: name.trim(),
+      email: email.trim(),
+      role,
+    })
+    setSaving(false)
+    if (!res.ok) {
+      toast.error(res.error)
+      return
+    }
+    setMembers((prev) => [...prev, { id: res.id, name: name.trim(), email: email.trim(), role }])
     setName("")
     setEmail("")
     setRole("")
   }
 
-  function removeMember(id: string) {
+  async function removeMember(id: string) {
     setMembers((prev) => prev.filter((m) => m.id !== id))
     setSelectedIds((prev) => {
       const next = new Set(prev)
       next.delete(id)
       return next
     })
+    const res = await removeJobTeamMember(id)
+    if (!res.ok) toast.error(res.error)
   }
 
   function toggleSelected(id: string, checked: boolean) {
@@ -135,7 +151,7 @@ export function TeamMembersStep({
           </div>
 
           <Button disabled={!canAddMember} onClick={addMember}>
-            Save
+            {saving ? "Adding…" : "Add"}
           </Button>
         </div>
       </div>

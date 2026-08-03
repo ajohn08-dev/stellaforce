@@ -184,6 +184,21 @@ export const AGENT_STATUS_BADGE_CLASS: Record<"active" | "inactive", string> = {
   inactive: "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200",
 }
 
+/** Tailwind classes for req coverage badges (used on the recruiter home page's Bench Strength card). */
+export const BENCH_COVERAGE_BADGE_CLASS: Record<"strong" | "adequate" | "thin" | "empty", string> = {
+  strong: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  adequate: "bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200",
+  thin: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  empty: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200",
+}
+
+/** Tailwind classes for recruiter/client performance-status badges (used on the internal-admin home page's Team & Client Performance card). */
+export const TEAM_PERFORMANCE_BADGE_CLASS: Record<"on_target" | "needs_attention" | "overloaded", string> = {
+  on_target: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  needs_attention: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  overloaded: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200",
+}
+
 /** Human-readable labels for enum values that need prettifying. */
 export function titleCase(value: string): string {
   return value

@@ -8,6 +8,10 @@ file wins and the others must be corrected.
 **Companion references:** [DB_Schema.md](DB_Schema.md) — every table, column,
 enum, function, trigger, index, and RLS policy. [n8n.md](n8n.md) — the register
 of n8n workflows (triggers, dependent app functions, runtime-DB consequences).
+[home.md](home.md) — the `/home` route per profile: widget-by-widget purpose,
+content, and example copy for the recruiter mission-control, client-admin
+oversight-console, internal-admin operations-command-center, and
+client-recruiter delivery-workbench layouts.
 
 ## Stack
 - **Next.js (App Router) + TypeScript**, `src/` dir, `@/*` alias
@@ -131,7 +135,31 @@ migrating the full app layer to V3.2 is an ongoing pass.
 ---
 
 ## Routes
-- `/home` — dashboard: candidate/job/client counts, links into each list
+- `/home` — role-gated; see **[home.md](home.md)** for the full widget-by-widget
+  spec of every variant. Stellaforce-side recruiters (`profiles.side =
+  'stellaforce'`, `role = 'recruiter'`) get `RecruiterHome` — the mission
+  control layout: Momentum, Today's Focus, Risks, Bench Strength, Agent
+  Health, and a chat drilldown (`src/components/home/recruiter-home.tsx`,
+  mock data in `src/lib/mock-home.ts`). Stellaforce-side internal admins
+  (`side = 'stellaforce'`, `role = 'admin'`) get `InternalAdminHome` — the
+  operations-command-center layout: Momentum, Today's Focus, Risks &
+  Accountability, Platform Health, Team & Client Performance, and a chat
+  drilldown (`src/components/home/internal-admin/internal-admin-home.tsx`,
+  mock data in `src/lib/mock-internal-admin-home.ts`). Client-side admins
+  (`side = 'client'`, `client_role = 'admin'`) get `ClientAdminHome` — the
+  oversight-console layout: Momentum, Today's Focus, Risks & Accountability,
+  Coverage, Hiring Performance, and a chat drilldown
+  (`src/components/home/client-admin/client-admin-home.tsx`, mock data in
+  `src/lib/mock-client-home.ts`). Client-side recruiters (`side = 'client'`,
+  `client_role = 'recruiter'`) get `ClientRecruiterHome` — the delivery-workbench
+  layout: Momentum, Today's Focus, Risks & Accountability, Coverage, Funnel
+  Health, and a chat drilldown
+  (`src/components/home/client-recruiter/client-recruiter-home.tsx`, mock
+  data in `src/lib/mock-client-recruiter-home.ts`). All four are UI-only for
+  now — no data pipeline wired up yet. Every other profile (Stellaforce
+  manager, client-side reviewer/hiring_manager) gets `GenericHomeOverview` —
+  the original candidate/job/client counts view
+  (`src/components/home/generic-home-overview.tsx`)
 - `/candidates` — TanStack Table list + structured filters
 - `/candidates/[id]` — profile view
 - `/candidates/new` — ingestion flow (manual + AI)

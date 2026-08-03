@@ -7,9 +7,12 @@ import { SetJobBreadcrumb } from "@/components/jobs/workspace/set-job-breadcrumb
 import { titleCase } from "@/lib/constants"
 import {
   getCandidates,
+  getJobCompetencies,
   getJobOrder,
   getJobPipeline,
+  getJobScorecard,
   getJobTargetCompanies,
+  getJobTeamMembers,
   getWorkflowTemplates,
 } from "@/lib/data"
 import { getCurrentProfile } from "@/lib/auth"
@@ -29,10 +32,14 @@ export default async function JobWorkspacePage({
   // Draft → the 5-step setup wizard, pre-filled with any AI-generated role data.
   if (job.status === "draft") {
     const profile = await getCurrentProfile()
-    const [templates, targetCompanies] = await Promise.all([
-      getWorkflowTemplates({ clientId: profile?.client_id ?? null }),
-      getJobTargetCompanies(id),
-    ])
+    const [templates, targetCompanies, competencies, scorecard, teamMembers] =
+      await Promise.all([
+        getWorkflowTemplates({ clientId: profile?.client_id ?? null }),
+        getJobTargetCompanies(id),
+        getJobCompetencies(id),
+        getJobScorecard(id),
+        getJobTeamMembers(id),
+      ])
     const roleInitial = {
       title: job.title,
       workplace_type: job.workplace_type,
@@ -56,13 +63,25 @@ export default async function JobWorkspacePage({
           job={mockJob}
           templates={templates.map((t) => ({ id: t.id, name: t.name, status: t.status }))}
           roleInitial={roleInitial}
+          competenciesInitial={competencies}
+          scorecardInitial={scorecard}
+          membersInitial={teamMembers.map((m) => ({
+            id: m.id,
+            name: m.name,
+            email: m.email,
+            role: m.role,
+          }))}
         />
       </>
     )
   }
 
   // Published/open → the pipeline board fed by real applications.
-  const [pipeline, candidates] = await Promise.all([getJobPipeline(id), getCandidates()])
+  const [pipeline, candidates, teamMembers] = await Promise.all([
+    getJobPipeline(id),
+    getCandidates(),
+    getJobTeamMembers(id),
+  ])
   // Request-time timestamp for "days in stage" — legitimate in a server render.
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now()
@@ -80,7 +99,12 @@ export default async function JobWorkspacePage({
     <div className="flex flex-col overflow-hidden p-4" style={{ height: "calc(100vh - 3.5rem)" }}>
       <SetJobBreadcrumb title={job.title} />
       <div className="shrink-0 pb-4">
-        <JobWorkspaceHeader job={mockJob} jobId={id} candidateOptions={candidateOptions} />
+        <JobWorkspaceHeader
+          job={mockJob}
+          jobId={id}
+          candidateOptions={candidateOptions}
+          teamMembers={teamMembers}
+        />
       </div>
       <div className="min-h-0 flex-1">
         <PipelineBoard stages={stages} />

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { createClient } from "@/lib/supabase/server"
 import { getCurrentProfile, type CurrentProfile } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import type {
   DecisionMode,
   EmploymentType,
@@ -64,10 +65,9 @@ export type CreateTemplateInput = {
   client_id?: string | null
 }
 
-/** Client-side member/reviewer cannot author templates. */
+/** Only client admins/recruiters (and all Stellaforce staff) author templates. */
 function canAuthorTemplates(profile: CurrentProfile): boolean {
-  if (profile.side === "stellaforce") return true
-  return profile.client_role === "admin" || profile.client_role === "recruiter"
+  return can(profile, "author_templates")
 }
 
 /** Resolve the client_id a template must carry given who is authoring it. */

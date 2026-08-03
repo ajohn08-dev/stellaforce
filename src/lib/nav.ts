@@ -4,6 +4,7 @@ import {
   Briefcase,
   Building2,
   Home,
+  MessageCircle,
   MessageSquare,
   Plug,
   Settings,
@@ -23,6 +24,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/home", label: "Home", icon: Home },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/candidates", label: "Candidates", icon: Users },
+  { href: "/chat", label: "Chat", icon: MessageCircle },
 ]
 
 export const AGENTS_NAV_LABEL = "Agents"
