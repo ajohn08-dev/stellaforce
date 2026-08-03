@@ -6,7 +6,7 @@ Record of what the `/home` route shows, per profile, and why. Cross-ref with
 `profiles.client_role`).
 
 `/home` is **role-gated** (`src/app/(app)/home/page.tsx`, via
-`getCurrentProfile()` in `src/lib/auth.ts`), four ways:
+`getCurrentProfile()` in `src/lib/auth.ts`), five ways:
 
 - **Stellaforce-side recruiters** (`side = 'stellaforce'`, `role =
   'recruiter'`) get **`RecruiterHome`** — the mission-control layout
@@ -21,30 +21,38 @@ Record of what the `/home` route shows, per profile, and why. Cross-ref with
 - **Client-side admins** (`side = 'client'`, `client_role = 'admin'`) get
   **`ClientAdminHome`** — the oversight-console layout documented in
   [Client Admin](#client-admin-clientadminhome) below.
+- **Client-side recruiters** (`side = 'client'`, `client_role =
+  'recruiter'`) get **`ClientRecruiterHome`** — the delivery-workbench
+  layout documented in
+  [Client Recruiter](#client-recruiter-clientrecruiterhome) below. Unlike
+  the client-admin view (scoped to one client already), this persona
+  manages delivery across one or more client accounts.
 - **Every other profile** — Stellaforce managers, client-side
-  member/hiring_manager/recruiter roles — get `GenericHomeOverview`
+  reviewer/hiring_manager roles — get `GenericHomeOverview`
   (`src/components/home/generic-home-overview.tsx`): the original simple
   candidate/job/client counts view. It has no widgets of its own to document.
   If a mission-control view is designed for one of these roles later,
   document it here as its own section, following the same pattern.
 
-**Status:** All three mission-control views are UI only — every widget runs
+**Status:** All four mission-control views are UI only — every widget runs
 on static mock data, there is no backend/data pipeline behind any of it yet
 (see CLAUDE.md's build order).
 
-All three personas share the same shell mechanics, established by the
-recruiter view first and reused as-is by the other two:
+All four personas share the same shell mechanics, established by the
+recruiter view first and reused as-is by the other three:
 - Page container: `h-[calc(100vh-3.5rem)] overflow-hidden flex flex-col
   gap-4 p-4` — the whole page fits the viewport under the app header with no
   page-level scroll.
-- Toolbar row (`shrink-0`): a persona-specific **Filter** button + the shared
+- Toolbar row (`shrink-0`): a persona-specific **Filter** button (the
+  client-recruiter view reuses the recruiter view's `HomeFilterButton`
+  unchanged — both manage multiple client accounts) + the shared
   **`HomeDateRangePicker`** (`src/components/home/home-date-range-picker.tsx`
-  — a true calendar-grid `Popover` + `Calendar`, reused unchanged by all three).
+  — a true calendar-grid `Popover` + `Calendar`, reused unchanged by all four).
 - Widget grid (`shrink-0`, fixed `lg:h-[497px]`): 3-zone layout, `lg:items-stretch`
   + `grid-rows-2` side columns (see [Page structure](#page-structure) below).
 - Chat panel (`min-h-0 flex-1`): the shared **`HomeChatPanel`**
   (`src/components/home/home-chat-panel.tsx`) fills whatever vertical space
-  remains, reused unchanged by all three — only the `prompts` array differs.
+  remains, reused unchanged by all four — only the `prompts` array differs.
 
 ---
 
@@ -754,7 +762,245 @@ is a no-op.
 `MOCK_INTERNAL_ADMIN_TODAYS_FOCUS`, `MOCK_ADMIN_RISKS_ACCOUNTABILITY`,
 `MOCK_PLATFORM_HEALTH`, `MOCK_TEAM_CLIENT_PERFORMANCE`,
 `INTERNAL_ADMIN_SUGGESTED_PROMPTS`. Shapes intentionally mirror
-`mock-home.ts` and `mock-client-home.ts` so all three personas' widgets stay
+`mock-home.ts` and `mock-client-home.ts` so all four personas' widgets stay
 structurally consistent even as content diverges. When a real data pipeline
 is designed for any widget, replace the corresponding mock export and the
 prop it feeds.
+
+---
+
+## Client Recruiter (`ClientRecruiterHome`)
+
+**File:** `src/components/home/client-recruiter/client-recruiter-home.tsx`.
+Mock data: `src/lib/mock-client-recruiter-home.ts`. Widget components live
+under `src/components/home/client-recruiter/`.
+
+### Product framing
+
+The client recruiter is an execution-heavy user, similar to the internal
+recruiter, but their day is shaped by client-side blockers: client feedback
+delays, scheduling dependencies, and account delivery across one or more
+client accounts. This page is their **client delivery workbench** — not a
+generic analytics dashboard, and not an admin oversight console. They need
+to see both what they own directly and what is blocked by the client,
+candidate, interviewer, or system.
+
+Design rules (same spirit as the other three views, reframed for delivery
+execution):
+- Action-centric and delivery-oriented — prioritize follow-up, progression,
+  and blocker resolution over passive reporting.
+- Strong visual hierarchy — the user should know what matters in under 3 seconds.
+- Each section answers a distinct question; no overlap between widgets.
+- Client-delivery-friendly language — avoid low-level admin/system labels
+  that don't help this persona.
+- Lists, counts, statuses, and health indicators over charts.
+- Color used sparingly and functionally (positive / warning / neutral).
+- Everything visible above the fold, no dashboard sprawl.
+
+**Emotional flow:** progress first, then highest-impact actions, then
+blockers/risks, then compact diagnostics for coverage and funnel quality.
+Avoid making the page feel like a wall of problems.
+
+### Page structure
+
+Structurally identical to the other three views (same shell, same
+`lg:items-stretch` + `grid-rows-2` equal-height mechanism), different widgets:
+
+1. **Left rail** — Momentum, Risks & Accountability.
+2. **Center** — Today's Focus (dominant, biggest widget) — a candidate/
+   client follow-up and progression queue.
+3. **Right rail** — Coverage, Funnel Health.
+4. **Below, full width** — Chat drilldown, shared component with the other
+   three views.
+
+The toolbar's Filter button is the **same, unchanged**
+`src/components/home/home-filter-button.tsx` used by the recruiter view
+(Client/Req fields) — a client recruiter manages multiple accounts just like
+an internal recruiter does, so no persona-specific variant was needed here
+(unlike the client-admin and internal-admin views, which each needed
+different filter fields). The date-range picker is the same shared
+`HomeDateRangePicker` used everywhere else.
+
+### Widgets
+
+#### 1. Momentum
+**File:** `src/components/home/client-recruiter/client-recruiter-momentum-card.tsx`
+(same component shape as the recruiter `MomentumCard`)
+
+**Purpose:** Show what moved forward across the recruiter's client accounts
+during the selected period. Creates a positive, motivating signal before
+showing blockers or risks — reinforces visible account progress.
+
+**Content:**
+- Candidates advanced to next stage
+- Submissions sent to clients
+- Interviews booked / completed
+- Feedback closed
+- Offers sent
+- Reqs moved from delayed to on-track
+- Improvement in responsiveness or SLA metrics
+- Positive trend vs previous period
+
+**Feel:** Positive, concise, delivery-oriented. Summary-oriented, not a task list.
+
+**Content pattern:** One hero summary → 3–4 supporting proof points →
+optional trend delta.
+
+**Example copy:**
+- "12 candidates moved forward this week"
+- "8 submissions sent to clients"
+- "5 interviews completed"
+- "2 reqs recovered from delayed to on-track"
+- "Client feedback turnaround improved 12% vs last week"
+
+#### 2. Today's Focus
+**File:** `src/components/home/client-recruiter/client-recruiter-todays-focus-card.tsx`
+(same component shape as the recruiter `TodaysFocusCard`)
+
+**Purpose:** Show the highest-impact recruiter actions for today. The main
+work surface — a command center for delivery work.
+
+**Content:**
+- Candidate follow-ups
+- Shortlist review or submission prep
+- Interview scheduling or rescheduling
+- Client feedback nudges
+- Candidate availability collection
+- Offer follow-up
+- Submission push-to-client actions
+- Late-stage progression actions
+
+**Feel:** Operational, prioritized, high leverage.
+
+**Content pattern:** 3–5 prioritized rows. Each row: primary action text,
+secondary context line (candidate / req / client), CTA aligned right. CTA
+label varies by action type (Follow Up / Send / Nudge / Resolve / Review);
+the top-ranked row's CTA is solid, the rest outline — same priority
+convention as the other three views.
+
+**Example copy:**
+- "Follow up with Priya Desai for onsite availability" → **Follow Up**
+- "Send 3 shortlisted profiles to client" → **Send**
+- "Nudge client for feedback on 2 submitted candidates" → **Nudge**
+- "Resolve 1 final-round scheduling conflict" → **Resolve**
+- "Prepare offer package for Senior PM finalist" → **Review**
+
+#### 3. Risks & Accountability
+**File:** `src/components/home/client-recruiter/client-recruiter-risks-accountability-card.tsx`
+
+**Purpose:** Show what is delayed or at risk across client reqs and who owns
+the blocker — so the recruiter knows what they can fix directly vs. what
+needs escalation. Built for triage and escalation, not generic problem reporting.
+
+**Content:**
+- Candidates stalled in client review
+- No client feedback on submissions
+- Scheduling delays
+- Candidate unresponsiveness
+- Offer or approval delays
+- Reqs with no movement
+- SLA risk items
+- Owner attribution: client, recruiter, candidate, interviewer, or system
+
+**Feel:** Serious, structured, action-oriented.
+
+**Content pattern:** Same flat-list-with-hover-tooltip mechanism as the
+other Risks widgets (icon per row discloses its category on hover:
+"Breaching today" / "Waiting on client" / "Candidate unresponsive" /
+"Scheduling blocked"), plus an explicit owner `Badge` (`variant="outline"`)
+at the right edge of every row.
+
+**Example copy:**
+- "2 candidates are at risk of SLA breach today" — Product Manager, Backend Engineer · Zenarate — **Client**
+- "4 candidates are waiting on client feedback" — Product Designer, Data Analyst · Naehas — **Client**
+- "1 offer is blocked by compensation approval" — Senior PM · Zenarate — **Client**
+- "1 candidate is unresponsive after 3 outreach attempts" — Backend Engineer · Zenarate — **Candidate**
+- "3 interviews are delayed by panel availability" — Marketing Manager · Naehas — **Interviewer**
+
+#### 4. Coverage
+**File:** `src/components/home/client-recruiter/client-recruiter-coverage-card.tsx`
+(same component shape as the recruiter `BenchStrengthCard` / client-admin
+`CoverageCard` — reuses `BENCH_COVERAGE_BADGE_CLASS` from
+`src/lib/constants.ts` for the Strong / Adequate / Thin / Empty labels)
+
+**Purpose:** Show how well active client reqs are covered with viable
+candidates — the client recruiter's bench-strength view. Answers: are my
+active client roles sufficiently covered?
+
+**Content:**
+- Coverage status by req: strong, adequate, thin, empty
+- Number of viable candidates or client-ready submissions
+- Priority role coverage
+- Aging roles with weak bench
+- Strong-fit candidates recently added
+
+**Feel:** Compact, strategic, easy to scan — more interpretive than detailed.
+
+**Content pattern:** Hero active-coverage percentage, then up to 6 req
+rows: req name + account on the left, client-ready-count/target fraction +
+a coverage badge on the right. An "All Accounts" filter sits in the header
+(All Accounts / per-account), mirroring the other Coverage-shaped widgets'
+header filter.
+
+**Example copy:**
+- "74% active req coverage"
+- "Product Designer — 4/5 — Strong"
+- "Marketing Manager — 2/5 — Adequate"
+- "Backend Engineer — 1/5 — Thin"
+- "Customer Success — 0/5 — Empty"
+
+#### 5. Funnel Health
+**File:** `src/components/home/client-recruiter/funnel-health-card.tsx`
+(same component shape as the recruiter `AgentHealthCard` / client-admin
+`HiringPerformanceCard` / internal-admin `PlatformHealthCard` — hero
+percentage, metric rows, optional insight note)
+
+**Purpose:** Show where the hiring funnel is efficient or leaking across the
+recruiter's client portfolio — a compact diagnostic layer, not a full
+analytics module. Helps diagnose whether issues come from pipeline quality,
+client response, or late-stage conversion.
+
+**Content:**
+- Submission-to-interview conversion
+- Interview-to-offer conversion
+- Average days in client review
+- Time in stage
+- Fastest and slowest stages
+- Funnel drop-off stage
+- Trend vs previous period
+
+**Feel:** Compact, useful, performance-oriented.
+
+**Content pattern:** Hero submission-to-interview-conversion percentage,
+then 2–4 supporting metrics, then a short insight sentence flagging the
+biggest funnel leak. A "This period"/"Last period" filter sits in the
+header, mirroring Hiring Performance's period filter.
+
+**Example copy:**
+- "42% submission → interview conversion"
+- "Client review avg time — 3.4 days"
+- "Interview → offer conversion — 19%"
+- "Final-round scheduling time — 2.1 days"
+- "Biggest leak is client review to interview"
+
+#### 6. Chat drilldown
+**File:** `src/components/home/home-chat-panel.tsx` (shared, unchanged
+component — only the `prompts` array differs)
+
+**Purpose:** Placeholder for future natural-language drilldown, scoped to
+client delivery work. No backend yet — sending is a no-op.
+
+**Example prompts:**
+- "Which reqs are waiting on client feedback?"
+- "Show roles with thin coverage"
+- "Where is the funnel leaking across my accounts?"
+
+### Mock data
+
+`src/lib/mock-client-recruiter-home.ts`: `MOCK_CLIENT_RECRUITER_MOMENTUM`,
+`MOCK_CLIENT_RECRUITER_TODAYS_FOCUS`, `MOCK_CLIENT_RECRUITER_RISKS`,
+`MOCK_CLIENT_RECRUITER_COVERAGE`, `MOCK_FUNNEL_HEALTH`,
+`CLIENT_RECRUITER_SUGGESTED_PROMPTS`. Shapes intentionally mirror the other
+three personas' mock files so all four stay structurally consistent even as
+content diverges. When a real data pipeline is designed for any widget,
+replace the corresponding mock export and the prop it feeds.

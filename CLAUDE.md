@@ -10,7 +10,8 @@ enum, function, trigger, index, and RLS policy. [n8n.md](n8n.md) — the registe
 of n8n workflows (triggers, dependent app functions, runtime-DB consequences).
 [home.md](home.md) — the `/home` route per profile: widget-by-widget purpose,
 content, and example copy for the recruiter mission-control, client-admin
-oversight-console, and internal-admin operations-command-center layouts.
+oversight-console, internal-admin operations-command-center, and
+client-recruiter delivery-workbench layouts.
 
 ## Stack
 - **Next.js (App Router) + TypeScript**, `src/` dir, `@/*` alias
@@ -149,10 +150,15 @@ migrating the full app layer to V3.2 is an ongoing pass.
   oversight-console layout: Momentum, Today's Focus, Risks & Accountability,
   Coverage, Hiring Performance, and a chat drilldown
   (`src/components/home/client-admin/client-admin-home.tsx`, mock data in
-  `src/lib/mock-client-home.ts`). All three are UI-only for now — no data
-  pipeline wired up yet. Every other profile (Stellaforce manager, client-side
-  member/hiring_manager/recruiter) gets `GenericHomeOverview` — the original
-  candidate/job/client counts view
+  `src/lib/mock-client-home.ts`). Client-side recruiters (`side = 'client'`,
+  `client_role = 'recruiter'`) get `ClientRecruiterHome` — the delivery-workbench
+  layout: Momentum, Today's Focus, Risks & Accountability, Coverage, Funnel
+  Health, and a chat drilldown
+  (`src/components/home/client-recruiter/client-recruiter-home.tsx`, mock
+  data in `src/lib/mock-client-recruiter-home.ts`). All four are UI-only for
+  now — no data pipeline wired up yet. Every other profile (Stellaforce
+  manager, client-side reviewer/hiring_manager) gets `GenericHomeOverview` —
+  the original candidate/job/client counts view
   (`src/components/home/generic-home-overview.tsx`)
 - `/candidates` — TanStack Table list + structured filters
 - `/candidates/[id]` — profile view
