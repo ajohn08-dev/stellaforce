@@ -1,5 +1,6 @@
 import { HomeDateRangePicker } from "@/components/home/home-date-range-picker"
 import { HomeChatPanel } from "@/components/home/home-chat-panel"
+import { MultiSelectFilterChip } from "@/components/home/multi-select-filter-chip"
 import { InternalAdminFilterButton } from "@/components/home/internal-admin/internal-admin-filter-button"
 import { InternalAdminMomentumCard } from "@/components/home/internal-admin/internal-admin-momentum-card"
 import { InternalAdminTodaysFocusCard } from "@/components/home/internal-admin/internal-admin-todays-focus-card"
@@ -22,12 +23,26 @@ import {
  * reframed around intervention and supervision across recruiters, clients,
  * and the platform itself, in addition to the admin's own recruiting work.
  */
+const CLIENT_FILTER_OPTIONS = ["Zenarate", "Naehas", "Acme"]
+const ROLE_FILTER_OPTIONS = [
+  "Senior Backend Engineer",
+  "Product Designer",
+  "Data Analyst",
+  "Customer Success Manager",
+]
+
 export function InternalAdminHome() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-4 overflow-hidden p-4">
-      <div className="flex shrink-0 items-center justify-end gap-2">
-        <InternalAdminFilterButton />
-        <HomeDateRangePicker />
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <MultiSelectFilterChip label="Clients" options={CLIENT_FILTER_OPTIONS} />
+          <MultiSelectFilterChip label="Roles" options={ROLE_FILTER_OPTIONS} />
+        </div>
+        <div className="flex items-center gap-2">
+          <InternalAdminFilterButton />
+          <HomeDateRangePicker />
+        </div>
       </div>
 
       <div className="flex shrink-0 flex-col gap-4 lg:h-[497px] lg:flex-row lg:items-stretch">

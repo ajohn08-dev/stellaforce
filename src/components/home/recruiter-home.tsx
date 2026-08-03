@@ -1,5 +1,6 @@
 import { HomeFilterButton } from "@/components/home/home-filter-button"
 import { HomeDateRangePicker } from "@/components/home/home-date-range-picker"
+import { MultiSelectFilterChip } from "@/components/home/multi-select-filter-chip"
 import { MomentumCard } from "@/components/home/momentum-card"
 import { TodaysFocusCard } from "@/components/home/todays-focus-card"
 import { RisksCard } from "@/components/home/risks-card"
@@ -15,13 +16,22 @@ import {
   SUGGESTED_PROMPTS,
 } from "@/lib/mock-home"
 
+const CLIENT_FILTER_OPTIONS = ["Zenarate", "Naehas"]
+const ROLE_FILTER_OPTIONS = ["Product Designer", "Senior PM", "ML Engineer", "Backend Engineer"]
+
 /** Mission-control home page for Stellaforce-side recruiters. See home.md. */
 export function RecruiterHome() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-4 overflow-hidden p-4">
-      <div className="flex shrink-0 items-center justify-end gap-2">
-        <HomeFilterButton />
-        <HomeDateRangePicker />
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <MultiSelectFilterChip label="Clients" options={CLIENT_FILTER_OPTIONS} />
+          <MultiSelectFilterChip label="Roles" options={ROLE_FILTER_OPTIONS} />
+        </div>
+        <div className="flex items-center gap-2">
+          <HomeFilterButton />
+          <HomeDateRangePicker />
+        </div>
       </div>
 
       <div className="flex shrink-0 flex-col gap-4 lg:h-[497px] lg:flex-row lg:items-stretch">

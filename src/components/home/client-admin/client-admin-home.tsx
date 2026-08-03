@@ -1,5 +1,6 @@
 import { HomeDateRangePicker } from "@/components/home/home-date-range-picker"
 import { HomeChatPanel } from "@/components/home/home-chat-panel"
+import { MultiSelectFilterChip } from "@/components/home/multi-select-filter-chip"
 import { ClientHomeFilterButton } from "@/components/home/client-admin/client-home-filter-button"
 import { ClientMomentumCard } from "@/components/home/client-admin/client-momentum-card"
 import { ClientTodaysFocusCard } from "@/components/home/client-admin/client-todays-focus-card"
@@ -20,12 +21,17 @@ import {
  * component conventions as RecruiterHome (see home.md), reframed around
  * decisions/approvals and accountability instead of recruiter execution.
  */
+const ROLE_FILTER_OPTIONS = ["Senior PM", "Product Designer", "ML Engineer", "Finance Analyst"]
+
 export function ClientAdminHome() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col gap-4 overflow-hidden p-4">
-      <div className="flex shrink-0 items-center justify-end gap-2">
-        <ClientHomeFilterButton />
-        <HomeDateRangePicker />
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <MultiSelectFilterChip label="Roles" options={ROLE_FILTER_OPTIONS} />
+        <div className="flex items-center gap-2">
+          <ClientHomeFilterButton />
+          <HomeDateRangePicker />
+        </div>
       </div>
 
       <div className="flex shrink-0 flex-col gap-4 lg:h-[497px] lg:flex-row lg:items-stretch">
