@@ -7,6 +7,14 @@ import type {
   JobWorkflowSubStageRow,
   PipelineStageRow,
 } from "@/lib/supabase/types"
+import type {
+  ApplicationActivityEvent,
+  ApplicationEvaluation,
+  ApplicationScorecardCategory,
+  JobWorkflowSubStageWithLinks,
+} from "@/lib/data"
+import type { Competency } from "@/components/jobs/draft/steps/competency-data"
+import type { ScoreCardCategory } from "@/components/jobs/draft/steps/score-card-step"
 import type { MockJob, PipelineCounts } from "@/lib/mock-jobs"
 import type { PipelineCandidate, StageKey, SubStage } from "@/lib/pipeline-candidates"
 
@@ -55,6 +63,8 @@ export function toBoardStages(pipeline: PipelineData, nowMs: number): SubStage[]
     const days = Math.max(0, Math.floor((nowMs - new Date(app.date_updated).getTime()) / 86_400_000))
     const card: PipelineCandidate = {
       candidate_id: c.candidate_id,
+      application_id: app.application_id,
+      current_stage_id: app.current_stage_id,
       full_name: c.full_name ?? `${c.first_name} ${c.last_name}`.trim(),
       tier: (c.candidate_tier ?? "bronze") as CandidateTier,
       days_in_stage: days,
@@ -78,4 +88,115 @@ export function toBoardStages(pipeline: PipelineData, nowMs: number): SubStage[]
     group: (ss.pipeline_stage?.key ?? "source") as StageKey,
     candidates: byStage.get(ss.id) ?? [],
   }))
+}
+
+/**
+ * The sub-stages an application has actually reached: `currentStageId`'s
+ * position in the job's real, snapshotted pipeline order and everything
+ * before it. `subStages` must already be sorted by `sortByPipelineStage`
+ * (both `getJobPipeline` and `getJobWorkflowSubStages` return it that way).
+ * Drives what the pipeline board's Scorecard/Evaluation/Overview tabs are
+ * allowed to show — stages after this point haven't happened yet.
+ */
+export function getReachedSubStages(
+  subStages: JobWorkflowSubStageWithLinks[],
+  currentStageId: string
+): JobWorkflowSubStageWithLinks[] {
+  const idx = subStages.findIndex((s) => s.id === currentStageId)
+  return idx === -1 ? [] : subStages.slice(0, idx + 1)
+}
+
+export type ReachedScope = {
+  /** Competency ids assessed by any reached sub-stage — what the Scorecard
+   * tab is allowed to show evidence for. */
+  reachedCompetencyIds: Set<string>
+  /** Reached sub-stages minus the `source` group — sourcing isn't an
+   * interview, so it never gets an Evaluation-tab card. */
+  reachedEvaluableStages: { id: string; name: string }[]
+  /** Name of the sub-stage the candidate is actually in, for empty-state copy. */
+  currentStageName: string
+}
+
+/** Everything the Overview/Scorecard/Evaluation tabs need to know about how
+ * far one application has progressed through the job's real pipeline. */
+export function getReachedScope(
+  subStages: JobWorkflowSubStageWithLinks[],
+  currentStageId: string | undefined
+): ReachedScope {
+  const reached = currentStageId ? getReachedSubStages(subStages, currentStageId) : []
+  return {
+    reachedCompetencyIds: new Set(reached.flatMap((s) => s.competency_ids)),
+    reachedEvaluableStages: reached
+      .filter((s) => s.pipeline_stage?.key !== "source")
+      .map((s) => ({ id: s.id, name: s.name })),
+    currentStageName: reached.at(-1)?.name ?? "an unreached stage",
+  }
+}
+
+/** A job's scorecard categories narrowed to competencies assessed by a
+ * reached sub-stage; categories left with none are dropped entirely — the
+ * candidate hasn't progressed far enough for that category to apply yet. */
+export function filterReachedScorecardCategories(
+  categories: ScoreCardCategory[],
+  reachedCompetencyIds: Set<string>
+): ScoreCardCategory[] {
+  return categories
+    .map((c) => ({
+      ...c,
+      competencyIds: c.competencyIds.filter((id) => reachedCompetencyIds.has(id)),
+    }))
+    .filter((c) => c.competencyIds.length > 0)
+}
+
+export type JobEvalContext = {
+  subStages: JobWorkflowSubStageWithLinks[]
+  competencies: Competency[]
+  scorecardCategories: ScoreCardCategory[]
+  evaluationsByApplication: Map<string, ApplicationEvaluation[]>
+  scorecardByApplication: Map<string, ApplicationScorecardCategory[]>
+  activityByApplication: Map<string, ApplicationActivityEvent[]>
+}
+
+/** Groups the job-wide template data + the batch-fetched real evaluation/
+ * scorecard/activity rows by `application_id`, once per page load, so
+ * selecting a candidate on the board is a local lookup rather than a
+ * network round trip. */
+export function buildJobEvalContext(
+  subStages: JobWorkflowSubStageWithLinks[],
+  competencies: Competency[],
+  scorecardCategories: ScoreCardCategory[],
+  evaluations: ApplicationEvaluation[],
+  scorecards: ApplicationScorecardCategory[],
+  activity: ApplicationActivityEvent[] = []
+): JobEvalContext {
+  const evaluationsByApplication = new Map<string, ApplicationEvaluation[]>()
+  for (const e of evaluations) {
+    evaluationsByApplication.set(e.application_id, [
+      ...(evaluationsByApplication.get(e.application_id) ?? []),
+      e,
+    ])
+  }
+  const scorecardByApplication = new Map<string, ApplicationScorecardCategory[]>()
+  for (const s of scorecards) {
+    scorecardByApplication.set(s.application_id, [
+      ...(scorecardByApplication.get(s.application_id) ?? []),
+      s,
+    ])
+  }
+  const activityByApplication = new Map<string, ApplicationActivityEvent[]>()
+  for (const a of activity) {
+    if (!a.application_id) continue
+    activityByApplication.set(a.application_id, [
+      ...(activityByApplication.get(a.application_id) ?? []),
+      a,
+    ])
+  }
+  return {
+    subStages,
+    competencies,
+    scorecardCategories,
+    evaluationsByApplication,
+    scorecardByApplication,
+    activityByApplication,
+  }
 }

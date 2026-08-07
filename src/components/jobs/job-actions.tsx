@@ -53,7 +53,17 @@ export function JobActions({ job }: { job: MockJob }) {
         <DropdownMenuItem render={<Link href={`/jobs/${job.job_id}`} />}>
           View details
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => stub("editing this job")}>
+        <DropdownMenuItem
+          render={
+            <Link
+              href={
+                job.status === "draft"
+                  ? `/jobs/${job.job_id}`
+                  : `/jobs/${job.job_id}?edit=1`
+              }
+            />
+          }
+        >
           Edit job
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => stub("duplicating this job")}>

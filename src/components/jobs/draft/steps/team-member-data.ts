@@ -3,6 +3,7 @@ export const STARTER_ROLES = [
   "Interviewer",
   "HR Manager",
   "Approver",
+  "Recruiter",
 ]
 
 export type Member = {

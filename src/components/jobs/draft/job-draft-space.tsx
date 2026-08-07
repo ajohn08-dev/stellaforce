@@ -25,6 +25,7 @@ import {
 } from "@/app/(app)/jobs/actions"
 import type { ScoreCardCategory } from "@/components/jobs/draft/steps/score-card-step"
 import type { MockJob } from "@/lib/mock-jobs"
+import type { JobWorkflowSubStageWithLinks } from "@/lib/data"
 
 export type WorkflowTemplateOption = { id: string; name: string; status: string }
 
@@ -71,6 +72,10 @@ export function JobDraftSpace({
   competenciesInitial,
   scorecardInitial,
   membersInitial,
+  workflowTemplateIdInitial,
+  workflowSubStagesInitial,
+  isPublished = false,
+  hasCandidates = false,
 }: {
   job: MockJob
   templates: WorkflowTemplateOption[]
@@ -78,6 +83,15 @@ export function JobDraftSpace({
   competenciesInitial?: Competency[]
   scorecardInitial?: ScoreCardCategory[]
   membersInitial?: Member[]
+  workflowTemplateIdInitial?: string | null
+  workflowSubStagesInitial?: JobWorkflowSubStageWithLinks[]
+  /** True when re-entering this same wizard to edit an already-published job
+   * (via "Edit job" → ?edit=1) rather than setting one up for the first time. */
+  isPublished?: boolean
+  /** Locks the Workflow step's template picker — replacing the template would
+   * delete job_workflow_sub_stages rows a candidate's application already
+   * points at. */
+  hasCandidates?: boolean
 }) {
   const router = useRouter()
   const [stepIndex, setStepIndex] = React.useState(0)
@@ -88,7 +102,9 @@ export function JobDraftSpace({
     scorecardInitial ?? []
   )
   const [members, setMembers] = React.useState<Member[]>(membersInitial ?? [])
-  const [templateId, setTemplateId] = React.useState<string | undefined>(undefined)
+  const [templateId, setTemplateId] = React.useState<string | undefined>(
+    workflowTemplateIdInitial ?? undefined
+  )
   const [publishing, setPublishing] = React.useState(false)
   const [roleValues, setRoleValues] = React.useState<RoleFormValues>()
   const [generating, setGenerating] = React.useState(false)
@@ -137,6 +153,13 @@ export function JobDraftSpace({
   }
 
   async function handlePublish() {
+    // Editing an already-published job: every step already auto-saves as
+    // you go (role fields on Next, team members/workflow per-interaction) —
+    // there's nothing left to do here but leave the wizard.
+    if (isPublished) {
+      router.push(`/jobs/${job.job_id}`)
+      return
+    }
     if (!templateId) {
       toast.error("Select a workflow template on the Workflow step before publishing.")
       return
@@ -175,6 +198,15 @@ export function JobDraftSpace({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="shrink-0">
+            {isPublished && (
+              <button
+                type="button"
+                onClick={() => router.push(`/jobs/${job.job_id}`)}
+                className="mb-3 text-sm text-muted-foreground hover:text-foreground"
+              >
+                ← Back to pipeline
+              </button>
+            )}
             <div className="flex items-center justify-between pb-6">
               <Button
                 variant="outline"
@@ -188,9 +220,11 @@ export function JobDraftSpace({
                 onClick={() => (isLastStep ? handlePublish() : handleNext())}
               >
                 {isLastStep
-                  ? publishing
-                    ? "Publishing…"
-                    : "Publish job"
+                  ? isPublished
+                    ? "Done"
+                    : publishing
+                      ? "Publishing…"
+                      : "Publish job"
                   : generating
                     ? (STEPS[stepIndex].key === "role-definition"
                         ? competencies.length > 0
@@ -201,12 +235,16 @@ export function JobDraftSpace({
               </Button>
             </div>
 
-            <h2 className="text-lg font-semibold tracking-tight">
-              {STEPS[stepIndex].label}
-            </h2>
-            <p className="mt-1 mb-4 text-sm text-muted-foreground">
-              {STEPS[stepIndex].description}
-            </p>
+            {STEPS[stepIndex].key !== "workflow" && (
+              <>
+                <h2 className="text-lg font-semibold tracking-tight">
+                  {STEPS[stepIndex].label}
+                </h2>
+                <p className="mt-1 mb-4 text-sm text-muted-foreground">
+                  {STEPS[stepIndex].description}
+                </p>
+              </>
+            )}
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -224,14 +262,24 @@ export function JobDraftSpace({
                 setCategories={setScorecard}
               />
             ) : STEPS[stepIndex].key === "team-members" ? (
-              <TeamMembersStep jobId={job.job_id} members={members} setMembers={setMembers} />
+              <TeamMembersStep
+                jobId={job.job_id}
+                members={members}
+                setMembers={setMembers}
+                sendInviteImmediately={isPublished}
+              />
             ) : STEPS[stepIndex].key === "workflow" ? (
               <WorkflowStep
+                jobId={job.job_id}
+                label={STEPS[stepIndex].label}
+                description={STEPS[stepIndex].description ?? ""}
                 competencies={competencies}
                 members={members}
                 templates={templates}
                 selectedTemplateId={templateId}
                 onSelectTemplate={setTemplateId}
+                subStagesInitial={workflowSubStagesInitial ?? []}
+                templateLocked={hasCandidates}
               />
             ) : (
               <p className="text-sm text-muted-foreground">

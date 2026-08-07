@@ -5,10 +5,18 @@ import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getCurrentProfile } from "@/lib/auth"
 import { resolveWorkflowSettings } from "@/lib/workflow-settings"
-import { getJobCompetencies, getJobScorecard } from "@/lib/data"
+import {
+  getJobCompetencies,
+  getJobScorecard,
+  sortByPipelineStage,
+  type JobWorkflowSubStageWithLinks,
+} from "@/lib/data"
 import { serverEnv } from "@/lib/env"
 import { applyAiScorecard, parseAiScorecardResponse } from "@/lib/server/job-ai-scorecard"
-import type { Competency } from "@/components/jobs/draft/steps/competency-data"
+import type {
+  Competency,
+  CompetencyType,
+} from "@/components/jobs/draft/steps/competency-data"
 import type { ScoreCardCategory } from "@/components/jobs/draft/steps/score-card-step"
 import { applyAiRoleOutput, parseAiRoleResponse } from "@/lib/server/job-ai-role"
 import {
@@ -22,7 +30,9 @@ import type {
   EmploymentType,
   EventSeverity,
   Json,
+  PipelineStageRow,
   TablesUpdate,
+  WorkflowTemplateSubStageRow,
 } from "@/lib/supabase/types"
 
 /**
@@ -581,6 +591,304 @@ export async function removeJobTeamMember(memberId: string): Promise<ActionResul
   return { ok: true }
 }
 
+// ── Draft workflow stages ───────────────────────────────────────────────────
+
+/** Maps one workflow_template_sub_stages row onto a job_workflow_sub_stages
+ * insert — the frozen per-job copy of that stage's template-defined columns.
+ * Shared by selectJobWorkflowTemplate (draft/published time) and publishJob's
+ * fallback (in case a job is ever published without going through the
+ * wizard's template picker first). */
+function snapshotRowFromTemplateStage(
+  s: WorkflowTemplateSubStageRow,
+  jobId: string,
+  ownerMemberId: string | null = null
+) {
+  return {
+    job_id: jobId,
+    owner_member_id: ownerMemberId,
+    pipeline_stage_id: s.pipeline_stage_id,
+    name: s.name,
+    purpose: s.purpose,
+    duration_minutes: s.duration_minutes,
+    format: s.format,
+    visibility: s.visibility,
+    owner_role: s.owner_role,
+    collaborator_role: s.collaborator_role,
+    entry_conditions: s.entry_conditions,
+    interviewer_type: s.interviewer_type,
+    question_source: s.question_source,
+    required_questions: s.required_questions,
+    capture_feedback_form: s.capture_feedback_form,
+    capture_transcript: s.capture_transcript,
+    decision_mode: s.decision_mode,
+    decision_owner: s.decision_owner,
+    rating_scale: s.rating_scale,
+    hire_recommendation_enabled: s.hire_recommendation_enabled,
+    override_enabled: s.override_enabled,
+    override_roles: s.override_roles,
+    allowed_outcomes: s.allowed_outcomes,
+    needs_final_approval: s.needs_final_approval,
+    display_order: s.display_order,
+    config: s.config,
+  }
+}
+
+/** Keyword lookup for the rule-based competency→stage auto-fill below —
+ * matched case-insensitively against a Screen/Interview stage's name.
+ * Hybrid competencies get the union of the technical + behavioral matches;
+ * Source/Offer/Close are never evaluative and are excluded upstream. */
+const COMPETENCY_TYPE_STAGE_KEYWORDS: Record<
+  Exclude<CompetencyType, "hybrid">,
+  string[]
+> = {
+  technical: ["technical", "skills", "assessment", "coding"],
+  behavioral: ["hr", "behavioral", "culture", "who interview", "recruiter screen", "pre-screening"],
+  leadership: ["panel", "hiring manager", "executive", "leadership"],
+}
+
+/**
+ * Very simple rule-based competency→stage assignment: matches a
+ * competency's `type` against each Screen/Interview stage's `name` by
+ * keyword. If nothing matches (e.g. a template with unfamiliar stage
+ * names), falls back to every evaluative stage so the competency is still
+ * evaluated somewhere rather than silently dropped.
+ */
+function stageIdsForCompetencyType(
+  type: CompetencyType,
+  evaluativeStages: { id: string; name: string }[]
+): string[] {
+  function idsFor(t: Exclude<CompetencyType, "hybrid">): string[] {
+    return evaluativeStages
+      .filter((s) =>
+        COMPETENCY_TYPE_STAGE_KEYWORDS[t].some((kw) => s.name.toLowerCase().includes(kw))
+      )
+      .map((s) => s.id)
+  }
+
+  const matches =
+    type === "hybrid"
+      ? [...new Set([...idsFor("technical"), ...idsFor("behavioral")])]
+      : idsFor(type)
+
+  return matches.length > 0 ? matches : evaluativeStages.map((s) => s.id)
+}
+
+/**
+ * Auto-save the Workflow step's template pick: snapshots the template's
+ * sub-stages into job_workflow_sub_stages immediately (not just at publish)
+ * so the recruiter can assign competencies/reviewers/questions per stage
+ * during the draft and see them again on reload. Replaces any previously
+ * snapshotted stages — switching templates resets the per-job stage config
+ * (the competency/reviewer junction rows cascade-delete with their stages).
+ * Also rule-auto-fills each of the job's competencies onto the Screen/
+ * Interview stages that match its type (see stageIdsForCompetencyType) —
+ * a starting point the recruiter can still add to/remove from per stage.
+ *
+ * Works for draft jobs (always) and published jobs (only while the pipeline
+ * is still empty) — once a candidate has an application in this job, its
+ * `current_stage_id`/history point at specific job_workflow_sub_stages rows,
+ * and replacing the snapshot would delete those out from under it.
+ */
+export async function selectJobWorkflowTemplate(
+  jobId: string,
+  templateId: string
+): Promise<ActionResult<{ subStages: JobWorkflowSubStageWithLinks[] }>> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+
+  const { data: job } = await supabase
+    .from("job_orders")
+    .select("job_id, status")
+    .eq("job_id", jobId)
+    .single()
+  if (!job) return { ok: false, error: "Job not found." }
+  if (job.status !== "draft" && job.status !== "open")
+    return { ok: false, error: "This job's workflow can't be changed." }
+  if (job.status === "open") {
+    const { count } = await supabase
+      .from("applications")
+      .select("application_id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+    if ((count ?? 0) > 0)
+      return {
+        ok: false,
+        error: "Can't change the workflow — a candidate is already in this job's pipeline.",
+      }
+  }
+
+  const { data: templateStages } = await supabase
+    .from("workflow_template_sub_stages")
+    .select("*")
+    .eq("template_id", templateId)
+    .order("display_order", { ascending: true })
+  if (!templateStages || templateStages.length === 0)
+    return { ok: false, error: "This workflow template has no stages — add at least one in Workflows." }
+
+  const { error: delErr } = await supabase
+    .from("job_workflow_sub_stages")
+    .delete()
+    .eq("job_id", jobId)
+  if (delErr) return { ok: false, error: delErr.message }
+
+  // Default the Stage Owner to whichever team member's role exactly matches
+  // the template's owner_role — only when that's unambiguous (exactly one
+  // match). Ambiguous (0 or 2+ matches) stages are left for the recruiter to
+  // assign manually, same as if there were no suggestion at all.
+  const { data: teamMembers } = await supabase
+    .from("job_team_members")
+    .select("id, role")
+    .eq("job_id", jobId)
+  function ownerMemberIdForRole(role: string | null): string | null {
+    if (!role) return null
+    const matches = (teamMembers ?? []).filter(
+      (m) => m.role.trim().toLowerCase() === role.trim().toLowerCase()
+    )
+    return matches.length === 1 ? matches[0].id : null
+  }
+
+  const { data: inserted, error: insErr } = await supabase
+    .from("job_workflow_sub_stages")
+    .insert(
+      templateStages.map((s) =>
+        snapshotRowFromTemplateStage(s, jobId, ownerMemberIdForRole(s.owner_role))
+      )
+    )
+    .select("*, pipeline_stage:pipeline_stages(*)")
+  if (insErr || !inserted)
+    return { ok: false, error: insErr?.message ?? "Could not save workflow stages." }
+
+  const { error: updErr } = await supabase
+    .from("job_orders")
+    .update({ workflow_template_id: templateId })
+    .eq("job_id", jobId)
+  if (updErr) return { ok: false, error: updErr.message }
+
+  // Rule-based auto-fill: assign each of the job's competencies onto the
+  // Screen/Interview stages matching its type (Sourced/Offer/Close excluded).
+  const insertedStages = sortByPipelineStage(inserted as JobWorkflowSubStageWithLinks[])
+  const evaluativeStages = insertedStages.filter(
+    (s) => s.pipeline_stage?.key === "screen" || s.pipeline_stage?.key === "interview"
+  )
+  const competencyIdsByStage = new Map<string, string[]>()
+  if (evaluativeStages.length > 0) {
+    const { data: competencies } = await supabase
+      .from("job_competencies")
+      .select("id, type")
+      .eq("job_id", jobId)
+
+    const junctionRows = (competencies ?? []).flatMap((c) =>
+      stageIdsForCompetencyType(c.type, evaluativeStages).map((sub_stage_id) => ({
+        sub_stage_id,
+        competency_id: c.id,
+      }))
+    )
+    if (junctionRows.length > 0) {
+      const { error: junctionErr } = await supabase
+        .from("job_workflow_sub_stage_competencies")
+        .insert(junctionRows)
+      if (junctionErr) return { ok: false, error: junctionErr.message }
+      for (const row of junctionRows) {
+        competencyIdsByStage.set(row.sub_stage_id, [
+          ...(competencyIdsByStage.get(row.sub_stage_id) ?? []),
+          row.competency_id,
+        ])
+      }
+    }
+  }
+
+  revalidatePath(`/jobs/${jobId}`)
+  return {
+    ok: true,
+    subStages: insertedStages.map((s) => ({
+      ...s,
+      competency_ids: competencyIdsByStage.get(s.id) ?? [],
+      reviewer_ids: [],
+    })),
+  }
+}
+
+/** Update a draft job's per-stage job-specific fields (not template-owned). */
+export async function updateJobWorkflowSubStage(
+  subStageId: string,
+  patch: {
+    questions?: string
+    needs_final_approval?: boolean
+    owner_member_id?: string | null
+  }
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("job_workflow_sub_stages")
+    .update(patch)
+    .eq("id", subStageId)
+  if (error) return { ok: false, error: error.message }
+  revalidatePath(`/jobs`)
+  return { ok: true }
+}
+
+export async function addJobSubStageCompetency(
+  subStageId: string,
+  competencyId: string
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("job_workflow_sub_stage_competencies")
+    .insert({ sub_stage_id: subStageId, competency_id: competencyId })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function removeJobSubStageCompetency(
+  subStageId: string,
+  competencyId: string
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("job_workflow_sub_stage_competencies")
+    .delete()
+    .eq("sub_stage_id", subStageId)
+    .eq("competency_id", competencyId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function addJobSubStageReviewer(
+  subStageId: string,
+  memberId: string
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("job_workflow_sub_stage_reviewers")
+    .insert({ sub_stage_id: subStageId, member_id: memberId })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+export async function removeJobSubStageReviewer(
+  subStageId: string,
+  memberId: string
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from("job_workflow_sub_stage_reviewers")
+    .delete()
+    .eq("sub_stage_id", subStageId)
+    .eq("member_id", memberId)
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 // ── Publish: snapshot template stages + resolved settings onto the job ────────
 
 export async function publishJob(
@@ -618,38 +926,70 @@ export async function publishJob(
   if (!templateStages || templateStages.length === 0)
     return { ok: false, error: "This workflow template has no stages — add at least one before publishing." }
 
-  // 1) Snapshot the template sub-stages into the per-job table (frozen copy).
-  const snapshotRows = templateStages.map((s) => ({
-    job_id: jobId,
-    pipeline_stage_id: s.pipeline_stage_id,
-    name: s.name,
-    purpose: s.purpose,
-    duration_minutes: s.duration_minutes,
-    format: s.format,
-    visibility: s.visibility,
-    owner_role: s.owner_role,
-    collaborator_role: s.collaborator_role,
-    entry_conditions: s.entry_conditions,
-    interviewer_type: s.interviewer_type,
-    question_source: s.question_source,
-    required_questions: s.required_questions,
-    capture_feedback_form: s.capture_feedback_form,
-    capture_transcript: s.capture_transcript,
-    decision_mode: s.decision_mode,
-    decision_owner: s.decision_owner,
-    rating_scale: s.rating_scale,
-    hire_recommendation_enabled: s.hire_recommendation_enabled,
-    override_enabled: s.override_enabled,
-    override_roles: s.override_roles,
-    allowed_outcomes: s.allowed_outcomes,
-    needs_final_approval: s.needs_final_approval,
-    display_order: s.display_order,
-    config: s.config,
-  }))
-  const { error: snapErr } = await supabase
+  // 1) Snapshot the template sub-stages into the per-job table (frozen copy) —
+  // normally already done at draft time by selectJobWorkflowTemplate when
+  // the recruiter picked a template in the wizard, so this only runs as a
+  // fallback if publish is somehow reached with no stages snapshotted yet.
+  const { count: existingStageCount } = await supabase
     .from("job_workflow_sub_stages")
-    .insert(snapshotRows)
-  if (snapErr) return { ok: false, error: `Snapshot failed: ${snapErr.message}` }
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", jobId)
+  if (!existingStageCount) {
+    const { error: snapErr } = await supabase
+      .from("job_workflow_sub_stages")
+      .insert(templateStages.map((s) => snapshotRowFromTemplateStage(s, jobId)))
+    if (snapErr) return { ok: false, error: `Snapshot failed: ${snapErr.message}` }
+  }
+
+  // 1.5) Require every Screen/Interview stage to have at least one competency
+  // and enough reviewers to actually run its decision (2+ for a multi-rater
+  // panel stage, 1+ otherwise) before the pipeline can be frozen.
+  const { data: jobStages } = await supabase
+    .from("job_workflow_sub_stages")
+    .select("id, name, decision_mode, pipeline_stage:pipeline_stages(key)")
+    .eq("job_id", jobId)
+  const evaluativeJobStages = (jobStages ?? []).filter(
+    (s) => s.pipeline_stage?.key === "screen" || s.pipeline_stage?.key === "interview"
+  )
+  if (evaluativeJobStages.length > 0) {
+    const evaluativeIds = evaluativeJobStages.map((s) => s.id)
+    const [{ data: compRows }, { data: revRows }] = await Promise.all([
+      supabase
+        .from("job_workflow_sub_stage_competencies")
+        .select("sub_stage_id")
+        .in("sub_stage_id", evaluativeIds),
+      supabase
+        .from("job_workflow_sub_stage_reviewers")
+        .select("sub_stage_id")
+        .in("sub_stage_id", evaluativeIds),
+    ])
+    const competencyCounts = new Map<string, number>()
+    for (const r of compRows ?? [])
+      competencyCounts.set(r.sub_stage_id, (competencyCounts.get(r.sub_stage_id) ?? 0) + 1)
+    const reviewerCounts = new Map<string, number>()
+    for (const r of revRows ?? [])
+      reviewerCounts.set(r.sub_stage_id, (reviewerCounts.get(r.sub_stage_id) ?? 0) + 1)
+
+    const problems: string[] = []
+    for (const stage of evaluativeJobStages) {
+      if ((competencyCounts.get(stage.id) ?? 0) === 0) {
+        problems.push(`"${stage.name}" has no competencies evaluated`)
+      }
+      const requiredReviewers = stage.decision_mode === "multi_rater" ? 2 : 1
+      const reviewerCount = reviewerCounts.get(stage.id) ?? 0
+      if (reviewerCount < requiredReviewers) {
+        problems.push(
+          `"${stage.name}" needs ${requiredReviewers === 2 ? "at least 2 reviewers (panel stage)" : "a reviewer"}`
+        )
+      }
+    }
+    if (problems.length > 0) {
+      return {
+        ok: false,
+        error: `Complete the Workflow step before publishing: ${problems.join("; ")}.`,
+      }
+    }
+  }
 
   // 2) Resolve global⊕client⊕workflow settings and write them as scope='job'.
   const resolved = await resolveWorkflowSettings({
@@ -729,7 +1069,7 @@ export async function publishJob(
     client_id: job.client_id,
     job_id: jobId,
     actor_profile_id: profile.id,
-    payload: { template_id: templateId, stages: snapshotRows.length },
+    payload: { template_id: templateId, stages: templateStages.length },
   })
 
   revalidatePath(`/jobs/${jobId}`)
@@ -754,16 +1094,19 @@ export async function addCandidateToPipeline(
     .single()
   if (!job) return { ok: false, error: "Job not found." }
 
-  // First sub-stage (lowest display_order) — the pipeline entry point.
-  const { data: firstStage } = await supabase
+  // Pipeline entry point — the Sourced-stage sub-stage. display_order alone
+  // isn't enough to find it (it restarts at 0 within each pipeline stage, so
+  // Sourced/Offer/Close/etc. can tie), so sort by the joined pipeline stage's
+  // own display_order first, same as everywhere else this ordering matters.
+  const { data: allStages } = await supabase
     .from("job_workflow_sub_stages")
-    .select("id")
+    .select("id, display_order, pipeline_stage:pipeline_stages(*)")
     .eq("job_id", jobId)
-    .order("display_order", { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  if (!firstStage)
+  if (!allStages || allStages.length === 0)
     return { ok: false, error: "This job has no pipeline stages yet — publish the job first." }
+  const firstStage = sortByPipelineStage(
+    allStages as { id: string; display_order: number; pipeline_stage: PipelineStageRow | null }[]
+  )[0]
 
   const { data: app, error } = await supabase
     .from("applications")
