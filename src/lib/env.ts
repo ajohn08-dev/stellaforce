@@ -83,6 +83,14 @@ export const serverEnv = {
       "https://ajzenarate.app.n8n.cloud/webhook/705a47f9-d16a-4918-9613-fd98ca1f5cdf"
     )
   },
+  /** Signing secret for verifying ElevenLabs post-call webhook payloads. No
+   * receiving endpoint exists yet — this just makes the secret available. */
+  get elevenlabsPostcallWebhookSecret() {
+    return required(
+      "ELEVENLABS_POSTCALL_WEBHOOK_SECRET",
+      process.env.ELEVENLABS_POSTCALL_WEBHOOK_SECRET
+    )
+  },
   get googleClientId() {
     return required("GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID)
   },

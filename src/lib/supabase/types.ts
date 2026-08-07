@@ -121,6 +121,42 @@ export type Database = {
           },
         ]
       }
+      agents: {
+        Row: {
+          avg_handle_time_minutes: number | null
+          created_at: string
+          description: string | null
+          external_agent_id: string | null
+          id: string
+          name: string
+          provider: string
+          status: Database["public"]["Enums"]["agent_status"]
+          updated_at: string
+        }
+        Insert: {
+          avg_handle_time_minutes?: number | null
+          created_at?: string
+          description?: string | null
+          external_agent_id?: string | null
+          id?: string
+          name: string
+          provider: string
+          status?: Database["public"]["Enums"]["agent_status"]
+          updated_at?: string
+        }
+        Update: {
+          avg_handle_time_minutes?: number | null
+          created_at?: string
+          description?: string | null
+          external_agent_id?: string | null
+          id?: string
+          name?: string
+          provider?: string
+          status?: Database["public"]["Enums"]["agent_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_interactions: {
         Row: {
           application_id: string | null
@@ -654,6 +690,158 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["client_id"]
+          },
+        ]
+      }
+      call_recordings: {
+        Row: {
+          agent_id: string | null
+          application_id: string | null
+          call_status: string | null
+          call_successful: string | null
+          campaign_id: string | null
+          candidate_id: string | null
+          client_id: string | null
+          created_at: string
+          duration_seconds: number | null
+          elevenlabs_conversation_id: string | null
+          evaluation_id: string | null
+          file_size: number | null
+          filename: string
+          id: string
+          interviewer_type: Database["public"]["Enums"]["interviewer_type"]
+          is_test: boolean
+          job_id: string | null
+          mime_type: string | null
+          raw_elevenlabs_payload: Json | null
+          started_at: string | null
+          storage_path: string
+          sub_stage_id: string | null
+          summary: string | null
+          termination_reason: string | null
+          title: string | null
+          to_number: string | null
+          transcript: Json | null
+          transcript_status: string
+          transcript_text: string | null
+          updated_at: string
+          video_url: string | null
+        }
+        Insert: {
+          agent_id?: string | null
+          application_id?: string | null
+          call_status?: string | null
+          call_successful?: string | null
+          campaign_id?: string | null
+          candidate_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          elevenlabs_conversation_id?: string | null
+          evaluation_id?: string | null
+          file_size?: number | null
+          filename: string
+          id?: string
+          interviewer_type: Database["public"]["Enums"]["interviewer_type"]
+          is_test?: boolean
+          job_id?: string | null
+          mime_type?: string | null
+          raw_elevenlabs_payload?: Json | null
+          started_at?: string | null
+          storage_path: string
+          sub_stage_id?: string | null
+          summary?: string | null
+          termination_reason?: string | null
+          title?: string | null
+          to_number?: string | null
+          transcript?: Json | null
+          transcript_status?: string
+          transcript_text?: string | null
+          updated_at?: string
+          video_url?: string | null
+        }
+        Update: {
+          agent_id?: string | null
+          application_id?: string | null
+          call_status?: string | null
+          call_successful?: string | null
+          campaign_id?: string | null
+          candidate_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          elevenlabs_conversation_id?: string | null
+          evaluation_id?: string | null
+          file_size?: number | null
+          filename?: string
+          id?: string
+          interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
+          is_test?: boolean
+          job_id?: string | null
+          mime_type?: string | null
+          raw_elevenlabs_payload?: Json | null
+          started_at?: string | null
+          storage_path?: string
+          sub_stage_id?: string | null
+          summary?: string | null
+          termination_reason?: string | null
+          title?: string | null
+          to_number?: string | null
+          transcript?: Json | null
+          transcript_status?: string
+          transcript_text?: string | null
+          updated_at?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_recordings_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_recordings_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["application_id"]
+          },
+          {
+            foreignKeyName: "call_recordings_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "call_recordings_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "call_recordings_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "application_stage_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_recordings_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "call_recordings_sub_stage_id_fkey"
+            columns: ["sub_stage_id"]
+            isOneToOne: false
+            referencedRelation: "job_workflow_sub_stages"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -1908,6 +2096,7 @@ export type Database = {
       }
       job_workflow_sub_stages: {
         Row: {
+          agent_id: string | null
           allowed_outcomes: string[]
           capture_feedback_form: boolean
           capture_transcript: boolean
@@ -1939,6 +2128,7 @@ export type Database = {
           visibility: Database["public"]["Enums"]["stage_visibility"]
         }
         Insert: {
+          agent_id?: string | null
           allowed_outcomes?: string[]
           capture_feedback_form?: boolean
           capture_transcript?: boolean
@@ -1972,6 +2162,7 @@ export type Database = {
           visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
         Update: {
+          agent_id?: string | null
           allowed_outcomes?: string[]
           capture_feedback_form?: boolean
           capture_transcript?: boolean
@@ -2005,6 +2196,13 @@ export type Database = {
           visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
         Relationships: [
+          {
+            foreignKeyName: "job_workflow_sub_stages_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "job_workflow_sub_stages_job_id_fkey"
             columns: ["job_id"]
@@ -2363,6 +2561,7 @@ export type Database = {
       }
       workflow_template_sub_stages: {
         Row: {
+          agent_id: string | null
           allowed_outcomes: string[]
           capture_feedback_form: boolean
           capture_transcript: boolean
@@ -2392,6 +2591,7 @@ export type Database = {
           visibility: Database["public"]["Enums"]["stage_visibility"]
         }
         Insert: {
+          agent_id?: string | null
           allowed_outcomes?: string[]
           capture_feedback_form?: boolean
           capture_transcript?: boolean
@@ -2423,6 +2623,7 @@ export type Database = {
           visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
         Update: {
+          agent_id?: string | null
           allowed_outcomes?: string[]
           capture_feedback_form?: boolean
           capture_transcript?: boolean
@@ -2454,6 +2655,13 @@ export type Database = {
           visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
         Relationships: [
+          {
+            foreignKeyName: "workflow_template_sub_stages_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "workflow_template_sub_stages_pipeline_stage_id_fkey"
             columns: ["pipeline_stage_id"]
@@ -2583,6 +2791,7 @@ export type Database = {
         | "calendar_connected"
         | "calendar_connection_revoked"
       actor_type: "user" | "system" | "candidate"
+      agent_status: "active" | "inactive"
       application_status:
         | "active"
         | "hired"
@@ -2798,6 +3007,7 @@ export const Constants = {
         "calendar_connection_revoked",
       ],
       actor_type: ["user", "system", "candidate"],
+      agent_status: ["active", "inactive"],
       application_status: [
         "active",
         "hired",
@@ -2969,3 +3179,10 @@ export type AiInteractionRow = SchemaTables["ai_interactions"]["Row"]
 export type JobTargetCompanyRow = SchemaTables["job_target_companies"]["Row"]
 export type GoogleCalendarConnectionRow = SchemaTables["google_calendar_connections"]["Row"]
 export type GoogleCalendarConnectionInsert = SchemaTables["google_calendar_connections"]["Insert"]
+
+// ── Agents / call recordings (screening-agent registry + interview/call log) ─
+export type AgentRow = SchemaTables["agents"]["Row"]
+export type AgentInsert = SchemaTables["agents"]["Insert"]
+export type AgentStatus = SchemaEnums["agent_status"]
+export type CallRecordingRow = SchemaTables["call_recordings"]["Row"]
+export type CallRecordingInsert = SchemaTables["call_recordings"]["Insert"]

@@ -53,7 +53,7 @@ client-recruiter delivery-workbench layouts.
 
 Postgres + pgvector on Supabase. UUID PKs (`gen_random_uuid()`), `created_at`
 everywhere, `updated_at` (trigger-maintained) where rows mutate, snake_case,
-Postgres enums for every controlled vocabulary. **44 tables.**
+Postgres enums for every controlled vocabulary. **46 tables.**
 
 **Shape.** A two-tier pipeline (fixed Tier-1 `pipeline_stages` → variable
 per-job Tier-2 `job_workflow_sub_stages`) and a four-layer evaluation model —
@@ -197,7 +197,16 @@ two-sided profiles, indexes/RLS) → resumes bucket/table →
 cascade + seeded globals), `_100300_wf_activity_runtime` (`activity_events`,
 `application_stage_history`, `audit_log`, `ai_interactions`,
 `applications.owner_profile_id`), `_100500_wf_tenant_rls` (`current_profile_*`
-helpers + tenant-scoped RLS + denormalized `client_id` on settings tables).
+helpers + tenant-scoped RLS + denormalized `client_id` on settings tables) →
+`20260807140000_call_recordings_storage_bucket`/`_140100_call_recordings_storage_policies`/
+`_140200_create_call_recordings_table` (`call-recordings` bucket + `call_recordings`
+metadata table) → `_171904_add_agents_interviews_conversations` (`agents` table;
+also created `interviews`/`conversations` tables, superseded below) →
+`_173038_reconcile_call_recordings_with_agents` (dropped `interviews`/
+`conversations` in favor of extending `call_recordings` with agent/candidate/
+job/campaign linkage + the ElevenLabs post-call payload fields, and upgraded
+its RLS from permissive to tenant-scoped — see
+[DB_Schema.md](DB_Schema.md#storage--resume-ingestion)).
 
 **RLS.** Permissive `authenticated`-ALL on core tables; **tenant-scoped** on the
 workflow-template / settings / activity / AI / audit tables (client users see
