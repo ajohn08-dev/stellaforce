@@ -19,7 +19,7 @@ Evaluation is layered: **L1** job template (`job_competencies`,
 (`application_scorecard_*`) → **L4** cross-job redeployment fit
 (`candidate_client_fit`).
 
-**Table count:** 44 tables. Tables marked **[tenant RLS]** enforce
+**Table count:** 46 tables. Tables marked **[tenant RLS]** enforce
 client-scoped row access; all others use the permissive `authenticated`-ALL
 policy (see RLS model at the end).
 
@@ -321,6 +321,54 @@ unique), `filename` (not null), `user_id` (fk profiles), `status` (text CHECK
 null), `created_at`, `updated_at`. Receiving endpoint: `POST /api/candidates/ingest`
 (`src/app/api/candidates/ingest/route.ts`).
 
+**Storage bucket `call-recordings`** (private) — broad audio set (mpeg/wav/
+mp4/m4a/ogg), 100 MB cap. Two path shapes: `applications/{application_id}/
+{interviewer_type}/{timestamp}-{filename}.ext` for real recordings tied to a
+job+candidate pairing (`interviewer_type`: `ai | human | external`, same enum
+as `job_workflow_sub_stages`/`workflow_template_sub_stages`), and
+`test/{timestamp}-{filename}.ext` for screening-agent test-run calls (dummy
+candidate identity — no real application). `storage.objects` RLS: any
+`profiles.side='stellaforce'` user gets full read/upload/update/delete on both
+prefixes; client-side profiles get **read-only**, scoped to `applications/...`
+rows whose `application_id` resolves to their own `current_profile_client_id()`
+— no client access to `test/...` at all.
+
+**agents** **[tenant RLS-like — see RLS model]** (9 cols) — minimal registry
+for externally-hosted screening agents (e.g. an ElevenLabs conversational
+agent): `id` (pk), `name` (not null), `description`, `status` (enum
+`agent_status`: `active | inactive`, default `active`), `provider` (text, not
+an enum — deliberate, an evolving external-integration detail rather than a
+fixed vocabulary), `external_agent_id` (the agent's ID in that external
+platform), `avg_handle_time_minutes`, `created_at`, `updated_at`. No
+per-client ownership column — "which clients use this agent" is derived by
+joining `job_workflow_sub_stages.agent_id` → `job_orders` → `clients`.
+Referenced by `job_workflow_sub_stages.agent_id` /
+`workflow_template_sub_stages.agent_id` (nullable — which agent conducts an
+`interviewer_type='ai'` stage, snapshotted at publish same as
+`interviewer_type` itself) and by `call_recordings.agent_id` below.
+
+**call_recordings** **[tenant RLS]** (30 cols) — one row per interview/call
+instance, human or AI, real candidate or test. `id` (pk), `application_id` (fk
+applications, cascade, nullable — null for test-run rows), `evaluation_id` (fk
+application_stage_evaluations, set null), `sub_stage_id` (fk
+job_workflow_sub_stages), `client_id` (fk clients, denormalized for RLS),
+`candidate_id` / `job_id` (fk candidates/job_orders, denormalized, null for
+test calls), `agent_id` (fk agents, set when AI-conducted), `campaign_id`,
+`to_number`, `interviewer_type` (not null), `is_test` (default false; check
+constraint forbids `is_test` with a non-null `application_id`, and a second
+check constraint requires `agent_id` when `is_test`), `storage_path` (not
+null, **unique** — idempotency key), `filename` (not null), `file_size`,
+`mime_type`, `duration_seconds`, `started_at`, `elevenlabs_conversation_id`
+(unique, nullable — only AI-agent rows have one), `call_status`,
+`call_successful` (ElevenLabs' own vocabularies, stored as-received, not
+constrained to an app enum), `title`, `summary`, `termination_reason`,
+`transcript_text` (flattened plain text), `transcript` (jsonb — structured
+turns), `transcript_status` (text CHECK `pending | transcribed | failed`),
+`video_url` (video-capable stages only, plain link — not owned like audio),
+`raw_elevenlabs_payload` (jsonb, full webhook body for audit/replay),
+`created_at`, `updated_at`. No app writer yet — the inbound
+ElevenLabs-post-call webhook receiver that populates this table isn't built.
+
 ---
 
 ## Functions & triggers
@@ -342,7 +390,8 @@ functions in `public` — not application code.)_
 `set_candidate_timestamps` → candidates. `set_application_timestamps` → applications.
 `set_updated_at` → clients, job_orders, placements, interactions, candidate_client_fit,
 resumes, ingestion_jobs, profiles, **workflow_templates, workflow_settings,
-sla_policies, automation_rules, communication_templates**.
+sla_policies, automation_rules, communication_templates**, call_recordings,
+agents.
 
 ---
 
@@ -361,10 +410,19 @@ plus a partial index `where dispatched_at is null` (outbox drain).
 - **profiles** — SELECT-only for authenticated (written by the trigger).
 - **Tenant-scoped** (2 policies: `tenant_read` SELECT + `tenant_write` ALL) on
   `workflow_templates`, `workflow_settings`, `sla_policies`, `automation_rules`,
-  `communication_templates`, `activity_events`, `ai_interactions`, `audit_log`.
-  Read: Stellaforce **or** row is global (`client_id` null) **or**
-  `client_id = current_profile_client_id()`. Write: Stellaforce **or**
+  `communication_templates`, `activity_events`, `ai_interactions`, `audit_log`,
+  `call_recordings`. Read: Stellaforce **or** row is global (`client_id` null)
+  **or** `client_id = current_profile_client_id()`. Write: Stellaforce **or**
   `client_id = current_profile_client_id()` (client users can't create global rows).
+  (`call_recordings.client_id` is nullable and only populated once a row is
+  linked to a real application — test-call rows have no `client_id` and are
+  invisible to client-side users, which is intentional: they're internal QA.)
+- **agents** — a variant, not the standard tenant pair: `read_agents` (SELECT,
+  `USING(true)`) lets any authenticated user see agent name/status (harmless —
+  a client-side user may see one assigned to their job's AI stage);
+  `stellaforce_write_agents` (ALL) restricts writes to
+  `current_profile_side() = 'stellaforce'` — agents are Stellaforce-managed,
+  not client-owned.
 - Anonymous users: no access. The service-role key bypasses RLS (seeding, backfills,
   n8n ingestion route).
 
