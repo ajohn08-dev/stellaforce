@@ -341,6 +341,21 @@ export async function getWorkflowTemplates(
   return (data ?? []) as (WorkflowTemplateRow & { client: ClientRow | null })[]
 }
 
+/** Sub-stages carry a `display_order` that only orders them *within* their own
+ * pipeline stage (each stage's sub-stages restart at 0) — a plain `.order()`
+ * on that column alone ties across different stages and can interleave them
+ * (e.g. every stage's first sub-stage before any stage's second). Sort by
+ * the joined pipeline stage's own `display_order` first, then the sub-stage's,
+ * so Source/Screen/Interview/Offer/Close always come out in that order. */
+export function sortByPipelineStage<
+  T extends { pipeline_stage: PipelineStageRow | null; display_order: number },
+>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const stageDiff = (a.pipeline_stage?.display_order ?? 0) - (b.pipeline_stage?.display_order ?? 0)
+    return stageDiff !== 0 ? stageDiff : a.display_order - b.display_order
+  })
+}
+
 export type WorkflowTemplateSubStageWithStage = WorkflowTemplateSubStageRow & {
   pipeline_stage: PipelineStageRow | null
 }
@@ -370,7 +385,7 @@ export async function getWorkflowTemplate(id: string): Promise<
 
   return {
     ...(template as WorkflowTemplateRow & { client: ClientRow | null }),
-    sub_stages: (subStages ?? []) as WorkflowTemplateSubStageWithStage[],
+    sub_stages: sortByPipelineStage((subStages ?? []) as WorkflowTemplateSubStageWithStage[]),
   }
 }
 
@@ -396,13 +411,71 @@ export async function getJobPipeline(jobId: string): Promise<{
       .order("date_applied", { ascending: false }),
   ])
   return {
-    subStages: (subRes.data ?? []) as (JobWorkflowSubStageRow & {
-      pipeline_stage: PipelineStageRow | null
-    })[],
+    subStages: sortByPipelineStage(
+      (subRes.data ?? []) as (JobWorkflowSubStageRow & {
+        pipeline_stage: PipelineStageRow | null
+      })[]
+    ),
     applications: (appRes.data ?? []) as (ApplicationRow & {
       candidate: CandidateRow | null
     })[],
   }
+}
+
+export type JobWorkflowSubStageWithLinks = JobWorkflowSubStageRow & {
+  pipeline_stage: PipelineStageRow | null
+  competency_ids: string[]
+  reviewer_ids: string[]
+}
+
+/** A draft job's snapshotted sub-stages plus their per-stage competency/reviewer
+ * assignments, for the Workflow step of the job-creation wizard. */
+export async function getJobWorkflowSubStages(
+  jobId: string
+): Promise<JobWorkflowSubStageWithLinks[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data: subStages } = await supabase
+    .from("job_workflow_sub_stages")
+    .select("*, pipeline_stage:pipeline_stages(*)")
+    .eq("job_id", jobId)
+    .order("display_order", { ascending: true })
+  if (!subStages || subStages.length === 0) return []
+
+  const ids = subStages.map((s) => s.id)
+  const [{ data: comps }, { data: revs }] = await Promise.all([
+    supabase
+      .from("job_workflow_sub_stage_competencies")
+      .select("sub_stage_id, competency_id")
+      .in("sub_stage_id", ids),
+    supabase
+      .from("job_workflow_sub_stage_reviewers")
+      .select("sub_stage_id, member_id")
+      .in("sub_stage_id", ids),
+  ])
+
+  const competencyIdsByStage = new Map<string, string[]>()
+  for (const c of comps ?? []) {
+    competencyIdsByStage.set(c.sub_stage_id, [
+      ...(competencyIdsByStage.get(c.sub_stage_id) ?? []),
+      c.competency_id,
+    ])
+  }
+  const reviewerIdsByStage = new Map<string, string[]>()
+  for (const r of revs ?? []) {
+    reviewerIdsByStage.set(r.sub_stage_id, [
+      ...(reviewerIdsByStage.get(r.sub_stage_id) ?? []),
+      r.member_id,
+    ])
+  }
+
+  return sortByPipelineStage(
+    subStages as (JobWorkflowSubStageRow & { pipeline_stage: PipelineStageRow | null })[]
+  ).map((s) => ({
+    ...s,
+    competency_ids: competencyIdsByStage.get(s.id) ?? [],
+    reviewer_ids: reviewerIdsByStage.get(s.id) ?? [],
+  }))
 }
 
 /** A job's competencies (Evaluation Criteria step), mapped to the wizard shape. */
@@ -481,6 +554,125 @@ export async function getJobScorecard(jobId: string): Promise<ScoreCardCategory[
   }))
 }
 
+export type ApplicationEvaluation = {
+  id: string
+  application_id: string
+  sub_stage_id: string
+  status: "pending" | "completed"
+  interviewer_name: string | null
+  interview_date: string | null
+  mode: "phone" | "video" | "onsite" | "async" | null
+  rubric_score: number | null
+  summary: string | null
+  notes: string[]
+}
+
+/** Real per-application interview evaluations (L2) for a batch of applications,
+ * one row per (application, sub-stage) — for the pipeline board's Evaluation
+ * tab. Currently unpopulated end-to-end (no submission UI yet), so this
+ * reliably returns `[]` until that write path exists. */
+export async function getApplicationEvaluations(
+  applicationIds: string[]
+): Promise<ApplicationEvaluation[]> {
+  if (!isSupabaseConfigured || applicationIds.length === 0) return []
+  const supabase = await createClient()
+  const { data: evals } = await supabase
+    .from("application_stage_evaluations")
+    .select("*, interviewer:job_team_members(name)")
+    .in("application_id", applicationIds)
+  if (!evals || evals.length === 0) return []
+
+  const { data: notes } = await supabase
+    .from("application_stage_evaluation_notes")
+    .select("evaluation_id, note, display_order")
+    .in(
+      "evaluation_id",
+      evals.map((e) => e.id)
+    )
+    .order("display_order", { ascending: true })
+  const notesByEvaluation = new Map<string, string[]>()
+  for (const n of notes ?? []) {
+    notesByEvaluation.set(n.evaluation_id, [
+      ...(notesByEvaluation.get(n.evaluation_id) ?? []),
+      n.note,
+    ])
+  }
+
+  return evals.map((e) => ({
+    id: e.id,
+    application_id: e.application_id,
+    sub_stage_id: e.sub_stage_id,
+    status: e.status,
+    interviewer_name: (e.interviewer as { name: string } | null)?.name ?? null,
+    interview_date: e.interview_date,
+    mode: e.mode,
+    rubric_score: e.rubric_score,
+    summary: e.summary,
+    notes: notesByEvaluation.get(e.id) ?? [],
+  }))
+}
+
+export type ApplicationScorecardCompetency = {
+  competency_id: string
+  achieved_proficiency: "aware" | "proficient" | "expert"
+  confidence: "low" | "medium" | "high"
+  summary: string | null
+}
+
+export type ApplicationScorecardCategory = {
+  application_id: string
+  category_id: string
+  current_score: number | null
+  target_score: number | null
+  confidence: "low" | "medium" | "high" | null
+  competencies: ApplicationScorecardCompetency[]
+}
+
+/** Real per-application computed scorecard rollups (L3) for a batch of
+ * applications — for the pipeline board's Scorecard tab. Currently
+ * unpopulated end-to-end (no evaluation submission or scoring pipeline yet),
+ * so this reliably returns `[]` until that exists. */
+export async function getApplicationScorecards(
+  applicationIds: string[]
+): Promise<ApplicationScorecardCategory[]> {
+  if (!isSupabaseConfigured || applicationIds.length === 0) return []
+  const supabase = await createClient()
+  const { data: cats } = await supabase
+    .from("application_scorecard_categories")
+    .select("*")
+    .in("application_id", applicationIds)
+  if (!cats || cats.length === 0) return []
+
+  const { data: comps } = await supabase
+    .from("application_scorecard_competencies")
+    .select("*")
+    .in(
+      "scorecard_category_id",
+      cats.map((c) => c.id)
+    )
+  const compsByCategory = new Map<string, ApplicationScorecardCompetency[]>()
+  for (const c of comps ?? []) {
+    compsByCategory.set(c.scorecard_category_id, [
+      ...(compsByCategory.get(c.scorecard_category_id) ?? []),
+      {
+        competency_id: c.competency_id,
+        achieved_proficiency: c.achieved_proficiency,
+        confidence: c.confidence,
+        summary: c.summary,
+      },
+    ])
+  }
+
+  return cats.map((c) => ({
+    application_id: c.application_id,
+    category_id: c.category_id,
+    current_score: c.current_score,
+    target_score: c.target_score,
+    confidence: c.confidence,
+    competencies: compsByCategory.get(c.id) ?? [],
+  }))
+}
+
 /** Target companies for a job (Role Definition step). */
 export async function getJobTargetCompanies(
   jobId: string
@@ -554,4 +746,24 @@ export async function getJobActivity(jobId: string): Promise<ActivityEventRow[]>
     .eq("job_id", jobId)
     .order("created_at", { ascending: false })
   return data ?? []
+}
+
+export type ApplicationActivityEvent = ActivityEventRow & {
+  actor: { full_name: string | null } | null
+}
+
+/** Activity scoped to specific applications (a candidate's run through one
+ * specific job) — batch-fetched for the pipeline board's Activity tab, same
+ * pattern as getApplicationEvaluations/getApplicationScorecards. */
+export async function getApplicationActivity(
+  applicationIds: string[]
+): Promise<ApplicationActivityEvent[]> {
+  if (!isSupabaseConfigured || applicationIds.length === 0) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("activity_events")
+    .select("*, actor:profiles(full_name)")
+    .in("application_id", applicationIds)
+    .order("created_at", { ascending: false })
+  return (data ?? []) as ApplicationActivityEvent[]
 }

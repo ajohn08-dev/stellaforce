@@ -15,6 +15,11 @@ export const PIPELINE_STAGES: { key: StageKey; label: string }[] = [
 
 export type PipelineCandidate = {
   candidate_id: string
+  /** Real applications.application_id — undefined for the pseudo-candidates
+   * generated below (mock jobs board), present for real board data. */
+  application_id?: string
+  /** Real applications.current_stage_id — see application_id note above. */
+  current_stage_id?: string
   full_name: string
   tier: CandidateTier
   days_in_stage: number

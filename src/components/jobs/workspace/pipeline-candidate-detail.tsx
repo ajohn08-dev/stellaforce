@@ -10,14 +10,38 @@ import { CandidateScorecardTab } from "@/components/jobs/workspace/candidate-sco
 import { CandidateEvaluationTab } from "@/components/jobs/workspace/candidate-evaluation-tab"
 import { CandidateBackgroundTab } from "@/components/jobs/workspace/candidate-background-tab"
 import { CandidateActivityTab } from "@/components/jobs/workspace/candidate-activity-tab"
+import {
+  filterReachedScorecardCategories,
+  getReachedScope,
+  type JobEvalContext,
+} from "@/lib/job-adapter"
 import type { PipelineCandidate } from "@/lib/pipeline-candidates"
 
 /** Right-hand elaboration of the selected candidate — same header+tabs shape as the candidate workspace page. */
 export function PipelineCandidateDetail({
   candidate,
+  jobEvalContext,
 }: {
   candidate: PipelineCandidate
+  jobEvalContext: JobEvalContext
 }) {
+  const scope = getReachedScope(jobEvalContext.subStages, candidate.current_stage_id)
+  const reachedCategories = filterReachedScorecardCategories(
+    jobEvalContext.scorecardCategories,
+    scope.reachedCompetencyIds
+  )
+  const reachedCompetencies = jobEvalContext.competencies.filter((c) =>
+    scope.reachedCompetencyIds.has(c.id)
+  )
+  const evaluations = candidate.application_id
+    ? (jobEvalContext.evaluationsByApplication.get(candidate.application_id) ?? [])
+    : []
+  const scorecard = candidate.application_id
+    ? (jobEvalContext.scorecardByApplication.get(candidate.application_id) ?? [])
+    : []
+  const activity = candidate.application_id
+    ? (jobEvalContext.activityByApplication.get(candidate.application_id) ?? [])
+    : []
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="h-10 shrink-0 bg-gradient-to-r from-brand-orange-500 to-brand-purple-600" />
@@ -78,18 +102,36 @@ export function PipelineCandidateDetail({
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <TabsPanel value="overview">
-            <CandidateOverviewTab />
+            <CandidateOverviewTab
+              candidateName={candidate.full_name}
+              currentStageName={scope.currentStageName}
+              categories={reachedCategories}
+              scorecard={scorecard}
+              reachedStages={scope.reachedEvaluableStages}
+              evaluations={evaluations}
+            />
           </TabsPanel>
 
-          {/* Every candidate here is already in this job's pipeline, so
-              Scorecard/Evaluation always apply — unlike the general candidate
-              profile page, there's no "not added" state to gate on. */}
+          {/* Scorecard/Evaluation only cover sub-stages this application has
+              actually reached (`scope`, derived from current_stage_id against
+              the job's real pipeline order) — stages ahead of the candidate
+              render nothing, instead of the old fixed mock journey. */}
           <TabsPanel value="scorecard">
-            <CandidateScorecardTab />
+            <CandidateScorecardTab
+              candidateName={candidate.full_name}
+              currentStageName={scope.currentStageName}
+              categories={reachedCategories}
+              competencies={reachedCompetencies}
+              scorecard={scorecard}
+            />
           </TabsPanel>
 
           <TabsPanel value="evaluation">
-            <CandidateEvaluationTab />
+            <CandidateEvaluationTab
+              candidateName={candidate.full_name}
+              reachedStages={scope.reachedEvaluableStages}
+              evaluations={evaluations}
+            />
           </TabsPanel>
 
           <TabsPanel value="background">
@@ -97,7 +139,7 @@ export function PipelineCandidateDetail({
           </TabsPanel>
 
           <TabsPanel value="activity">
-            <CandidateActivityTab />
+            <CandidateActivityTab events={activity} />
           </TabsPanel>
 
           <TabsPanel value="files">

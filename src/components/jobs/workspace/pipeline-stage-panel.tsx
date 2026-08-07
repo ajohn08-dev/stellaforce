@@ -4,13 +4,16 @@ import * as React from "react"
 
 import { PipelineCandidateCard } from "@/components/jobs/workspace/pipeline-candidate-card"
 import { PipelineCandidateDetail } from "@/components/jobs/workspace/pipeline-candidate-detail"
+import type { JobEvalContext } from "@/lib/job-adapter"
 import type { PipelineCandidate } from "@/lib/pipeline-candidates"
 
 /** Two-column stage view: candidate list on the left (1/4), selected candidate's detail on the right. */
 export function PipelineStagePanel({
   candidates,
+  jobEvalContext,
 }: {
   candidates: PipelineCandidate[]
+  jobEvalContext: JobEvalContext
 }) {
   const [selectedId, setSelectedId] = React.useState(candidates[0]?.candidate_id)
 
@@ -37,7 +40,7 @@ export function PipelineStagePanel({
       </div>
 
       <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-white">
-        <PipelineCandidateDetail candidate={selected} />
+        <PipelineCandidateDetail candidate={selected} jobEvalContext={jobEvalContext} />
       </div>
     </div>
   )

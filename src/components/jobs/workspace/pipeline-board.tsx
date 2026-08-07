@@ -6,12 +6,19 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { PipelineStagePanel } from "@/components/jobs/workspace/pipeline-stage-panel"
+import type { JobEvalContext } from "@/lib/job-adapter"
 import type { SubStage } from "@/lib/pipeline-candidates"
 
 const SCROLL_STEP = 240
 
 /** Sub-stage tabs (Source, Recruiter Screen, Technical Interview 1, ...) — varies per job. */
-export function PipelineBoard({ stages }: { stages: SubStage[] }) {
+export function PipelineBoard({
+  stages,
+  jobEvalContext,
+}: {
+  stages: SubStage[]
+  jobEvalContext: JobEvalContext
+}) {
   const scrollerRef = React.useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
@@ -88,7 +95,7 @@ export function PipelineBoard({ stages }: { stages: SubStage[] }) {
 
       {stages.map((stage) => (
         <TabsPanel key={stage.key} value={stage.key} className="min-h-0 flex-1">
-          <PipelineStagePanel candidates={stage.candidates} />
+          <PipelineStagePanel candidates={stage.candidates} jobEvalContext={jobEvalContext} />
         </TabsPanel>
       ))}
     </Tabs>

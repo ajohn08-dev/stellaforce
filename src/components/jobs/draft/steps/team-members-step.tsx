@@ -4,7 +4,11 @@ import * as React from "react"
 import { MoreVertical } from "lucide-react"
 import { toast } from "sonner"
 
-import { addDraftTeamMember, removeJobTeamMember } from "@/app/(app)/jobs/actions"
+import {
+  addDraftTeamMember,
+  addJobTeamMember,
+  removeJobTeamMember,
+} from "@/app/(app)/jobs/actions"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -37,19 +41,25 @@ import {
 
 /**
  * Two stacked blocks: the add-member form, and a table of members added so
- * far. Roles are client-defined (who this person is to the client for this
- * job, not the app's own recruiter/manager/admin roles). Members are lifted
- * to JobDraftSpace so the Workflow step can reference the same list when
- * assigning reviewers.
+ * far. Roles describe who this person is to the hiring team for this job —
+ * a free-text name/email, not a link to an app `profiles` row — so
+ * "Recruiter" covers either a Stellaforce recruiter or the client's own
+ * internal recruiter. Members are lifted to JobDraftSpace so the Workflow
+ * step can reference the same list when assigning reviewers.
  */
 export function TeamMembersStep({
   jobId,
   members,
   setMembers,
+  sendInviteImmediately = false,
 }: {
   jobId: string
   members: Member[]
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>
+  /** True when editing an already-published job — publishJob (the only
+   * place the calendar-connect invite normally fires from) won't run again,
+   * so a member added here needs its invite sent right away instead. */
+  sendInviteImmediately?: boolean
 }) {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
 
@@ -61,11 +71,14 @@ export function TeamMembersStep({
   const canAddMember =
     name.trim() !== "" && email.trim() !== "" && role.trim() !== "" && !saving
 
-  // Auto-save the member to the job draft (no invite yet — that fires at publish).
+  // Auto-save the member to the job. For a fresh draft, the invite is
+  // deferred to publish time; for an already-published job being edited,
+  // there's no publish step left to fire it, so send it immediately.
   async function addMember() {
     if (!canAddMember) return
     setSaving(true)
-    const res = await addDraftTeamMember(jobId, {
+    const addTeamMember = sendInviteImmediately ? addJobTeamMember : addDraftTeamMember
+    const res = await addTeamMember(jobId, {
       name: name.trim(),
       email: email.trim(),
       role,

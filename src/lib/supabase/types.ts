@@ -1928,6 +1928,7 @@ export type Database = {
           needs_final_approval: boolean
           override_enabled: boolean
           override_roles: string | null
+          owner_member_id: string | null
           owner_role: string | null
           pipeline_stage_id: string
           purpose: string | null
@@ -1958,6 +1959,7 @@ export type Database = {
           needs_final_approval?: boolean
           override_enabled?: boolean
           override_roles?: string | null
+          owner_member_id?: string | null
           owner_role?: string | null
           pipeline_stage_id: string
           purpose?: string | null
@@ -1990,6 +1992,7 @@ export type Database = {
           needs_final_approval?: boolean
           override_enabled?: boolean
           override_roles?: string | null
+          owner_member_id?: string | null
           owner_role?: string | null
           pipeline_stage_id?: string
           purpose?: string | null
@@ -2008,6 +2011,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "job_orders"
             referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "job_workflow_sub_stages_owner_member_id_fkey"
+            columns: ["owner_member_id"]
+            isOneToOne: false
+            referencedRelation: "job_team_members"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "job_workflow_sub_stages_pipeline_stage_id_fkey"
