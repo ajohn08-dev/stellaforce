@@ -75,6 +75,14 @@ export const serverEnv = {
   get n8nCalendarWebhookUrl() {
     return required("N8N_CALENDAR_WEBHOOK_URL", process.env.N8N_CALENDAR_WEBHOOK_URL)
   },
+  /** n8n "voice agent test call" webhook — places an outbound test call for a
+   * screening agent's "test run" button. Overridable via env. */
+  get n8nVoiceTestCallWebhookUrl() {
+    return (
+      process.env.N8N_VOICE_TEST_CALL_WEBHOOK_URL ??
+      "https://ajzenarate.app.n8n.cloud/webhook/705a47f9-d16a-4918-9613-fd98ca1f5cdf"
+    )
+  },
   get googleClientId() {
     return required("GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID)
   },

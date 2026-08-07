@@ -1,6 +1,7 @@
 import { Building2, Calendar } from "lucide-react"
 
 import { AgentStatusBadge } from "@/components/agents/agent-status-badge"
+import { TestRunAgentDialog } from "@/components/agents/test-run-agent-dialog"
 import { formatDate } from "@/lib/constants"
 import type { MockScreeningAgent } from "@/lib/mock-agents"
 
@@ -9,7 +10,10 @@ export function ScreeningAgentCard({ agent }: { agent: MockScreeningAgent }) {
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4">
       <div className="flex items-start justify-between gap-2">
         <span className="truncate text-sm font-semibold">{agent.name}</span>
-        <AgentStatusBadge status={agent.status} />
+        <div className="flex shrink-0 items-center gap-1">
+          <AgentStatusBadge status={agent.status} />
+          <TestRunAgentDialog agentName={agent.name} />
+        </div>
       </div>
 
       <p className="line-clamp-2 min-h-10 text-sm text-muted-foreground">

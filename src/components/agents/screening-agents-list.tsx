@@ -7,6 +7,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { AgentStatusBadge } from "@/components/agents/agent-status-badge"
+import { TestRunAgentDialog } from "@/components/agents/test-run-agent-dialog"
 import { formatDate } from "@/lib/constants"
 import type { MockScreeningAgent } from "@/lib/mock-agents"
 
@@ -20,6 +21,7 @@ export function ScreeningAgentsList({ agents }: { agents: MockScreeningAgent[] }
             <TableHead>Status</TableHead>
             <TableHead>Client(s)</TableHead>
             <TableHead>Last Updated</TableHead>
+            <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -38,11 +40,14 @@ export function ScreeningAgentsList({ agents }: { agents: MockScreeningAgent[] }
                 <TableCell className="text-sm text-muted-foreground">
                   {formatDate(agent.updated_at)}
                 </TableCell>
+                <TableCell>
+                  <TestRunAgentDialog agentName={agent.name} />
+                </TableCell>
               </TableRow>
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                 No screening agents match these filters.
               </TableCell>
             </TableRow>
