@@ -6,7 +6,7 @@ import { ScreeningAgentFilterButton } from "@/components/agents/screening-agent-
 import { ScreeningAgentStatusChip } from "@/components/agents/screening-agent-status-chip"
 import { ScreeningAgentViewToggle } from "@/components/agents/screening-agent-view-toggle"
 import { AddScreeningAgentButton } from "@/components/agents/add-screening-agent-button"
-import { MOCK_SCREENING_AGENTS } from "@/lib/mock-agents"
+import { getScreeningAgents } from "@/lib/data"
 import { parseAgentStatusesParam } from "@/lib/screening-agent-status"
 
 export default async function AgentHomePage({
@@ -20,7 +20,9 @@ export default async function AgentHomePage({
   const statuses = parseAgentStatusesParam(get("statuses") ?? null)
   const q = get("q")?.trim().toLowerCase()
 
-  const agents = MOCK_SCREENING_AGENTS.filter((agent) => {
+  const allAgents = await getScreeningAgents()
+
+  const agents = allAgents.filter((agent) => {
     if (!statuses.includes(agent.status)) return false
     if (q && !agent.name.toLowerCase().includes(q)) return false
     return true
@@ -28,15 +30,23 @@ export default async function AgentHomePage({
 
   const view = get("view") === "list" ? "list" : "grid"
 
-  const activeCount = MOCK_SCREENING_AGENTS.filter((a) => a.status === "active").length
-  const avgHandleTime =
-    MOCK_SCREENING_AGENTS.reduce((sum, a) => sum + a.avg_handle_time_minutes, 0) /
-    MOCK_SCREENING_AGENTS.length
+  const activeCount = allAgents.filter((a) => a.status === "active").length
+  // avg_handle_time_minutes is numeric (arrives as a string over the wire) and
+  // nullable — agents without one are excluded rather than counted as zero.
+  const handleTimes = allAgents
+    .map((a) => Number(a.avg_handle_time_minutes))
+    .filter((n) => Number.isFinite(n))
+  const avgHandleTime = handleTimes.length
+    ? handleTimes.reduce((sum, n) => sum + n, 0) / handleTimes.length
+    : null
 
   const stats = [
-    { label: "Total Agents", value: String(MOCK_SCREENING_AGENTS.length) },
+    { label: "Total Agents", value: String(allAgents.length) },
     { label: "Active Agents", value: String(activeCount) },
-    { label: "Average Handle Time", value: `${avgHandleTime.toFixed(1)} min` },
+    {
+      label: "Average Handle Time",
+      value: avgHandleTime === null ? "\u2014" : `${avgHandleTime.toFixed(1)} min`,
+    },
   ]
 
   return (
@@ -68,7 +78,7 @@ export default async function AgentHomePage({
         {view === "grid" ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {agents.map((agent) => (
-              <ScreeningAgentCard key={agent.agent_id} agent={agent} />
+              <ScreeningAgentCard key={agent.id} agent={agent} />
             ))}
           </div>
         ) : (

@@ -347,7 +347,7 @@ Referenced by `job_workflow_sub_stages.agent_id` /
 `interviewer_type='ai'` stage, snapshotted at publish same as
 `interviewer_type` itself) and by `call_recordings.agent_id` below.
 
-**call_recordings** **[tenant RLS]** (30 cols) — one row per interview/call
+**call_recordings** **[tenant RLS]** (31 cols) — one row per interview/call
 instance, human or AI, real candidate or test. `id` (pk), `application_id` (fk
 applications, cascade, nullable — null for test-run rows), `evaluation_id` (fk
 application_stage_evaluations, set null), `sub_stage_id` (fk
@@ -356,18 +356,25 @@ job_workflow_sub_stages), `client_id` (fk clients, denormalized for RLS),
 test calls), `agent_id` (fk agents, set when AI-conducted), `campaign_id`,
 `to_number`, `interviewer_type` (not null), `is_test` (default false; check
 constraint forbids `is_test` with a non-null `application_id`, and a second
-check constraint requires `agent_id` when `is_test`), `storage_path` (not
-null, **unique** — idempotency key), `filename` (not null), `file_size`,
-`mime_type`, `duration_seconds`, `started_at`, `elevenlabs_conversation_id`
-(unique, nullable — only AI-agent rows have one), `call_status`,
-`call_successful` (ElevenLabs' own vocabularies, stored as-received, not
-constrained to an app enum), `title`, `summary`, `termination_reason`,
-`transcript_text` (flattened plain text), `transcript` (jsonb — structured
-turns), `transcript_status` (text CHECK `pending | transcribed | failed`),
-`video_url` (video-capable stages only, plain link — not owned like audio),
-`raw_elevenlabs_payload` (jsonb, full webhook body for audit/replay),
-`created_at`, `updated_at`. No app writer yet — the inbound
-ElevenLabs-post-call webhook receiver that populates this table isn't built.
+check constraint requires `agent_id` when `is_test`), `storage_path`
+(**unique** — idempotency key; nullable, since the transcript payload creates
+the row before the audio file exists), `filename` (nullable, same reason),
+`audio_status` (text CHECK `pending | uploaded | failed`, default `pending` —
+set once the audio payload arrives and the recording has been fetched and
+uploaded to the bucket), `file_size`, `mime_type`, `duration_seconds`,
+`started_at`, `elevenlabs_conversation_id` (unique, nullable — only AI-agent
+rows have one), `call_status`, `call_successful` (ElevenLabs' own
+vocabularies, stored as-received, not constrained to an app enum), `title`,
+`summary`, `termination_reason`, `transcript_text` (flattened plain text),
+`transcript` (jsonb — structured turns), `transcript_status` (text CHECK
+`pending | transcribed | failed`), `video_url` (video-capable stages only,
+plain link — not owned like audio), `raw_elevenlabs_payload` (jsonb, full
+webhook body for audit/replay), `created_at`, `updated_at`. Two-phase writer:
+the transcript payload (`post_call_transcription`) arrives first and
+upserts the row keyed by `elevenlabs_conversation_id`; a later audio payload
+updates that same row with `storage_path`/`filename`/`mime_type`/`file_size`/
+`audio_status`. No app writer yet — the inbound ElevenLabs-post-call webhook
+receiver that populates this table isn't built.
 
 ---
 

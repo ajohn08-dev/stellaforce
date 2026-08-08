@@ -9,9 +9,9 @@ import {
 import { AgentStatusBadge } from "@/components/agents/agent-status-badge"
 import { TestRunAgentDialog } from "@/components/agents/test-run-agent-dialog"
 import { formatDate } from "@/lib/constants"
-import type { MockScreeningAgent } from "@/lib/mock-agents"
+import type { ScreeningAgent } from "@/lib/agents"
 
-export function ScreeningAgentsList({ agents }: { agents: MockScreeningAgent[] }) {
+export function ScreeningAgentsList({ agents }: { agents: ScreeningAgent[] }) {
   return (
     <div className="rounded-lg border border-border bg-white">
       <Table>
@@ -27,7 +27,7 @@ export function ScreeningAgentsList({ agents }: { agents: MockScreeningAgent[] }
         <TableBody>
           {agents.length ? (
             agents.map((agent) => (
-              <TableRow key={agent.agent_id}>
+              <TableRow key={agent.id}>
                 <TableCell className="font-medium">{agent.name}</TableCell>
                 <TableCell>
                   <AgentStatusBadge status={agent.status} />
@@ -38,10 +38,10 @@ export function ScreeningAgentsList({ agents }: { agents: MockScreeningAgent[] }
                     : "Not yet assigned"}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {formatDate(agent.updated_at)}
+                  {formatDate(agent.updated_at.slice(0, 10))}
                 </TableCell>
                 <TableCell>
-                  <TestRunAgentDialog agentName={agent.name} />
+                  <TestRunAgentDialog agentId={agent.id} agentName={agent.name} />
                 </TableCell>
               </TableRow>
             ))

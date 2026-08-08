@@ -1,4 +1,4 @@
-import type { AgentStatus } from "@/lib/mock-agents"
+import type { AgentStatus } from "@/lib/agents"
 
 export const AGENT_STATUS_OPTIONS: AgentStatus[] = ["active", "inactive"]
 

@@ -10,14 +10,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ConversationAgentFilterSubmenuItem } from "@/components/agents/conversation-filter-menu"
-import { AGENT_NAME_OPTIONS, listToParam, parseAgentNamesParam } from "@/lib/conversation-filters"
+import { listToParam, parseAgentNamesParam } from "@/lib/conversation-filters"
 
 /** "Filter" opens a menu of filterable fields — currently just Agent, which also has its own always-visible chip in the toolbar. */
-export function ConversationFilterButton() {
+export function ConversationFilterButton({ options }: { options: string[] }) {
   const router = useRouter()
   const params = useSearchParams()
 
-  const agents = parseAgentNamesParam(params.get("agents"))
+  const agents = parseAgentNamesParam(params.get("agents"), options) ?? options
 
   function setParam(values: string[]) {
     const sp = new URLSearchParams(params.toString())
@@ -37,7 +37,7 @@ export function ConversationFilterButton() {
       />
       <DropdownMenuContent>
         <ConversationAgentFilterSubmenuItem
-          options={AGENT_NAME_OPTIONS}
+          options={options}
           selected={agents}
           onChange={setParam}
         />

@@ -38,9 +38,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ConversationDetailSheet } from "@/components/agents/conversation-detail-sheet"
 import { formatDate } from "@/lib/constants"
-import type { MockConversation } from "@/lib/mock-conversations"
+import type { Conversation } from "@/lib/conversations"
 
-function formatDuration(seconds: number): string {
+function formatDuration(seconds: number | null): string {
+  if (seconds === null) return "\u2014"
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
   return `${m}m ${s}s`
@@ -62,10 +63,9 @@ function sortHeader(label: string) {
   }
 }
 
-const columns: ColumnDef<MockConversation>[] = [
+const columns: ColumnDef<Conversation>[] = [
   {
     id: "select",
-    size: 40,
     header: ({ table }) => (
       <Checkbox
         aria-label="Select all conversations"
@@ -76,7 +76,7 @@ const columns: ColumnDef<MockConversation>[] = [
     ),
     cell: ({ row }) => (
       <Checkbox
-        aria-label={`Select conversation with ${row.original.candidate_name}`}
+        aria-label={`Select conversation with ${row.original.candidate_name ?? "unknown candidate"}`}
         checked={row.getIsSelected()}
         onCheckedChange={(checked) => row.toggleSelected(!!checked)}
       />
@@ -84,34 +84,49 @@ const columns: ColumnDef<MockConversation>[] = [
   },
   {
     accessorKey: "agent_name",
-    size: 220,
     header: "Agent",
-    cell: ({ row }) => <span className="block truncate">{row.original.agent_name}</span>,
+    cell: ({ row }) => <span className="block truncate">{row.original.agent_name ?? "\u2014"}</span>,
   },
   {
     accessorKey: "candidate_name",
-    size: 220,
     header: "Candidate",
+    cell: ({ row }) => {
+      const { candidate_name, is_test_call } = row.original
+      return (
+        <span className="flex min-w-0 items-center gap-1.5">
+          {/* A test call has no candidate, so the Test badge stands alone
+              rather than being prefixed by an empty-value dash. */}
+          {candidate_name ? (
+            <span className="truncate font-medium">{candidate_name}</span>
+          ) : (
+            !is_test_call && <span className="font-medium">&mdash;</span>
+          )}
+          {is_test_call && (
+            <Badge variant="outline" className="shrink-0">
+              Test
+            </Badge>
+          )}
+        </span>
+      )
+    },
+  },
+  {
+    accessorKey: "to_number",
+    header: "Phone number",
     cell: ({ row }) => (
-      <span className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate font-medium">{row.original.candidate_name}</span>
-        {row.original.is_test_call && (
-          <Badge variant="outline" className="shrink-0">
-            Test
-          </Badge>
-        )}
+      <span className="block truncate tabular-nums">
+        {row.original.to_number ?? "—"}
       </span>
     ),
   },
   {
-    accessorKey: "started_at",
-    size: 140,
+    accessorKey: "started_on",
     header: sortHeader("Date"),
-    cell: ({ row }) => formatDate(row.original.started_at),
+    cell: ({ row }) =>
+      row.original.started_on ? formatDate(row.original.started_on) : "\u2014",
   },
   {
     accessorKey: "duration_seconds",
-    size: 110,
     header: sortHeader("Duration"),
     cell: ({ row }) => formatDuration(row.original.duration_seconds),
   },
@@ -119,15 +134,23 @@ const columns: ColumnDef<MockConversation>[] = [
 
 const PAGE_SIZE = 25
 
-export function ConversationsTable({ data }: { data: MockConversation[] }) {
-  const [conversations, setConversations] = React.useState(data)
+export function ConversationsTable({ data }: { data: Conversation[] }) {
+  // Rows hidden by the (still client-only) Delete action. Tracked as ids over
+  // the server-provided `data` rather than snapshotting it into state, so
+  // re-filtering/searching — which re-renders this with new props — isn't
+  // stuck showing the first render's rows.
+  const [deletedIds, setDeletedIds] = React.useState<Set<string>>(new Set())
+  const conversations = React.useMemo(
+    () => data.filter((c) => !deletedIds.has(c.conversation_id)),
+    [data, deletedIds]
+  )
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,
     pageSize: PAGE_SIZE,
   })
-  const [selectedConversation, setSelectedConversation] = React.useState<MockConversation | null>(
+  const [selectedConversation, setSelectedConversation] = React.useState<Conversation | null>(
     null
   )
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false)
@@ -151,10 +174,10 @@ export function ConversationsTable({ data }: { data: MockConversation[] }) {
   const selectedCount = selectedIds.length
 
   function handleDelete() {
-    setConversations((prev) => prev.filter((c) => !rowSelection[c.conversation_id]))
+    setDeletedIds((prev) => new Set([...prev, ...selectedIds]))
     setRowSelection({})
     setDeleteConfirmOpen(false)
-    toast.success(`Deleted ${selectedCount} conversation${selectedCount === 1 ? "" : "s"}.`)
+    toast.info("Hidden for now — deleting conversations isn't wired up yet.")
   }
 
   return (
@@ -194,15 +217,15 @@ export function ConversationsTable({ data }: { data: MockConversation[] }) {
         </div>
       )}
 
-      <Table
-        className="table-fixed"
-        containerClassName="min-h-0 flex-1 overflow-y-auto scrollbar-light"
-      >
+      <Table containerClassName="min-h-0 flex-1 overflow-y-auto scrollbar-light">
         <TableHeader className="sticky top-0 z-10 bg-muted">
           {table.getHeaderGroups().map((hg) => (
             <TableRow key={hg.id}>
               {hg.headers.map((header) => (
-                <TableHead key={header.id} style={{ width: header.getSize() }}>
+                <TableHead
+                  key={header.id}
+                  className={header.column.id === "select" ? "w-10" : undefined}
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(header.column.columnDef.header, header.getContext())}
@@ -224,7 +247,10 @@ export function ConversationsTable({ data }: { data: MockConversation[] }) {
                 }}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} style={{ width: cell.column.getSize() }}>
+                  <TableCell
+                    key={cell.id}
+                    className={cell.column.id === "select" ? "w-10" : undefined}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}

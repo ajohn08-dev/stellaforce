@@ -2,7 +2,7 @@ import { ConversationsTable } from "@/components/agents/conversations-table"
 import { ConversationSearch } from "@/components/agents/conversation-search"
 import { ConversationFilterButton } from "@/components/agents/conversation-filter-button"
 import { ConversationAgentChip } from "@/components/agents/conversation-agent-chip"
-import { MOCK_CONVERSATIONS } from "@/lib/mock-conversations"
+import { conversationAgentNames, getConversations } from "@/lib/data"
 import { parseAgentNamesParam } from "@/lib/conversation-filters"
 
 export default async function AgentConversationsPage({
@@ -13,12 +13,15 @@ export default async function AgentConversationsPage({
   const sp = await searchParams
   const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined)
 
-  const agents = parseAgentNamesParam(get("agents") ?? null)
+  const allConversations = await getConversations()
+  const agentOptions = conversationAgentNames(allConversations)
+
+  const agents = parseAgentNamesParam(get("agents") ?? null, agentOptions)
   const q = get("q")?.trim().toLowerCase()
 
-  const conversations = MOCK_CONVERSATIONS.filter((c) => {
-    if (!agents.includes(c.agent_name)) return false
-    if (q && !c.candidate_name.toLowerCase().includes(q)) return false
+  const conversations = allConversations.filter((c) => {
+    if (agents && !(c.agent_name && agents.includes(c.agent_name))) return false
+    if (q && !c.candidate_name?.toLowerCase().includes(q)) return false
     return true
   })
 
@@ -30,12 +33,12 @@ export default async function AgentConversationsPage({
       <div className="shrink-0 border-b border-border px-4 py-4">
         <div className="flex items-center gap-2">
           <ConversationSearch />
-          <ConversationFilterButton />
+          <ConversationFilterButton options={agentOptions} />
         </div>
       </div>
 
       <div className="shrink-0 px-4 pt-4">
-        <ConversationAgentChip />
+        <ConversationAgentChip options={agentOptions} />
       </div>
 
       <div className="min-h-0 flex-1 p-4">

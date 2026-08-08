@@ -23,7 +23,13 @@ import { triggerAgentTestCall } from "@/app/(app)/agents/actions"
  * identity so it's obviously not a real screen. No candidate/job is actually
  * involved; see triggerAgentTestCall for the payload shape.
  */
-export function TestRunAgentDialog({ agentName }: { agentName: string }) {
+export function TestRunAgentDialog({
+  agentId,
+  agentName,
+}: {
+  agentId: string
+  agentName: string
+}) {
   const [open, setOpen] = React.useState(false)
   const [phone, setPhone] = React.useState("")
   const [calling, setCalling] = React.useState(false)
@@ -35,7 +41,7 @@ export function TestRunAgentDialog({ agentName }: { agentName: string }) {
 
   async function handleCall() {
     setCalling(true)
-    const res = await triggerAgentTestCall(agentName, phone.trim())
+    const res = await triggerAgentTestCall(agentId, phone.trim())
     setCalling(false)
     if (!res.ok) {
       toast.error(res.error)
