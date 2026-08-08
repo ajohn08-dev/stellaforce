@@ -205,7 +205,13 @@ also created `interviews`/`conversations` tables, superseded below) →
 `_173038_reconcile_call_recordings_with_agents` (dropped `interviews`/
 `conversations` in favor of extending `call_recordings` with agent/candidate/
 job/campaign linkage + the ElevenLabs post-call payload fields, and upgraded
-its RLS from permissive to tenant-scoped — see
+its RLS from permissive to tenant-scoped) → `20260807180000_call_recordings_two_phase_audio`
+(`storage_path`/`filename` made nullable + added `audio_status`, so the
+transcript payload can create the row before the later audio payload updates
+it) → `20260808120000_seed_screening_agents` (seeds the six screening agents
+the Agents page used to render from mock data, so `call_recordings.agent_id`
+has real rows to reference; `external_agent_id` left null until each is
+created in ElevenLabs — see
 [DB_Schema.md](DB_Schema.md#storage--resume-ingestion)).
 
 **RLS.** Permissive `authenticated`-ALL on core tables; **tenant-scoped** on the

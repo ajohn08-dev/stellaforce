@@ -30,6 +30,12 @@ export type CandidateListItem = CandidateRow & {
   currentRole: { title: string; company_name: string; location: string | null } | null
   primaryEducation: CandidateEducationRow | null
 }
+import {
+  parseTranscriptText,
+  type AudioStatus,
+  type Conversation,
+} from "@/lib/conversations"
+import type { ScreeningAgent } from "@/lib/agents"
 import type { WorkHistoryEntry } from "@/lib/work-history"
 import type { Competency } from "@/components/jobs/draft/steps/competency-data"
 import type { ScoreCardCategory } from "@/components/jobs/draft/steps/score-card-step"
@@ -766,4 +772,115 @@ export async function getApplicationActivity(
     .in("application_id", applicationIds)
     .order("created_at", { ascending: false })
   return (data ?? []) as ApplicationActivityEvent[]
+}
+
+/** The candidate/job identity ElevenLabs echoes back as dynamic variables. Only
+ * ever read as a *fallback* for display: test-run calls have no real
+ * candidate/job row to join to, so the names live only in the raw payload. */
+function payloadDynamicVariable(payload: unknown, key: string): string | null {
+  if (typeof payload !== "object" || payload === null) return null
+  const value = (payload as Record<string, unknown>)[key]
+  return typeof value === "string" && value.trim() !== "" ? value : null
+}
+
+/** Agent Conversations page — AI-conducted calls landed by the ElevenLabs
+ * post-call webhook. Scoped to `interviewer_type = 'ai'` since human/external
+ * interview recordings aren't "conversations" in this page's sense. */
+export async function getConversations(): Promise<Conversation[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("call_recordings")
+    .select(
+      "id, elevenlabs_conversation_id, started_at, duration_seconds, is_test, to_number, transcript_text, raw_elevenlabs_payload, storage_path, mime_type, audio_status, video_url, agent:agents(name), candidate:candidates(full_name, first_name, last_name)"
+    )
+    .eq("interviewer_type", "ai")
+    .order("started_at", { ascending: false, nullsFirst: false })
+
+  // The bucket is private, so playable audio needs a signed URL. Batched here
+  // rather than per-row on demand: the sheet is opened from an already-rendered
+  // list, and there's no client-side session to sign with.
+  const rows = data ?? []
+  const signedUrlByPath = new Map<string, string>()
+  const audioPaths = rows
+    .filter((r) => r.audio_status === "uploaded" && r.storage_path)
+    .map((r) => r.storage_path as string)
+  if (audioPaths.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from("call-recordings")
+      .createSignedUrls(audioPaths, 3600) // 1 hour
+    for (const entry of signed ?? [])
+      if (entry.signedUrl && entry.path) signedUrlByPath.set(entry.path, entry.signedUrl)
+  }
+
+  return rows.map((row) => {
+    const candidate = row.candidate as
+      | { full_name: string | null; first_name: string; last_name: string }
+      | null
+    const candidateName =
+      candidate?.full_name?.trim() ||
+      (candidate ? `${candidate.first_name} ${candidate.last_name}`.trim() : null) ||
+      payloadDynamicVariable(row.raw_elevenlabs_payload, "candidate_name")
+
+    return {
+      conversation_id: row.id,
+      agent_name:
+        (row.agent as { name: string } | null)?.name ??
+        payloadDynamicVariable(row.raw_elevenlabs_payload, "agent_name"),
+      candidate_name: candidateName,
+      to_number: row.to_number,
+      started_on: row.started_at ? row.started_at.slice(0, 10) : null,
+      started_at: row.started_at,
+      duration_seconds: row.duration_seconds,
+      is_test_call: row.is_test,
+      transcript: parseTranscriptText(row.transcript_text),
+      audio_url: row.storage_path ? (signedUrlByPath.get(row.storage_path) ?? null) : null,
+      audio_status: row.audio_status as AudioStatus,
+      audio_mime_type: row.mime_type,
+      video_url: row.video_url,
+    }
+  })
+}
+
+/** Distinct agent names available to filter conversations by — derived from the
+ * conversations themselves rather than the `agents` table, so the filter never
+ * offers an option that matches nothing (and still works while `agents` is
+ * unpopulated and rows carry only a payload-echoed agent name). */
+export function conversationAgentNames(conversations: Conversation[]): string[] {
+  const names = new Set<string>()
+  for (const c of conversations) if (c.agent_name) names.add(c.agent_name)
+  return [...names].sort()
+}
+
+/** Screening agents for the Agents home page. `client_names` is derived by
+ * joining through the workflow sub-stages that reference each agent, since
+ * `agents` has no per-client ownership column by design. */
+export async function getScreeningAgents(): Promise<ScreeningAgent[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+
+  const [{ data: agents }, { data: subStages }] = await Promise.all([
+    supabase.from("agents").select("*").order("name"),
+    supabase
+      .from("job_workflow_sub_stages")
+      .select("agent_id, job:job_orders(client:clients(client_name))")
+      .not("agent_id", "is", null),
+  ])
+
+  const clientsByAgent = new Map<string, Set<string>>()
+  for (const row of subStages ?? []) {
+    const agentId = row.agent_id
+    const name = (
+      row.job as { client: { client_name: string } | null } | null
+    )?.client?.client_name
+    if (!agentId || !name) continue
+    const set = clientsByAgent.get(agentId) ?? new Set<string>()
+    set.add(name)
+    clientsByAgent.set(agentId, set)
+  }
+
+  return (agents ?? []).map((agent) => ({
+    ...agent,
+    client_names: [...(clientsByAgent.get(agent.id) ?? [])].sort(),
+  }))
 }

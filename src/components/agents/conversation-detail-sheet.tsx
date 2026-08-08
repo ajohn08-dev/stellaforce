@@ -3,15 +3,16 @@
 import * as React from "react"
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Badge } from "@/components/ui/badge"
+import { ConversationMediaPreview } from "@/components/agents/conversation-media-preview"
 import { formatDate } from "@/lib/constants"
 import { cn } from "@/lib/utils"
-import type { MockConversation } from "@/lib/mock-conversations"
+import type { Conversation } from "@/lib/conversations"
 
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}m ${s}s`
+function formatTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  })
 }
 
 /**
@@ -25,7 +26,7 @@ export function ConversationDetailSheet({
   conversation,
   onOpenChange,
 }: {
-  conversation: MockConversation | null
+  conversation: Conversation | null
   onOpenChange: (open: boolean) => void
 }) {
   // Unlike candidate-profile-sheet.tsx (only ever mounted client-side via an
@@ -36,28 +37,50 @@ export function ConversationDetailSheet({
   const container =
     typeof document !== "undefined" ? (document.getElementById("app-content") ?? undefined) : undefined
 
+  // Built by filtering rather than conditional JSX so a missing date/number
+  // never leaves an orphaned "·" separator behind.
+  const metadata = conversation
+    ? [
+        conversation.started_on ? formatDate(conversation.started_on) : null,
+        conversation.started_at ? formatTime(conversation.started_at) : null,
+        conversation.to_number,
+      ].filter((part): part is string => Boolean(part))
+    : []
+
   return (
     <Sheet open={conversation !== null} onOpenChange={onOpenChange}>
       <SheetContent container={container} side="right" className="max-w-lg gap-0 bg-white p-0">
         {conversation && (
           <div className="flex h-full flex-col gap-4 overflow-hidden p-6">
             <SheetHeader className="pr-8">
-              <SheetTitle>{conversation.candidate_name}</SheetTitle>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-                <span>{conversation.agent_name}</span>
-                <span>&middot;</span>
-                <span>{formatDate(conversation.started_at)}</span>
-                <span>&middot;</span>
-                <span>{formatDuration(conversation.duration_seconds)}</span>
-                {conversation.is_test_call && (
-                  <Badge variant="outline" className="ml-1">
-                    Test
-                  </Badge>
-                )}
+              {/* Test calls have no candidate — title them by what they are
+                  rather than by a missing person. */}
+              <SheetTitle>
+                {conversation.candidate_name ??
+                  (conversation.is_test_call ? "Test call" : "Unknown candidate")}
+              </SheetTitle>
+              {/* Agent \u00b7 date \u00b7 time \u00b7 number, on one line. Duration is
+                  deliberately absent \u2014 the audio player below already shows
+                  it \u2014 as is a "Test" badge, which the title already says. */}
+              <div className="flex items-center gap-x-2 overflow-hidden text-sm whitespace-nowrap text-muted-foreground">
+                <span className="truncate">{conversation.agent_name ?? "Unknown agent"}</span>
+                {metadata.map((part) => (
+                  <React.Fragment key={part}>
+                    <span>&middot;</span>
+                    <span className="shrink-0 tabular-nums">{part}</span>
+                  </React.Fragment>
+                ))}
               </div>
             </SheetHeader>
 
+            <ConversationMediaPreview conversation={conversation} />
+
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto scrollbar-light">
+              {conversation.transcript.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No transcript available for this call.
+                </p>
+              )}
               {conversation.transcript.map((turn, i) => (
                 <div
                   key={i}
@@ -67,7 +90,9 @@ export function ConversationDetailSheet({
                   )}
                 >
                   <span className="text-xs text-muted-foreground">
-                    {turn.speaker === "agent" ? conversation.agent_name : conversation.candidate_name}
+                    {turn.speaker === "agent"
+                      ? (conversation.agent_name ?? "Agent")
+                      : (conversation.candidate_name ?? "Candidate")}
                   </span>
                   <p
                     className={cn(

@@ -3,16 +3,16 @@ import { Building2, Calendar } from "lucide-react"
 import { AgentStatusBadge } from "@/components/agents/agent-status-badge"
 import { TestRunAgentDialog } from "@/components/agents/test-run-agent-dialog"
 import { formatDate } from "@/lib/constants"
-import type { MockScreeningAgent } from "@/lib/mock-agents"
+import type { ScreeningAgent } from "@/lib/agents"
 
-export function ScreeningAgentCard({ agent }: { agent: MockScreeningAgent }) {
+export function ScreeningAgentCard({ agent }: { agent: ScreeningAgent }) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-white p-4">
       <div className="flex items-start justify-between gap-2">
         <span className="truncate text-sm font-semibold">{agent.name}</span>
         <div className="flex shrink-0 items-center gap-1">
           <AgentStatusBadge status={agent.status} />
-          <TestRunAgentDialog agentName={agent.name} />
+          <TestRunAgentDialog agentId={agent.id} agentName={agent.name} />
         </div>
       </div>
 
@@ -31,7 +31,7 @@ export function ScreeningAgentCard({ agent }: { agent: MockScreeningAgent }) {
         </span>
         <span className="inline-flex shrink-0 items-center gap-1.5">
           <Calendar className="size-4 shrink-0" />
-          {formatDate(agent.updated_at)}
+          {formatDate(agent.updated_at.slice(0, 10))}
         </span>
       </div>
     </div>

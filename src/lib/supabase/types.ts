@@ -697,6 +697,7 @@ export type Database = {
         Row: {
           agent_id: string | null
           application_id: string | null
+          audio_status: string
           call_status: string | null
           call_successful: string | null
           campaign_id: string | null
@@ -707,7 +708,7 @@ export type Database = {
           elevenlabs_conversation_id: string | null
           evaluation_id: string | null
           file_size: number | null
-          filename: string
+          filename: string | null
           id: string
           interviewer_type: Database["public"]["Enums"]["interviewer_type"]
           is_test: boolean
@@ -715,7 +716,7 @@ export type Database = {
           mime_type: string | null
           raw_elevenlabs_payload: Json | null
           started_at: string | null
-          storage_path: string
+          storage_path: string | null
           sub_stage_id: string | null
           summary: string | null
           termination_reason: string | null
@@ -730,6 +731,7 @@ export type Database = {
         Insert: {
           agent_id?: string | null
           application_id?: string | null
+          audio_status?: string
           call_status?: string | null
           call_successful?: string | null
           campaign_id?: string | null
@@ -740,7 +742,7 @@ export type Database = {
           elevenlabs_conversation_id?: string | null
           evaluation_id?: string | null
           file_size?: number | null
-          filename: string
+          filename?: string | null
           id?: string
           interviewer_type: Database["public"]["Enums"]["interviewer_type"]
           is_test?: boolean
@@ -748,7 +750,7 @@ export type Database = {
           mime_type?: string | null
           raw_elevenlabs_payload?: Json | null
           started_at?: string | null
-          storage_path: string
+          storage_path?: string | null
           sub_stage_id?: string | null
           summary?: string | null
           termination_reason?: string | null
@@ -763,6 +765,7 @@ export type Database = {
         Update: {
           agent_id?: string | null
           application_id?: string | null
+          audio_status?: string
           call_status?: string | null
           call_successful?: string | null
           campaign_id?: string | null
@@ -773,7 +776,7 @@ export type Database = {
           elevenlabs_conversation_id?: string | null
           evaluation_id?: string | null
           file_size?: number | null
-          filename?: string
+          filename?: string | null
           id?: string
           interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
           is_test?: boolean
@@ -781,7 +784,7 @@ export type Database = {
           mime_type?: string | null
           raw_elevenlabs_payload?: Json | null
           started_at?: string | null
-          storage_path?: string
+          storage_path?: string | null
           sub_stage_id?: string | null
           summary?: string | null
           termination_reason?: string | null
