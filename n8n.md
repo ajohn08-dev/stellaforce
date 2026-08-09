@@ -25,7 +25,9 @@ Actions (`src/app/(app)/jobs/actions.ts`, `.../workflows/actions.ts`) writing
   send `Authorization: Bearer ${N8N_WEBHOOK_SECRET}`; inbound callbacks are
   bearer-auth'd with the same secret.
 - **`N8N_CALENDAR_WEBHOOK_URL`** (`serverEnv.n8nCalendarWebhookUrl`) — the
-  calendar-consent-invite workflow's webhook, same auth as above.
+  calendar-consent-invite workflow's webhook, same auth as above. Defaults to
+  `https://ajzenarate.app.n8n.cloud/webhook/calendar-connect-invite` (live),
+  overridable via env like the other webhook URLs.
 - **`GOOGLE_CLIENT_ID`** / **`GOOGLE_CLIENT_SECRET`** — the Google Cloud OAuth
   2.0 Web Client backing the calendar consent flow (Calendar API enabled,
   scope `calendar.events`, redirect URI `${SITE_URL}/api/calendar/oauth/callback`).
@@ -103,7 +105,7 @@ dispatcher to build) · **⛔ Blocked** (needs a follow-on runtime table).
 | 10 | **Candidate enrichment** | webhook + callback | manual/scheduled enrich request | `POST /api/candidates/ingest` (or a dedicated route) | Updates `candidates.*` + child tables; inserts `candidate_data_updated`; re-embeds vector | 🟡 Ready (route reuse) |
 | 11 | **Voice-agent pre-screen** | outbox → voice agent + callback | candidate enters a `interviewer_type='ai'` **Pre-Screening** sub-stage | Voice-agent platform; STT | Produces an `interviews` row + transcript; logs `ai_interactions` (model/tokens/confidence); sets `applications.human_review_flag=true` (never auto-advances) | ⛔ needs `interviews`/`interview_transcripts` |
 | 12 | **Voice-agent "Who" interview** | outbox → voice agent + callback | candidate enters the `interviewer_type='ai'` **Who Interview** (video) sub-stage | Voice-agent platform; STT | Same as #11 (video) | ⛔ needs `interviews`/`interview_transcripts` |
-| 13 | **Calendar consent invite** | webhook | team member added to a job → `addJobTeamMember`/`publishJob` call `sendCalendarConnectInvite` | `sendCalendarConnectInvite` (`src/lib/server/calendar-invite.ts`), `/api/calendar/oauth/callback`, `/api/calendar/token` | Emails the "connect your Google Calendar" invite (direct webhook, like #1 — no-op if that email already has an active connection); Google's own redirect back to `/api/calendar/oauth/callback` writes `google_calendar_connections` + `calendar_connected`; `/api/calendar/token` refresh failures write `calendar_connection_revoked` + re-fire this same invite | 🟡 Ready (app side live; n8n email workflow itself to build) |
+| 13 | **Calendar consent invite** | webhook (3 triggers) | `reason='added'` — team member added → `addJobTeamMember`/`publishJob`; `reason='resend'` — recruiter clicks **Resend invite** in the job workspace Team dialog → `resendCalendarConnectInvite`; `reason='reconnect'` — `/api/calendar/token` refresh failure | `sendCalendarConnectInvite` (`src/lib/server/calendar-invite.ts`), `resendCalendarConnectInvite` (`src/app/(app)/jobs/actions.ts`), `/api/calendar/oauth/callback`, `/api/calendar/token` | Emails the "connect your Google Calendar" invite (direct webhook, like #1 — no-op if that email already has an active connection); Google's own redirect back to `/api/calendar/oauth/callback` writes `google_calendar_connections` + `calendar_connected`; `/api/calendar/token` refresh failures write `calendar_connection_revoked` + re-fire this same invite. Resends write **nothing** — no `activity_events` row, no per-send column; the n8n execution log is the record | 🟡 Live-ish (app side live; webhook responding, but the Webhook node has no Header Auth and there's no Respond node — see spec below) |
 
 ### Implemented: Stage SLA breached (#7) — the reference pattern
 n8n owns only the schedule + the email; the app does the DB thinking + recording.
@@ -124,6 +126,93 @@ This is the template for future crons.
 - **n8n Cloud caveat:** it cannot reach `localhost`; use the deployed Vercel URL
   (add `N8N_WEBHOOK_SECRET` to Vercel env) or a tunnel for local testing.
 
+### Calendar consent invite (#13) — one workflow, three triggers
+**Status (probed 2026-08-08):** the webhook is live at
+`…/webhook/calendar-connect-invite` and registered for POST, but two node
+settings are still open:
+1. **The Webhook node has no authentication.** An unauthenticated
+   `POST {"probe":true}` was accepted and executed the workflow — anyone with
+   the URL can trigger invite emails. Set Authentication → **Header Auth**
+   (`Authorization` = `Bearer <N8N_WEBHOOK_SECRET>`); the app already sends
+   that header on every call.
+2. **No Respond to Webhook node exists**, but the webhook is set to respond via
+   one — it returns `500 {"message":"No Respond to Webhook node found in the
+   workflow"}`. The app reads a non-2xx as `webhook_failed`, so the recruiter's
+   Resend toast reports failure even when the mail goes out. Either add the
+   Respond nodes (#7 below) or switch the webhook's Respond setting to
+   *Immediately*.
+
+The app owns identity, the signed consent link, and the already-connected check;
+n8n owns only the email. All three triggers hit the **same** webhook and differ
+only by `reason`, so there is one workflow and one email template to maintain.
+
+- **App → n8n:** `POST ${N8N_CALENDAR_WEBHOOK_URL}`,
+  `Authorization: Bearer ${N8N_WEBHOOK_SECRET}`, 15s client timeout, fired by
+  `sendCalendarConnectInvite`. Body:
+
+  ```jsonc
+  {
+    "reason": "resend",              // "added" | "resend" | "reconnect"
+    "email": "annaj@stellaforce.com",
+    "name": "Anna John",
+    "role": "Hiring Manager",        // job_team_members.role; may be null
+    "job_id": "308f4d06-…",
+    "job_title": "Product Designer", // may be null
+    "client_name": "Acme Corp",      // may be null
+    "team_member_id": "…",           // job_team_members.id
+    "connect_url": "https://accounts.google.com/o/oauth2/v2/auth?…",
+    "connect_url_expires_at": "2026-08-15T12:00:00.000Z",
+    "sent_by_name": "Anna John",     // null on the system "reconnect" path
+    "sent_by_email": "anna@stellaforce.com"
+  }
+  ```
+
+  Every send mints a **new** HMAC-signed `state` with a fresh 7-day TTL
+  (`STATE_TTL_SECONDS`, `src/lib/google-calendar/oauth.ts`), so clicking Resend
+  is also how an expired link gets repaired.
+
+- **n8n nodes:**
+  1. **Webhook** — `POST`, path `calendar-connect-invite`, Authentication →
+     **Header Auth** credential (`Authorization` = `Bearer <N8N_WEBHOOK_SECRET>`),
+     Respond → *Using 'Respond to Webhook' node*.
+  2. **Edit Fields (Set)** — normalize: `first_name` =
+     `{{ $json.name.split(' ')[0] }}`, fallbacks for the nullable
+     `role`/`job_title`/`client_name`/`sent_by_name`, `reason` default `added`.
+  3. **Switch** — on `{{ $json.reason }}` → `added` / `resend` / `reconnect`,
+     fallback output → `added`.
+  4. **Edit Fields (Set) ×3** — one per branch, each emitting `subject` + `intro`:
+     *added* → "Connect your calendar for {{job_title}}" / "You've been added as
+     {{role}} on {{job_title}} at {{client_name}}."; *resend* → "Reminder:
+     connect your calendar for {{job_title}}" / "A quick nudge — {{sent_by_name}}
+     asked us to resend this."; *reconnect* → "Action needed: reconnect your
+     calendar" / "Your Google Calendar connection stopped working, so we can't
+     schedule interviews for you."
+  5. **HTML** — one shared template: greet `first_name`, the branch `intro`, a
+     CTA button to `{{ $json.connect_url }}`, footer noting the link expires
+     `{{ $json.connect_url_expires_at }}` and that Google shows an
+     "unverified app" warning during the pilot (expected — see
+     `docs/google-calendar-consent-plan.md`).
+  6. **Gmail** (or SMTP/SendGrid) — To `{{ $json.email }}`, Subject
+     `{{ $json.subject }}`, HTML body from #5, **Reply-To
+     `{{ $json.sent_by_email }}`**. Set *On Error → Continue (using error output)*.
+  7. **Respond to Webhook ×2** — success `{ "ok": true }` / 200; the Gmail error
+     output → `{ "ok": false, "error": … }` / 502. Respond **after** the send,
+     not immediately: the app awaits the response, so the recruiter's Resend
+     toast then reflects whether the mail actually went out.
+  8. **Error Trigger** (separate workflow) — set as this workflow's
+     *Settings → Error Workflow*.
+
+- **Config:** the webhook URL is now the `serverEnv.n8nCalendarWebhookUrl`
+  default and is also set in `.env.local`; `SITE_URL` is set to
+  `http://localhost:3000` locally and must be set on Vercel too. Without
+  `SITE_URL`, `serverEnv` throws, `sendCalendarConnectInvite` catches it, and
+  every invite silently no-ops with a `not_configured` result.
+- **Still blocking a real end-to-end test:** the Google OAuth client's
+  registered redirect URI is `/api/auth/google/calendar/callback`, but the app
+  serves the callback at `/api/calendar/oauth/callback` — consent will fail with
+  `redirect_uri_mismatch` until `{SITE_URL}/api/calendar/oauth/callback` is
+  registered in the Google Cloud Console.
+
 ---
 
 ## Runtime DB consequences — Jobs & related functions
@@ -140,7 +229,7 @@ job/application runtime.
 | `communication_templates` | R by all email workflows (2,3,4,6,8) for subject/body/recipients |
 | `job_workflow_sub_stages` | R by 2,3,11,12 (`interviewer_type`, `format`, competencies) |
 | `job_team_members` | **W** by `addJobTeamMember`/`publishJob` (Server Actions, not n8n); R by 2,3,13 |
-| `google_calendar_connections` | **W** by `/api/calendar/oauth/callback` (connect), `/api/calendar/token` (revoke on refresh failure); R by `/api/calendar/token`, `getJobTeamMembers` (derived connected/not-connected only — service-role only table, no RLS policy for `authenticated`) |
+| `google_calendar_connections` | **W** by `/api/calendar/oauth/callback` (connect), `/api/calendar/token` + `getCalendarPreview` (revoke on an `invalid_grant` refresh failure); R by `/api/calendar/token`, `getJobTeamMembers` (derived connected/not-connected only), `getCalendarPreview` (`src/lib/server/calendar-events.ts` — mints an access token to read the Team panel's calendar preview). Service-role only table, no RLS policy for `authenticated` |
 | `interviews` *(follow-on)* | **W** by 2,3,4,5,11,12 |
 | `interview_transcripts` *(follow-on)* | **W** by 5,11,12 |
 | `offers` *(follow-on)* | **W** by 8,9 |
