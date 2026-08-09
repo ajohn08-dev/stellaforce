@@ -34,6 +34,7 @@ import {
   parseTranscriptText,
   type AudioStatus,
   type Conversation,
+  type ConversationTranscriptTurn,
 } from "@/lib/conversations"
 import type { ScreeningAgent } from "@/lib/agents"
 import type { WorkHistoryEntry } from "@/lib/work-history"
@@ -560,6 +561,33 @@ export async function getJobScorecard(jobId: string): Promise<ScoreCardCategory[
   }))
 }
 
+/** One recorded exchange from an interview, tied to the competency it probed
+ * (null for an off-script question — the panel groups those separately). */
+export type EvaluationQuestion = {
+  id: string
+  competency_id: string | null
+  /** `job_competencies.description` — the competency's human label. */
+  competency_label: string | null
+  competency_type: "technical" | "behavioral" | "hybrid" | "leadership" | null
+  recommended_level: "aware" | "proficient" | "expert" | null
+  question: string
+  answer: string | null
+}
+
+/** The call behind an evaluation, if one was captured. Same `call_recordings`
+ * row the Agent Conversations page reads, reached via `evaluation_id` — so
+ * audio is a short-lived signed URL (private bucket) and the transcript is
+ * reconstructed from the flattened text. */
+export type EvaluationRecording = {
+  id: string
+  transcript: ConversationTranscriptTurn[]
+  duration_seconds: number | null
+  audio_url: string | null
+  audio_status: AudioStatus
+  audio_mime_type: string | null
+  video_url: string | null
+}
+
 export type ApplicationEvaluation = {
   id: string
   application_id: string
@@ -571,12 +599,16 @@ export type ApplicationEvaluation = {
   rubric_score: number | null
   summary: string | null
   notes: string[]
+  questions: EvaluationQuestion[]
+  recording: EvaluationRecording | null
 }
 
 /** Real per-application interview evaluations (L2) for a batch of applications,
  * one row per (application, sub-stage) — for the pipeline board's Evaluation
- * tab. Currently unpopulated end-to-end (no submission UI yet), so this
- * reliably returns `[]` until that write path exists. */
+ * tab. There is still no submission UI, so the only rows that exist are the
+ * ones seeded for the QA fixture candidates
+ * (`20260808130000_seed_stage_evaluations_qa_fixtures`): a completed
+ * evaluation for every stage before the one they currently sit in. */
 export async function getApplicationEvaluations(
   applicationIds: string[]
 ): Promise<ApplicationEvaluation[]> {
@@ -588,20 +620,85 @@ export async function getApplicationEvaluations(
     .in("application_id", applicationIds)
   if (!evals || evals.length === 0) return []
 
-  const { data: notes } = await supabase
-    .from("application_stage_evaluation_notes")
-    .select("evaluation_id, note, display_order")
-    .in(
-      "evaluation_id",
-      evals.map((e) => e.id)
-    )
-    .order("display_order", { ascending: true })
+  const evaluationIds = evals.map((e) => e.id)
+
+  const [{ data: notes }, { data: questions }, { data: recordings }] = await Promise.all([
+    supabase
+      .from("application_stage_evaluation_notes")
+      .select("evaluation_id, note, display_order")
+      .in("evaluation_id", evaluationIds)
+      .order("display_order", { ascending: true }),
+    supabase
+      .from("application_stage_evaluation_questions")
+      .select(
+        "id, evaluation_id, competency_id, question, answer, display_order, competency:job_competencies(description, type, recommended_level)"
+      )
+      .in("evaluation_id", evaluationIds)
+      .order("display_order", { ascending: true }),
+    supabase
+      .from("call_recordings")
+      .select(
+        "id, evaluation_id, transcript_text, duration_seconds, storage_path, mime_type, audio_status, video_url"
+      )
+      .in("evaluation_id", evaluationIds),
+  ])
+
   const notesByEvaluation = new Map<string, string[]>()
   for (const n of notes ?? []) {
     notesByEvaluation.set(n.evaluation_id, [
       ...(notesByEvaluation.get(n.evaluation_id) ?? []),
       n.note,
     ])
+  }
+
+  const questionsByEvaluation = new Map<string, EvaluationQuestion[]>()
+  for (const q of questions ?? []) {
+    const competency = q.competency as {
+      description: string
+      type: EvaluationQuestion["competency_type"]
+      recommended_level: EvaluationQuestion["recommended_level"]
+    } | null
+    questionsByEvaluation.set(q.evaluation_id, [
+      ...(questionsByEvaluation.get(q.evaluation_id) ?? []),
+      {
+        id: q.id,
+        competency_id: q.competency_id,
+        competency_label: competency?.description ?? null,
+        competency_type: competency?.type ?? null,
+        recommended_level: competency?.recommended_level ?? null,
+        question: q.question,
+        answer: q.answer,
+      },
+    ])
+  }
+
+  // Private bucket → playable audio needs a signed URL, batched for the same
+  // reason getConversations() batches them (the panel opens from an
+  // already-rendered list, with no client-side session to sign with).
+  const audioPaths = (recordings ?? [])
+    .filter((r) => r.audio_status === "uploaded" && r.storage_path)
+    .map((r) => r.storage_path as string)
+  const signedUrlByPath = new Map<string, string>()
+  if (audioPaths.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from("call-recordings")
+      .createSignedUrls(audioPaths, 3600) // 1 hour
+    for (const entry of signed ?? [])
+      if (entry.signedUrl && entry.path) signedUrlByPath.set(entry.path, entry.signedUrl)
+  }
+
+  const recordingByEvaluation = new Map<string, EvaluationRecording>()
+  for (const r of recordings ?? []) {
+    if (!r.evaluation_id) continue
+    recordingByEvaluation.set(r.evaluation_id, {
+      id: r.id,
+      transcript: parseTranscriptText(r.transcript_text),
+      duration_seconds: r.duration_seconds,
+      audio_url: r.storage_path ? (signedUrlByPath.get(r.storage_path) ?? null) : null,
+      audio_status: r.audio_status as AudioStatus,
+      audio_mime_type: r.mime_type,
+      video_url: r.video_url,
+    })
   }
 
   return evals.map((e) => ({
@@ -615,6 +712,8 @@ export async function getApplicationEvaluations(
     rubric_score: e.rubric_score,
     summary: e.summary,
     notes: notesByEvaluation.get(e.id) ?? [],
+    questions: questionsByEvaluation.get(e.id) ?? [],
+    recording: recordingByEvaluation.get(e.id) ?? null,
   }))
 }
 

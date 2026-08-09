@@ -2,23 +2,47 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
   type ReactNode,
 } from "react"
 
+import { SIDEBAR_COOKIE } from "@/lib/sidebar-cookie"
+
 type SidebarContextValue = {
   collapsed: boolean
   setCollapsed: (collapsed: boolean) => void
+  setOverride: (collapsed: boolean | null) => void
 }
 
 const SidebarContext = createContext<SidebarContextValue | null>(null)
 
-export function SidebarProvider({ children }: { children: ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false)
+export function SidebarProvider({
+  children,
+  initialCollapsed = true,
+}: {
+  children: ReactNode
+  initialCollapsed?: boolean
+}) {
+  // The user's own choice, mirrored to a cookie so it survives reloads.
+  const [preference, setPreference] = useState(initialCollapsed)
+  // A transient, route-scoped force (see useSidebarDefaultCollapsed) that wins
+  // while set but never overwrites the stored preference.
+  const [override, setOverride] = useState<boolean | null>(null)
+
+  const setCollapsed = useCallback((next: boolean) => {
+    setPreference(next)
+    // An explicit toggle beats whatever the current page asked for.
+    setOverride(null)
+    document.cookie = `${SIDEBAR_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`
+  }, [])
+
   return (
-    <SidebarContext.Provider value={{ collapsed, setCollapsed }}>
+    <SidebarContext.Provider
+      value={{ collapsed: override ?? preference, setCollapsed, setOverride }}
+    >
       {children}
     </SidebarContext.Provider>
   )
@@ -38,12 +62,15 @@ export function useSidebarState() {
   return [collapsed, setCollapsed] as const
 }
 
-/** Call from a page to collapse (or expand) the sidebar by default when it mounts. */
+/**
+ * Call from a page to collapse (or expand) the sidebar while it is mounted.
+ * The user's stored preference is left untouched and restored on unmount.
+ */
 export function useSidebarDefaultCollapsed(collapsed: boolean) {
-  const { setCollapsed } = useSidebarContext()
+  const { setOverride } = useSidebarContext()
 
   useEffect(() => {
-    setCollapsed(collapsed)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collapsed])
+    setOverride(collapsed)
+    return () => setOverride(null)
+  }, [collapsed, setOverride])
 }

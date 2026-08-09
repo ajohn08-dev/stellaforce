@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/app-header";
 import { BreadcrumbProvider } from "@/lib/breadcrumb-context";
 import { HeaderActionsProvider } from "@/lib/header-actions-context";
 import { SidebarProvider } from "@/lib/sidebar-context";
+import { SIDEBAR_COOKIE, sidebarCollapsedFromCookie } from "@/lib/sidebar-cookie";
 import { ResumeUploadQueueProvider } from "@/lib/resume-upload-queue";
 import { getCurrentProfile } from "@/lib/auth";
 import { getSwitchableProfiles } from "@/lib/data";
@@ -18,10 +19,14 @@ export default async function AppLayout({
   const profile = await getCurrentProfile();
   const canSwitchUsers = profile?.side === "stellaforce" && profile.role === "admin";
   const switchableUsers = canSwitchUsers ? await getSwitchableProfiles() : [];
-  const isImpersonating = !!(await cookies()).get(IMPERSONATOR_COOKIE);
+  const cookieStore = await cookies();
+  const isImpersonating = !!cookieStore.get(IMPERSONATOR_COOKIE);
+  const sidebarCollapsed = sidebarCollapsedFromCookie(
+    cookieStore.get(SIDEBAR_COOKIE)?.value,
+  );
 
   return (
-    <SidebarProvider>
+    <SidebarProvider initialCollapsed={sidebarCollapsed}>
       <BreadcrumbProvider>
         <HeaderActionsProvider>
           <ResumeUploadQueueProvider>

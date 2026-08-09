@@ -53,7 +53,7 @@ client-recruiter delivery-workbench layouts.
 
 Postgres + pgvector on Supabase. UUID PKs (`gen_random_uuid()`), `created_at`
 everywhere, `updated_at` (trigger-maintained) where rows mutate, snake_case,
-Postgres enums for every controlled vocabulary. **46 tables.**
+Postgres enums for every controlled vocabulary. **47 tables.**
 
 **Shape.** A two-tier pipeline (fixed Tier-1 `pipeline_stages` → variable
 per-job Tier-2 `job_workflow_sub_stages`) and a four-layer evaluation model —
@@ -182,6 +182,38 @@ Left sidebar (`src/components/app-sidebar.tsx`) + top header
 3. **Semantic search** — wire embeddings provider + pgvector RPC (TODO)
 4. **Refer/update loop** — applications, interactions, candidate_client_fit (TODO)
 
+## ⚠️ QA test fixtures — DELETE BEFORE LAUNCH
+
+Fourteen placeholder candidates exist **only** to exercise pipeline-stage flows on
+the **Product Designer** job (`308f4d06-8b28-4d3f-b824-e93ecde00db7`). They are
+**not** real people and must be removed once the flows are designed.
+
+**Identified by `candidates.source = 'qa_test_fixture'`** — that column is the
+deletion key; don't rely on the names. All fourteen share Anna's real phone
+(`+1-412-626-2245`) and LinkedIn URL, and use plus-addressed variants of her
+email (`ajohndesign08+qa1@gmail.com` … `+qa14`) because `candidates.email` is
+UNIQUE and all plus-addresses deliver to the same inbox. **Anything that dials
+or emails these rows will reach Anna's real phone/inbox** — keep that in mind
+when testing outbound calling.
+
+Two candidates sit on each of the seven Screen/Interview sub-stages:
+Pre-Screening, Recruiter Screen, HR Interview, Hiring Manager Interview, Who
+Interview, Technical Interview, Panel Interview. (Source/Offer/Close have none.)
+Each one also carries seeded L2 evaluations for every stage it has already
+cleared, each with Q&A, a transcript and a stand-in audio recording — see
+`20260808130000_seed_stage_evaluations_qa_fixtures` and
+`20260808140100_seed_evaluation_qa_and_transcripts` below. Deleting the
+fixtures cascades all of it; the Storage objects under
+`call-recordings/applications/{application_id}/` are the one thing that has to
+be removed by hand.
+
+To remove them — `applications` cascades on `candidates` delete, so one
+statement is enough:
+
+```sql
+delete from public.candidates where source = 'qa_test_fixture';
+```
+
 ## Migrations
 SQL lives in `supabase/migrations/`, applied directly via the Supabase MCP
 (`apply_migration`); `supabase db pull` syncs local files. History: `0001`–`0007`
@@ -212,7 +244,20 @@ it) → `20260808120000_seed_screening_agents` (seeds the six screening agents
 the Agents page used to render from mock data, so `call_recordings.agent_id`
 has real rows to reference; `external_agent_id` left null until each is
 created in ElevenLabs — see
-[DB_Schema.md](DB_Schema.md#storage--resume-ingestion)).
+[DB_Schema.md](DB_Schema.md#storage--resume-ingestion)) →
+`20260808130000_seed_stage_evaluations_qa_fixtures` (backfills L2
+`application_stage_evaluations` + `_notes` for the QA fixture candidates — one
+completed evaluation per sub-stage *before* the one each candidate currently
+sits in, so the pipeline board's Evaluation/Overview tabs have something to
+render; scoped to `candidates.source = 'qa_test_fixture'`, so it is a no-op
+without the fixtures and disappears when they are deleted) →
+`20260808140000_evaluation_questions` (`application_stage_evaluation_questions`
+— the per-interview Q&A the evaluation panel's Q&A tab groups by competency) →
+`20260808140100_seed_evaluation_qa_and_transcripts` (fixture Q&A + one
+`call_recordings` row per fixture evaluation, transcript built from that
+evaluation's own Q&A; audio is attached separately by
+`npm run attach-fixture-audio`, which copies a real test-call clip into a
+per-evaluation object path since SQL can't write Storage).
 
 **RLS.** Permissive `authenticated`-ALL on core tables; **tenant-scoped** on the
 workflow-template / settings / activity / AI / audit tables (client users see
