@@ -24,6 +24,7 @@ import {
   parseAiCompetenciesResponse,
 } from "@/lib/server/job-ai-competencies"
 import { sendCalendarConnectInvite } from "@/lib/server/calendar-invite"
+import { getCalendarPreview, type CalendarPreview } from "@/lib/server/calendar-events"
 import type {
   ActivityEventType,
   ActorType,
@@ -525,6 +526,8 @@ async function persistTeamMember(
       name: member.name.trim(),
       jobId: job.job_id,
       jobTeamMemberId: data.id,
+      reason: "added",
+      role: member.role.trim(),
     })
   }
 
@@ -579,6 +582,63 @@ export async function addDraftTeamMember(
   const result = await persistTeamMember(supabase, job, profile.id, input, false)
   if (result.ok) revalidatePath(`/jobs/${jobId}`)
   return result
+}
+
+/**
+ * Re-send the "connect your Google Calendar" invite to one team member (the
+ * Resend button in the job workspace's Team panel). Mints a brand-new signed
+ * consent link with a fresh TTL, so this also repairs an expired one.
+ *
+ * Nothing is persisted — no `activity_events` row, since the enum has no
+ * matching value and this feature stays migration-free. The n8n execution log
+ * is the record of what was sent.
+ */
+export async function resendCalendarConnectInvite(
+  memberId: string
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+
+  const supabase = await createClient()
+  const { data: member } = await supabase
+    .from("job_team_members")
+    .select("id, job_id, name, email, role")
+    .eq("id", memberId)
+    .maybeSingle()
+  if (!member) return { ok: false, error: "Team member not found." }
+
+  const result = await sendCalendarConnectInvite({
+    email: member.email,
+    name: member.name,
+    jobId: member.job_id,
+    jobTeamMemberId: member.id,
+    reason: "resend",
+    role: member.role,
+    sentBy: { name: profile.full_name ?? profile.email, email: profile.email },
+  })
+
+  return result.ok ? { ok: true } : { ok: false, error: result.error }
+}
+
+/**
+ * Upcoming events on a connected team member's calendar, for the Team panel's
+ * calendar preview sheet. Read-only; the refresh token stays server-side.
+ */
+export async function getTeamMemberCalendar(
+  memberId: string
+): Promise<ActionResult<{ preview: CalendarPreview }>> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+
+  const supabase = await createClient()
+  const { data: member } = await supabase
+    .from("job_team_members")
+    .select("id, email")
+    .eq("id", memberId)
+    .maybeSingle()
+  if (!member) return { ok: false, error: "Team member not found." }
+
+  return { ok: true, preview: await getCalendarPreview(member.email) }
 }
 
 /** Remove a team member (draft or published job). */
@@ -829,6 +889,53 @@ export async function updateJobWorkflowSubStage(
   return { ok: true }
 }
 
+/**
+ * Appends a reviewer note to one stage evaluation — the write behind the
+ * evaluation panel's Notes tab. Runs as the signed-in user (RLS applies)
+ * rather than through the admin client, since this is ordinary CRUD with an
+ * acting recruiter.
+ *
+ * `display_order` is assigned from the current tail so notes keep insertion
+ * order; there is no unique constraint on it, and two concurrent appends
+ * landing on the same number only means an arbitrary order between those two.
+ */
+export async function addEvaluationNote(
+  evaluationId: string,
+  note: string
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+
+  const trimmed = note.trim()
+  if (!trimmed) return { ok: false, error: "Note can't be empty." }
+
+  const supabase = await createClient()
+  const { data: last } = await supabase
+    .from("application_stage_evaluation_notes")
+    .select("display_order")
+    .eq("evaluation_id", evaluationId)
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const { error } = await supabase.from("application_stage_evaluation_notes").insert({
+    evaluation_id: evaluationId,
+    note: trimmed,
+    display_order: (last?.display_order ?? -1) + 1,
+  })
+  if (error) return { ok: false, error: error.message }
+
+  // The note is rendered by the job workspace's server-fetched evaluations.
+  const { data: evaluation } = await supabase
+    .from("application_stage_evaluations")
+    .select("application:applications(job_id)")
+    .eq("id", evaluationId)
+    .maybeSingle()
+  const jobId = (evaluation?.application as { job_id: string } | null)?.job_id
+  revalidatePath(jobId ? `/jobs/${jobId}` : "/jobs")
+  return { ok: true }
+}
+
 export async function addJobSubStageCompetency(
   subStageId: string,
   competencyId: string
@@ -1047,7 +1154,7 @@ export async function publishJob(
   // Google Calendar connect invite (skipped per-person if already connected).
   const { data: teamMembers } = await supabase
     .from("job_team_members")
-    .select("id, name, email")
+    .select("id, name, email, role")
     .eq("job_id", jobId)
   for (const m of teamMembers ?? []) {
     await sendCalendarConnectInvite({
@@ -1055,6 +1162,8 @@ export async function publishJob(
       name: m.name,
       jobId,
       jobTeamMemberId: m.id,
+      reason: "added",
+      role: m.role,
     })
   }
 

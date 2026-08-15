@@ -34,6 +34,10 @@
 - **Audit / lightweight pass**: User asked for a self-audit against "lightweight, execute via n8n, show value fast." Architecture skeleton (n8n owns Calendar API calls, per-person scope, job-level trigger) confirmed right-sized. Proposed trimming both identity paths down to profile-only for MVP — **rejected**; both identity paths stay in MVP as originally decided.
 - **Google OAuth verification**: Don't wait for Google's formal app-verification review before building/testing. Build and pilot now — connectors will see Google's "unverified app" warning screen (fine for a pilot under 100 users) — and submit for review before wider rollout.
 - **Recruiter visibility (revised, lightweight)**: Simple "Connected" / "Not connected" badge per team member, checked live — not a richer pending/revoked state machine, and no manual resend button in MVP.
+- **Scheduling controls are UI-only session state (post-MVP, shipped)**: the availability sheet's **timezone** picker (default `America/Los_Angeles`) and **preferred days** toggles (default Mon–Fri) live in React state, not the database — they reset on reload and are per *recruiter*, not stored against the team member. Timezone is explicit rather than the browser default on purpose: a recruiter in one zone booking an interviewer in another would otherwise read the grid correctly and still book the wrong hour. **Next step if n8n is to schedule against these rules**: persist `preferred_days` + `timezone` on `job_team_members`, which is what turns them from one recruiter's view into real scheduling data. The bookable window (09:00–17:00 on preferred days, 30-minute slots) is a constant in `src/lib/availability.ts` — per-person working hours are not modelled yet.
+- **Calendar reads live in the app, writes stay in n8n (post-MVP, shipped)**: the "Scheduling call owner" decision above (n8n makes the Calendar API calls) is now scoped to **writes** — creating/updating/cancelling interview events at scheduling time. The Team panel's read-only calendar preview (`getCalendarPreview`, `src/lib/server/calendar-events.ts`) calls `events.list` directly from the app, because it backs a synchronous UI panel where a webhook round-trip would only add latency and put tokens in a second place. Refresh tokens still never leave the app's server boundary.
+- **Identity scopes (bug fix)**: the authorization URL requests `openid email` alongside `calendar.events`. With `calendar.events` alone, Google issues no ID token and rejects `oauth2/v2/userinfo` with 403 `ACCESS_TOKEN_SCOPE_INSUFFICIENT` — which made the callback's email-verification step fail for *every* connect attempt, regardless of which account consented. The callback now reads the email from the ID token (aud/iss/exp/email_verified checked) and falls back to userinfo; the invited-vs-authorized match stays strict, normalized with `trim().toLowerCase()`.
+- **Manual resend (post-MVP, shipped)**: The deferred resend button is now in the job workspace's Hiring team dialog — a per-member **Resend invite** action, shown only while that person reads as Not connected. Deliberately **stateless**: no `sent_at`/`send_count` column, no new `activity_events` type, no migration; the cooldown (60s) is client-side only and the n8n execution log is the record of what was sent. Each send mints a fresh signed consent link, so it doubles as the fix for an expired one. The richer pending/revoked state machine stays deferred.
 
 ## Synthesized flow (draft)
 1. Recruiter adds a person to a job's hiring team (existing profile OR ad-hoc email invite).
@@ -60,11 +64,11 @@
 - Proactive invite email at job-add time (job-level trigger, not per-interview).
 - Scope: read + create/edit events.
 - Email-match enforcement on ad-hoc consent.
-- Recruiter-visible status: simple "Connected/Not connected" badge, no resend button.
+- Recruiter-visible status: simple "Connected/Not connected" badge, plus a stateless per-member resend button (added after MVP — see the decisions log).
 - Reactive revocation detection + auto re-prompt.
 - Graceful degradation for not-yet-connected people at scheduling time.
 - Build/pilot now on an unverified Google OAuth app (accept the warning screen); submit for Google's formal verification before scaling past a pilot group.
-- Explicitly deferred: periodic proactive token validation, identity dedup across multiple emails, Workspace domain-wide delegation as an alternative connection model, richer connection-status states + manual resend UI.
+- Explicitly deferred: periodic proactive token validation, identity dedup across multiple emails, Workspace domain-wide delegation as an alternative connection model, richer connection-status states (manual resend UI shipped post-MVP).
 
 ---
 *Status: decisions finalized — ready to turn into an implementation prompt when requested.*

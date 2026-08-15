@@ -65,7 +65,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const { data: lastMembership } = await admin
       .from("job_team_members")
-      .select("id, job_id, name")
+      .select("id, job_id, name, role")
       .ilike("email", email)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -87,6 +87,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         name: lastMembership.name,
         jobId: lastMembership.job_id,
         jobTeamMemberId: lastMembership.id,
+        reason: "reconnect",
+        role: lastMembership.role,
       })
     }
 

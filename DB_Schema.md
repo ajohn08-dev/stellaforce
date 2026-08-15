@@ -19,7 +19,7 @@ Evaluation is layered: **L1** job template (`job_competencies`,
 (`application_scorecard_*`) → **L4** cross-job redeployment fit
 (`candidate_client_fit`).
 
-**Table count:** 46 tables. Tables marked **[tenant RLS]** enforce
+**Table count:** 47 tables. Tables marked **[tenant RLS]** enforce
 client-scoped row access; all others use the permissive `authenticated`-ALL
 policy (see RLS model at the end).
 
@@ -177,7 +177,21 @@ profiles, nullable — owning recruiter), `date_applied`, `date_updated`, `creat
 `interview_date`, `mode` (stage_format), `rubric_score`, `summary`.
 
 **application_stage_evaluation_notes** — `evaluation_id` (fk), `note` (not null),
-`display_order`.
+`display_order`. Free-form reviewer commentary; written by the
+`addEvaluationNote` Server Action behind the evaluation panel's Notes tab.
+
+**application_stage_evaluation_questions** — `id` (pk), `evaluation_id` (fk
+cascade), `competency_id` (fk job_competencies, **nullable**, set null),
+`question` (not null), `answer`, `display_order`, `created_at`. The Q&A
+captured during one interview, tied to the competency each question probed —
+what the evaluation panel's Q&A tab groups by. A null `competency_id` is an
+off-script question and groups under "Other questions". Permissive
+`authenticated`-ALL RLS, matching its sibling evaluation tables.
+
+A stage evaluation's **recording** is not a separate table: `call_recordings`
+carries an `evaluation_id` fk, so the panel's media player and transcript read
+the same row the Agent Conversations page does (see
+[Storage & resume ingestion](#storage--resume-ingestion)).
 
 **application_scorecard_categories** / **application_scorecard_competencies** (L3
 computed) — per application, rolled up from L2 against the L1 template.
@@ -373,8 +387,16 @@ webhook body for audit/replay), `created_at`, `updated_at`. Two-phase writer:
 the transcript payload (`post_call_transcription`) arrives first and
 upserts the row keyed by `elevenlabs_conversation_id`; a later audio payload
 updates that same row with `storage_path`/`filename`/`mime_type`/`file_size`/
-`audio_status`. No app writer yet — the inbound ElevenLabs-post-call webhook
-receiver that populates this table isn't built.
+`audio_status`. **Written by `POST /api/calls/postcall`**
+(`src/app/api/calls/postcall/route.ts` + `src/lib/server/elevenlabs-postcall.ts`)
+— the inbound ElevenLabs post-call webhook receiver, HMAC-verified with
+`ELEVENLABS_POSTCALL_WEBHOOK_SECRET`. It is channel-agnostic: browser
+interview-room and Twilio phone conversations arrive as the same event, and a
+room call is distinguishable only by `to_number IS NULL` (no phone leg). Audio
+is decoded from base64 MP3 and uploaded to the `call-recordings` bucket by the
+service-role client, then linked back onto the row. If audio arrives before its
+transcript there is no identity to build a storage path from, so the route
+answers **409** and relies on webhook retries being enabled.
 
 ---
 

@@ -4,9 +4,19 @@ import { createHmac, timingSafeEqual } from "node:crypto"
 
 import { serverEnv } from "@/lib/env"
 
+/**
+ * Calendar access + the identity scopes the callback needs to learn WHICH
+ * Google account just authorized. Without `openid`/`email`, Google's
+ * oauth2/v2/userinfo endpoint rejects the access token with 403
+ * ACCESS_TOKEN_SCOPE_INSUFFICIENT and no ID token is issued — which is exactly
+ * how every connect attempt failed before these two were added. `profile` is
+ * deliberately not requested: we only ever compare the email.
+ */
 export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+export const GOOGLE_OAUTH_SCOPES = ["openid", "email", GOOGLE_CALENDAR_SCOPE].join(" ")
 
-const STATE_TTL_SECONDS = 7 * 24 * 60 * 60 // a week — long enough to sit in an inbox
+/** A week — long enough to sit in an inbox. Every (re)send mints a fresh one. */
+export const STATE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 export type ConnectState = {
   email: string
@@ -60,7 +70,7 @@ export function buildAuthUrl(state: Omit<ConnectState, "exp">): string {
     client_id: serverEnv.googleClientId,
     redirect_uri: redirectUri(),
     response_type: "code",
-    scope: GOOGLE_CALENDAR_SCOPE,
+    scope: GOOGLE_OAUTH_SCOPES,
     access_type: "offline",
     prompt: "consent", // force a refresh_token on every grant, even for a re-auth
     state: encodeState(state),
@@ -71,6 +81,8 @@ export function buildAuthUrl(state: Omit<ConnectState, "exp">): string {
 type GoogleTokenResponse = {
   access_token: string
   refresh_token?: string
+  /** Present only because we request the `openid` scope. */
+  id_token?: string
   expires_in: number
   scope: string
   token_type: string
@@ -110,6 +122,41 @@ export function refreshAccessToken(refreshToken: string) {
   })
 }
 
+/**
+ * The verified email out of the ID token returned by the code exchange, or
+ * null if it isn't usable (absent, malformed, wrong audience/issuer, or
+ * unverified address).
+ *
+ * The signature is not re-verified, and doesn't need to be: this token came
+ * straight back from Google's token endpoint over TLS in response to our
+ * client-secret-authenticated request, which OpenID Connect Core §3.1.3.7
+ * accepts in place of signature validation. `aud`/`iss` are still checked so a
+ * token minted for a different client can never satisfy the identity check.
+ */
+export function emailFromIdToken(idToken: string | undefined): string | null {
+  if (!idToken) return null
+  const [, payload] = idToken.split(".")
+  if (!payload) return null
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      email?: string
+      email_verified?: boolean | string
+      aud?: string
+      iss?: string
+      exp?: number
+    }
+    if (claims.aud !== serverEnv.googleClientId) return null
+    if (claims.iss !== "https://accounts.google.com" && claims.iss !== "accounts.google.com")
+      return null
+    if (typeof claims.exp === "number" && claims.exp < Math.floor(Date.now() / 1000)) return null
+    // Google sends email_verified as a real boolean, but tolerate the string form.
+    if (claims.email_verified !== true && claims.email_verified !== "true") return null
+    return claims.email?.trim().toLowerCase() || null
+  } catch {
+    return null
+  }
+}
+
 /** The email of the Google account that just authorized — compared against the invited email. */
 export async function fetchAuthorizedEmail(accessToken: string): Promise<string> {
   const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -118,5 +165,5 @@ export async function fetchAuthorizedEmail(accessToken: string): Promise<string>
   if (!res.ok) throw new Error(`Google userinfo endpoint responded ${res.status}`)
   const data = (await res.json()) as { email?: string }
   if (!data.email) throw new Error("Google userinfo response had no email.")
-  return data.email
+  return data.email.trim().toLowerCase()
 }

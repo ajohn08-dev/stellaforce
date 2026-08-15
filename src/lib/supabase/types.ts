@@ -389,6 +389,51 @@ export type Database = {
           },
         ]
       }
+      application_stage_evaluation_questions: {
+        Row: {
+          answer: string | null
+          competency_id: string | null
+          created_at: string
+          display_order: number
+          evaluation_id: string
+          id: string
+          question: string
+        }
+        Insert: {
+          answer?: string | null
+          competency_id?: string | null
+          created_at?: string
+          display_order?: number
+          evaluation_id: string
+          id?: string
+          question: string
+        }
+        Update: {
+          answer?: string | null
+          competency_id?: string | null
+          created_at?: string
+          display_order?: number
+          evaluation_id?: string
+          id?: string
+          question?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_stage_evaluation_questions_competency_id_fkey"
+            columns: ["competency_id"]
+            isOneToOne: false
+            referencedRelation: "job_competencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "application_stage_evaluation_questions_evaluation_id_fkey"
+            columns: ["evaluation_id"]
+            isOneToOne: false
+            referencedRelation: "application_stage_evaluations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_stage_evaluations: {
         Row: {
           application_id: string
@@ -3133,6 +3178,8 @@ export type JobWorkflowSubStageDetailRow = SchemaTables["job_workflow_sub_stage_
 export type ApplicationRow = SchemaTables["applications"]["Row"]
 export type ApplicationStageEvaluationRow = SchemaTables["application_stage_evaluations"]["Row"]
 export type ApplicationStageEvaluationNoteRow = SchemaTables["application_stage_evaluation_notes"]["Row"]
+export type ApplicationStageEvaluationQuestionRow =
+  SchemaTables["application_stage_evaluation_questions"]["Row"]
 export type ApplicationScorecardCategoryRow = SchemaTables["application_scorecard_categories"]["Row"]
 export type ApplicationScorecardCompetencyRow = SchemaTables["application_scorecard_competencies"]["Row"]
 export type ApplicationScorecardEvidenceRow = SchemaTables["application_scorecard_evidence"]["Row"]

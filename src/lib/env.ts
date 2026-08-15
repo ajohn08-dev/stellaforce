@@ -71,9 +71,14 @@ export const serverEnv = {
     )
   },
   /** n8n "calendar connect invite" webhook — sends the "connect your Google
-   * Calendar" email when a team member is added to a job. */
+   * Calendar" email on a team-member add, a recruiter-triggered resend, or a
+   * reconnect-after-revoke (the `reason` field picks the copy). Overridable
+   * via env. */
   get n8nCalendarWebhookUrl() {
-    return required("N8N_CALENDAR_WEBHOOK_URL", process.env.N8N_CALENDAR_WEBHOOK_URL)
+    return (
+      process.env.N8N_CALENDAR_WEBHOOK_URL ??
+      "https://ajzenarate.app.n8n.cloud/webhook/calendar-connect-invite"
+    )
   },
   /** n8n "voice agent test call" webhook — places an outbound test call for a
    * screening agent's "test run" button. Overridable via env. */
@@ -90,6 +95,14 @@ export const serverEnv = {
       "ELEVENLABS_POSTCALL_WEBHOOK_SECRET",
       process.env.ELEVENLABS_POSTCALL_WEBHOOK_SECRET
     )
+  },
+  /** ElevenLabs REST key, used to mint short-lived per-conversation client
+   * tokens for the browser interview room. Deliberately **optional** (`null`
+   * when unset) rather than `required()`: the room is built to render its full
+   * UI and report "not connected yet" instead of throwing, so the flow stays
+   * testable before the key is provisioned. */
+  get elevenlabsApiKey(): string | null {
+    return process.env.ELEVENLABS_API_KEY?.trim() || null
   },
   get googleClientId() {
     return required("GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID)
