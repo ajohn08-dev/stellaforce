@@ -312,6 +312,7 @@ function RoomFlow({
         controls.startSession({
           conversationToken: session.token,
           dynamicVariables: session.dynamicVariables,
+          ...(session.overrides ? { overrides: session.overrides } : {}),
         })
       } else if (session.signedUrl) {
         // No WebRTC credential (rate-limited or refused) — open on the backup
@@ -321,6 +322,7 @@ function RoomFlow({
           signedUrl: session.signedUrl,
           connectionType: "websocket",
           dynamicVariables: session.dynamicVariables,
+          ...(session.overrides ? { overrides: session.overrides } : {}),
         })
       } else {
         setSessionError("ElevenLabs returned no usable connection for this agent.")
@@ -355,6 +357,7 @@ function RoomFlow({
       signedUrl: session.signedUrl,
       connectionType: "websocket",
       dynamicVariables: session.dynamicVariables,
+      ...(session.overrides ? { overrides: session.overrides } : {}),
     })
   }, [fallbackNonce, session, controls, startedAtRef])
 

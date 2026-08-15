@@ -4,6 +4,11 @@ import { randomUUID } from "crypto"
 
 import { getCurrentProfile } from "@/lib/auth"
 import { serverEnv } from "@/lib/env"
+import {
+  buildInterviewPrompt,
+  formatQuestions,
+  getInterviewAgentConfig,
+} from "@/lib/interview-agent-config"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -44,11 +49,30 @@ type InterviewRoomVariables = {
   client_id: string
   sub_stage_id: string
   campaign_id: string
+  // Interview content, from `src/lib/interview-agent-config.ts`. These only do
+  // anything if the agent's own prompt in ElevenLabs references the matching
+  // `{{placeholder}}` — sending them is free either way, and they also land in
+  // `raw_elevenlabs_payload`, so a recording records what it was asked with.
+  interview_name: string
+  agent_display_name: string
+  company_name: string
+  questions: string
+  question_count: number
+}
+
+/** Shape ElevenLabs accepts for a session-start override. Every field is
+ * refused unless the matching flag is enabled on the agent. */
+type InterviewOverrides = {
+  agent?: { prompt?: { prompt?: string }; firstMessage?: string }
 }
 
 export type InterviewRoomSession =
   | {
       ok: true
+      /** Prompt/first-message overrides, present only for agents that have
+       * opted in *and* had the matching flags enabled in ElevenLabs. Undefined
+       * otherwise — sending an unpermitted override fails the session. */
+      overrides?: InterviewOverrides
       /** WebRTC credential — the preferred transport, best audio quality. */
       token: string | null
       /** WebSocket credential, used when WebRTC's UDP/SCTP media path is blocked
@@ -320,10 +344,26 @@ export async function createInterviewRoomSession(
     return { ok: false, reason: "token_failed", error: why }
   }
 
+  // Interview content for this agent. Falls back to the agent row's own name
+  // and an empty question set, so an agent with no fixture still runs — it just
+  // uses whatever prompt it already has in ElevenLabs.
+  const config = getInterviewAgentConfig(agent.id)
+  const candidateName = "Jane Doe"
+
+  const overrides: InterviewOverrides | undefined = config?.allowPromptOverride
+    ? {
+        agent: {
+          prompt: { prompt: buildInterviewPrompt(config, candidateName) },
+          ...(config.firstMessage ? { firstMessage: config.firstMessage } : {}),
+        },
+      }
+    : undefined
+
   return {
     ok: true,
     token,
     signedUrl,
+    overrides,
     dynamicVariables: {
       channel: "video_room",
       agent_id: agent.id,
@@ -331,12 +371,17 @@ export async function createInterviewRoomSession(
       is_test: true,
       application_id: "",
       candidate_id: "",
-      candidate_name: "Jane Doe",
+      candidate_name: candidateName,
       job_id: "",
-      job_title: "Test Video Interview",
+      job_title: config?.interviewName ?? "Test Video Interview",
       client_id: "",
       sub_stage_id: "",
       campaign_id: randomUUID(),
+      interview_name: config?.interviewName ?? agent.name,
+      agent_display_name: config?.agentDisplayName ?? agent.name,
+      company_name: config?.companyName ?? "Stella Force",
+      questions: config ? formatQuestions(config.questions) : "",
+      question_count: config?.questions.length ?? 0,
     },
   }
 }

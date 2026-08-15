@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   type ColumnDef,
   type PaginationState,
@@ -46,6 +47,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { ConversationDetailSheet } from "@/components/agents/conversation-detail-sheet"
+import { deleteConversations } from "@/app/(app)/agents/actions"
 import { formatDate } from "@/lib/constants"
 import type { Conversation } from "@/lib/conversations"
 
@@ -152,11 +154,13 @@ const columns: ColumnDef<Conversation>[] = [
 const PAGE_SIZE = 25
 
 export function ConversationsTable({ data }: { data: Conversation[] }) {
-  // Rows hidden by the (still client-only) Delete action. Tracked as ids over
-  // the server-provided `data` rather than snapshotting it into state, so
+  const router = useRouter()
+  // Optimistically hidden while the server catches up. Tracked as ids over the
+  // server-provided `data` rather than snapshotting it into state, so
   // re-filtering/searching — which re-renders this with new props — isn't
   // stuck showing the first render's rows.
   const [deletedIds, setDeletedIds] = React.useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = React.useState(false)
   const conversations = React.useMemo(
     () => data.filter((c) => !deletedIds.has(c.conversation_id)),
     [data, deletedIds]
@@ -190,11 +194,31 @@ export function ConversationsTable({ data }: { data: Conversation[] }) {
   const selectedIds = Object.keys(rowSelection)
   const selectedCount = selectedIds.length
 
-  function handleDelete() {
-    setDeletedIds((prev) => new Set([...prev, ...selectedIds]))
+  async function handleDelete() {
+    setDeleting(true)
+    const ids = [...selectedIds]
+    const result = await deleteConversations(ids)
+    setDeleting(false)
+
+    if (!result.ok) {
+      // Nothing was removed — leave the rows visible so the action is retryable
+      // rather than hiding evidence of a failure.
+      toast.error(result.error)
+      return
+    }
+
+    setDeletedIds((prev) => new Set([...prev, ...ids]))
     setRowSelection({})
     setDeleteConfirmOpen(false)
-    toast.info("Hidden for now — deleting conversations isn't wired up yet.")
+    toast.success(
+      `Deleted ${result.deletedRows} conversation${result.deletedRows === 1 ? "" : "s"}` +
+        (result.deletedObjects > 0
+          ? ` and ${result.deletedObjects} recording${result.deletedObjects === 1 ? "" : "s"}.`
+          : ".")
+    )
+    // The optimistic hide covers the gap; this re-reads the list so anything
+    // deleted in another tab disappears too.
+    router.refresh()
   }
 
   return (
@@ -325,16 +349,20 @@ export function ConversationsTable({ data }: { data: Conversation[] }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {selectedCount} conversation{selectedCount === 1 ? "" : "s"}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the selected conversation
-              {selectedCount === 1 ? "" : "s"}. This action cannot be undone.
+              {/* Named explicitly: the recordings are the part that can't be
+                  recovered, and "delete conversation" alone doesn't convey
+                  that a candidate's audio and video go with it. */}
+              This permanently deletes the transcript
+              {selectedCount === 1 ? "" : "s"}, along with any audio and video
+              recording{selectedCount === 1 ? "" : "s"}. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteConfirmOpen(false)}>
+            <AlertDialogCancel disabled={deleting} onClick={() => setDeleteConfirmOpen(false)}>
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDelete}>
-              Delete
+            <AlertDialogAction variant="destructive" disabled={deleting} onClick={handleDelete}>
+              {deleting ? "Deleting…" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
