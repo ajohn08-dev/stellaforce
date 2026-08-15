@@ -2,8 +2,16 @@
 
 import { randomUUID } from "crypto"
 
+import { revalidatePath } from "next/cache"
+
 import { getCurrentProfile } from "@/lib/auth"
 import { serverEnv } from "@/lib/env"
+import {
+  buildInterviewPrompt,
+  formatQuestions,
+  getInterviewAgentConfig,
+} from "@/lib/interview-agent-config"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 type TriggerAgentCallResult = { ok: true } | { ok: false; error: string }
@@ -33,6 +41,40 @@ type CallDispatchPayload = {
   sub_stage_id: string | null
   campaign_id: string
   idempotency_key: string
+  // Interview content from `src/lib/interview-agent-config.ts`, matching what
+  // the browser room sends. n8n forwards these to ElevenLabs as dynamic
+  // variables, so a prompt referencing `{{questions}}` behaves the same over
+  // the phone as it does in the room.
+  interview_name: string
+  agent_display_name: string
+  company_name: string
+  /** Numbered, newline-separated — ready to drop into a prompt as-is. */
+  questions: string
+  question_count: number
+  /** Non-null only for agents that opted into prompt overrides *and* have the
+   * matching flag enabled in ElevenLabs. n8n should pass it through as
+   * `conversation_config_override.agent.prompt.prompt`, and omit the override
+   * block entirely when null — sending an unpermitted override fails the call. */
+  prompt_override: string | null
+  first_message_override: string | null
+}
+
+/** Interview content for a dispatch, with fallbacks for an agent that has no
+ * fixture entry yet. */
+function interviewFieldsFor(agentId: string, agentName: string, candidateName: string) {
+  const config = getInterviewAgentConfig(agentId)
+  return {
+    interview_name: config?.interviewName ?? agentName,
+    agent_display_name: config?.agentDisplayName ?? agentName,
+    company_name: config?.companyName ?? "Stella Force",
+    questions: config ? formatQuestions(config.questions) : "",
+    question_count: config?.questions.length ?? 0,
+    prompt_override:
+      config?.allowPromptOverride ? buildInterviewPrompt(config, candidateName) : null,
+    first_message_override: config?.allowPromptOverride
+      ? (config.firstMessage ?? null)
+      : null,
+  }
 }
 
 async function dispatchCall(payload: CallDispatchPayload): Promise<TriggerAgentCallResult> {
@@ -112,6 +154,7 @@ export async function triggerAgentTestCall(
     sub_stage_id: null,
     campaign_id: campaignId,
     idempotency_key: `${campaignId}:test:attempt_1`,
+    ...interviewFieldsFor(agent.id, agent.name, "Jane Doe"),
   })
 }
 
@@ -167,6 +210,10 @@ export async function triggerApplicationScreeningCall(
   }
 
   const campaignId = randomUUID()
+  const candidateName =
+    candidate?.full_name?.trim() ||
+    `${candidate?.first_name ?? ""} ${candidate?.last_name ?? ""}`.trim()
+
   return dispatchCall({
     to_number: toNumber,
     agent_id: agent.id,
@@ -175,14 +222,95 @@ export async function triggerApplicationScreeningCall(
     is_test: false,
     application_id: application.application_id,
     candidate_id: application.candidate_id,
-    candidate_name:
-      candidate?.full_name?.trim() ||
-      `${candidate?.first_name ?? ""} ${candidate?.last_name ?? ""}`.trim(),
+    candidate_name: candidateName,
     job_id: application.job_id,
     job_title: job?.title ?? "",
     client_id: job?.client_id ?? null,
     sub_stage_id: subStageId,
     campaign_id: campaignId,
     idempotency_key: `${campaignId}:${application.application_id}:attempt_1`,
+    ...interviewFieldsFor(agent.id, agent.name, candidateName),
   })
+}
+
+type DeleteConversationsResult =
+  | { ok: true; deletedRows: number; deletedObjects: number }
+  | { ok: false; error: string }
+
+/**
+ * Permanently deletes conversations — the `call_recordings` rows *and* the
+ * media they own in both buckets.
+ *
+ * **Bytes are deleted before rows, deliberately.** If the object delete fails we
+ * abort and leave the rows intact, so the whole thing stays retryable. The
+ * reverse order risks the worse outcome: rows gone, recordings stranded in
+ * Storage with nothing referencing them — an invisible, unrecoverable leak of a
+ * candidate's voice and likeness, which is precisely what "delete" was meant to
+ * remove.
+ *
+ * Restricted to Stellaforce-side users. Client-side profiles can read their own
+ * recordings but must not be able to destroy the hiring record.
+ */
+export async function deleteConversations(
+  conversationIds: string[]
+): Promise<DeleteConversationsResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "You must be signed in to delete conversations." }
+  if (profile.side !== "stellaforce") {
+    return { ok: false, error: "Only Stellaforce users can delete conversations." }
+  }
+
+  const ids = [...new Set(conversationIds.filter(Boolean))]
+  if (ids.length === 0) return { ok: false, error: "No conversations selected." }
+
+  // Service-role: this is a privileged destructive operation, and the storage
+  // deletes must not be at the mercy of per-bucket RLS nuances.
+  const admin = createAdminClient()
+
+  const { data: rows, error: fetchError } = await admin
+    .from("call_recordings")
+    .select("id, storage_path, video_storage_path")
+    .in("id", ids)
+
+  if (fetchError) {
+    return { ok: false, error: `Could not load those conversations: ${fetchError.message}` }
+  }
+  if (!rows || rows.length === 0) {
+    return { ok: false, error: "Those conversations no longer exist." }
+  }
+
+  const audioPaths = rows.map((r) => r.storage_path).filter((p): p is string => !!p)
+  const videoPaths = rows.map((r) => r.video_storage_path).filter((p): p is string => !!p)
+
+  const removals = await Promise.all([
+    audioPaths.length
+      ? admin.storage.from("call-recordings").remove(audioPaths)
+      : Promise.resolve({ error: null }),
+    videoPaths.length
+      ? admin.storage.from("video-recordings").remove(videoPaths)
+      : Promise.resolve({ error: null }),
+  ])
+
+  const removalError = removals.find((r) => r.error)?.error
+  if (removalError) {
+    return {
+      ok: false,
+      error: `Could not delete the recordings, so nothing was removed: ${removalError.message}`,
+    }
+  }
+
+  const { error: deleteError } = await admin.from("call_recordings").delete().in("id", ids)
+  if (deleteError) {
+    return {
+      ok: false,
+      error: `Recordings were deleted but the rows were not: ${deleteError.message}`,
+    }
+  }
+
+  revalidatePath("/agents/conversations")
+  return {
+    ok: true,
+    deletedRows: rows.length,
+    deletedObjects: audioPaths.length + videoPaths.length,
+  }
 }

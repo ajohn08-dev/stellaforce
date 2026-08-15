@@ -3,15 +3,19 @@
 import * as React from "react"
 import Link from "next/link"
 import { ConversationProvider, useConversationControls } from "@elevenlabs/react"
-import { CheckCircle2, MessageSquare } from "lucide-react"
+import { CheckCircle2, Loader2, MessageSquare, Video } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { InterviewBriefing } from "@/components/interview-room/interview-briefing"
 import { InterviewStage } from "@/components/interview-room/interview-stage"
 import { type TranscriptTurn } from "@/components/interview-room/live-transcript"
 import { useInterviewMedia } from "@/components/interview-room/use-interview-media"
+import { useInterviewRecorder } from "@/components/interview-room/use-interview-recorder"
+import { createClient } from "@/lib/supabase/client"
 import {
   createInterviewRoomSession,
+  createInterviewVideoUpload,
+  finalizeInterviewVideo,
   getInterviewRoomFailureReason,
   type InterviewRoomSession,
 } from "@/app/interview-room/actions"
@@ -39,6 +43,8 @@ type RoomProps = {
  * briefing, and the click does nothing but spend it.
  */
 export type Transport = "webrtc" | "websocket"
+
+type VideoUploadState = "idle" | "uploading" | "uploaded" | "failed"
 
 /** A WebRTC session that dies on its own this quickly is almost never a real
  * end of interview — it's the media path being eaten (VPN, firewall, low tunnel
@@ -165,6 +171,7 @@ export function InterviewRoom(props: RoomProps) {
         startedAtRef={startedAtRef}
         endedByUserRef={endedByUserRef}
         canFallbackRef={canFallbackRef}
+        conversationIdRef={conversationIdRef}
         onOpenedOn={handleOpenedOn}
       />
     </ConversationProvider>
@@ -187,6 +194,7 @@ function RoomFlow({
   startedAtRef,
   endedByUserRef,
   canFallbackRef,
+  conversationIdRef,
   onOpenedOn,
 }: RoomProps & {
   phase: Phase
@@ -200,13 +208,67 @@ function RoomFlow({
   startedAtRef: React.RefObject<number>
   endedByUserRef: React.RefObject<boolean>
   canFallbackRef: React.RefObject<boolean>
+  conversationIdRef: React.RefObject<string | null>
   onOpenedOn: (transport: Transport) => void
 }) {
   const controls = useConversationControls()
   const media = useInterviewMedia()
+  const recorder = useInterviewRecorder()
 
   const [session, setSession] = React.useState<Session | null>(null)
   const [sessionError, setSessionError] = React.useState<string | null>(null)
+  const [videoState, setVideoState] = React.useState<VideoUploadState>("idle")
+
+  /**
+   * Stops the recorder and ships the file. Deliberately *not* awaited by the
+   * caller that ends the call: hanging up should feel instant, and the upload
+   * continues underneath while the summary screen is already visible.
+   */
+  const uploadRecording = React.useCallback(async () => {
+    const result = await recorder.stop()
+    const conversationId = conversationIdRef.current
+    if (!result || !conversationId) return
+
+    setVideoState("uploading")
+    try {
+      const prepared = await createInterviewVideoUpload(conversationId, result.mimeType)
+      if (!prepared.ok) throw new Error(prepared.error)
+
+      // Straight to Storage with the signed token — the file never passes
+      // through a Server Action, which could not carry tens of megabytes.
+      const supabase = createClient()
+      const { error } = await supabase.storage
+        .from("video-recordings")
+        .uploadToSignedUrl(prepared.path, prepared.token, result.blob, {
+          contentType: result.mimeType,
+        })
+      if (error) throw new Error(error.message)
+
+      await finalizeInterviewVideo({
+        conversationId,
+        path: prepared.path,
+        sizeBytes: result.blob.size,
+        mimeType: result.mimeType,
+        durationSeconds: result.durationSeconds,
+        status: "uploaded",
+      })
+      setVideoState("uploaded")
+    } catch (err) {
+      console.error("[interview-room] video upload failed", err)
+      // Record the failure against the row so the Conversations page can say
+      // "the upload failed" rather than "no recording", which need different
+      // follow-up.
+      await finalizeInterviewVideo({
+        conversationId,
+        path: `failed/${conversationId}`,
+        sizeBytes: 0,
+        mimeType: result.mimeType,
+        durationSeconds: result.durationSeconds,
+        status: "failed",
+      }).catch(() => {})
+      setVideoState("failed")
+    }
+  }, [recorder, conversationIdRef])
 
   // Credentials are fetched up front, the moment the devices are live — see the
   // gesture note on InterviewRoom. It also means the click is instant rather
@@ -241,12 +303,16 @@ function RoomFlow({
     try {
       media.releaseMicrophone()
       startedAtRef.current = Date.now()
+      // After releaseMicrophone, so the stream is video-only and no second
+      // capture competes with the SDK for the mic.
+      recorder.start(media.stream)
 
       if (session.token) {
         onOpenedOn("webrtc")
         controls.startSession({
           conversationToken: session.token,
           dynamicVariables: session.dynamicVariables,
+          ...(session.overrides ? { overrides: session.overrides } : {}),
         })
       } else if (session.signedUrl) {
         // No WebRTC credential (rate-limited or refused) — open on the backup
@@ -256,6 +322,7 @@ function RoomFlow({
           signedUrl: session.signedUrl,
           connectionType: "websocket",
           dynamicVariables: session.dynamicVariables,
+          ...(session.overrides ? { overrides: session.overrides } : {}),
         })
       } else {
         setSessionError("ElevenLabs returned no usable connection for this agent.")
@@ -272,6 +339,15 @@ function RoomFlow({
     setPhase("live")
   }
 
+  // One upload attempt per room, however the call ended — hang-up, agent
+  // wrap-up, or a dropped connection all land on "ended".
+  const uploadedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (phase !== "ended" || uploadedRef.current) return
+    uploadedRef.current = true
+    void uploadRecording()
+  }, [phase, uploadRecording])
+
   // Reconnect on the fallback transport. Runs outside a user gesture, which is
   // fine: the audio context was already unlocked by the original start.
   React.useEffect(() => {
@@ -281,6 +357,7 @@ function RoomFlow({
       signedUrl: session.signedUrl,
       connectionType: "websocket",
       dynamicVariables: session.dynamicVariables,
+      ...(session.overrides ? { overrides: session.overrides } : {}),
     })
   }, [fallbackNonce, session, controls, startedAtRef])
 
@@ -300,7 +377,12 @@ function RoomFlow({
 
   if (phase === "ended") {
     return (
-      <InterviewEnded agentName={agentName} turnCount={turns.length} error={endedError} />
+      <InterviewEnded
+        agentName={agentName}
+        turnCount={turns.length}
+        error={endedError}
+        videoState={videoState}
+      />
     )
   }
 
@@ -328,10 +410,12 @@ function InterviewEnded({
   agentName,
   turnCount,
   error,
+  videoState,
 }: {
   agentName: string
   turnCount: number
   error: string | null
+  videoState: VideoUploadState
 }) {
   return (
     <div className="flex min-h-full items-center justify-center p-6">
@@ -349,12 +433,31 @@ function InterviewEnded({
           </p>
         </div>
 
-        {turnCount > 0 && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-white/40">
-            <MessageSquare className="size-3.5" />
-            {turnCount} turn{turnCount === 1 ? "" : "s"} captured
-          </span>
-        )}
+        <div className="flex flex-col items-center gap-1.5 text-xs text-white/40">
+          {turnCount > 0 && (
+            <span className="inline-flex items-center gap-1.5">
+              <MessageSquare className="size-3.5" />
+              {turnCount} turn{turnCount === 1 ? "" : "s"} captured
+            </span>
+          )}
+          {videoState !== "idle" && (
+            <span className="inline-flex items-center gap-1.5">
+              {videoState === "uploading" ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Saving your video — keep this tab open
+                </>
+              ) : videoState === "uploaded" ? (
+                <>
+                  <Video className="size-3.5" />
+                  Video saved
+                </>
+              ) : (
+                <span className="text-red-300">Your video could not be saved</span>
+              )}
+            </span>
+          )}
+        </div>
 
         <Button
           nativeButton={false}

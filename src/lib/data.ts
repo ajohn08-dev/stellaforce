@@ -36,6 +36,8 @@ import {
   type AudioStatus,
   type Conversation,
   type ConversationTranscriptTurn,
+  type InterviewType,
+  type MediaStatus,
 } from "@/lib/conversations"
 import type { ScreeningAgent } from "@/lib/agents"
 import type { WorkHistoryEntry } from "@/lib/work-history"
@@ -874,12 +876,37 @@ export async function getApplicationActivity(
   return (data ?? []) as ApplicationActivityEvent[]
 }
 
-/** The candidate/job identity ElevenLabs echoes back as dynamic variables. Only
- * ever read as a *fallback* for display: test-run calls have no real
- * candidate/job row to join to, so the names live only in the raw payload. */
+/**
+ * The candidate/job identity ElevenLabs echoes back as dynamic variables. Read
+ * as a *fallback* for display — test-run calls have no real candidate/job row
+ * to join to, so the names live only in the raw payload — and as the signal for
+ * which channel a conversation used.
+ *
+ * `raw_elevenlabs_payload` holds the entire webhook body, so the variables sit
+ * at `data.conversation_initiation_client_data.dynamic_variables`, not at the
+ * top level. Reading the top level instead silently yields null for every row,
+ * which is what this used to do.
+ */
 function payloadDynamicVariable(payload: unknown, key: string): string | null {
   if (typeof payload !== "object" || payload === null) return null
-  const value = (payload as Record<string, unknown>)[key]
+
+  const data = (payload as Record<string, unknown>).data
+  const initiation =
+    typeof data === "object" && data !== null
+      ? (data as Record<string, unknown>).conversation_initiation_client_data
+      : undefined
+  const variables =
+    typeof initiation === "object" && initiation !== null
+      ? (initiation as Record<string, unknown>).dynamic_variables
+      : undefined
+
+  const value =
+    typeof variables === "object" && variables !== null
+      ? (variables as Record<string, unknown>)[key]
+      : // Tolerate an already-flattened payload, in case anything upstream ever
+        // stores just the variables rather than the whole delivery.
+        (payload as Record<string, unknown>)[key]
+
   return typeof value === "string" && value.trim() !== "" ? value : null
 }
 
@@ -892,7 +919,7 @@ export async function getConversations(): Promise<Conversation[]> {
   const { data } = await supabase
     .from("call_recordings")
     .select(
-      "id, elevenlabs_conversation_id, started_at, duration_seconds, is_test, to_number, transcript_text, raw_elevenlabs_payload, storage_path, mime_type, audio_status, video_url, agent:agents(name), candidate:candidates(full_name, first_name, last_name)"
+      "id, elevenlabs_conversation_id, started_at, duration_seconds, is_test, to_number, transcript_text, raw_elevenlabs_payload, storage_path, mime_type, audio_status, video_url, video_storage_path, video_mime_type, video_status, agent:agents(name), candidate:candidates(full_name, first_name, last_name)"
     )
     .eq("interviewer_type", "ai")
     .order("started_at", { ascending: false, nullsFirst: false })
@@ -901,17 +928,32 @@ export async function getConversations(): Promise<Conversation[]> {
   // rather than per-row on demand: the sheet is opened from an already-rendered
   // list, and there's no client-side session to sign with.
   const rows = data ?? []
-  const signedUrlByPath = new Map<string, string>()
+
+  // Both buckets are private, so playable media needs signed URLs. Audio and
+  // video live in *separate* buckets (see the video_recordings_bucket
+  // migration), hence two batches — still one round trip each, rather than one
+  // per row on demand: the sheet opens from an already-rendered list, and there
+  // is no client-side session to sign with.
   const audioPaths = rows
     .filter((r) => r.audio_status === "uploaded" && r.storage_path)
     .map((r) => r.storage_path as string)
-  if (audioPaths.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from("call-recordings")
-      .createSignedUrls(audioPaths, 3600) // 1 hour
-    for (const entry of signed ?? [])
-      if (entry.signedUrl && entry.path) signedUrlByPath.set(entry.path, entry.signedUrl)
-  }
+  const videoPaths = rows
+    .filter((r) => r.video_status === "uploaded" && r.video_storage_path)
+    .map((r) => r.video_storage_path as string)
+
+  const [audioSigned, videoSigned] = await Promise.all([
+    audioPaths.length
+      ? supabase.storage.from("call-recordings").createSignedUrls(audioPaths, 3600)
+      : Promise.resolve({ data: [] }),
+    videoPaths.length
+      ? supabase.storage.from("video-recordings").createSignedUrls(videoPaths, 3600)
+      : Promise.resolve({ data: [] }),
+  ])
+
+  // Keyed by path, and the two buckets never share one, so a single map is safe.
+  const signedUrlByPath = new Map<string, string>()
+  for (const entry of [...(audioSigned.data ?? []), ...(videoSigned.data ?? [])])
+    if (entry.signedUrl && entry.path) signedUrlByPath.set(entry.path, entry.signedUrl)
 
   return rows.map((row) => {
     const candidate = row.candidate as
@@ -922,12 +964,21 @@ export async function getConversations(): Promise<Conversation[]> {
       (candidate ? `${candidate.first_name} ${candidate.last_name}`.trim() : null) ||
       payloadDynamicVariable(row.raw_elevenlabs_payload, "candidate_name")
 
+    // The room passes `channel: 'video_room'` as a dynamic variable precisely so
+    // the two can be told apart without a column. Stored video is the
+    // corroborating signal, and covers a room call whose payload predates that
+    // variable; everything else is a phone screen.
+    const channel = payloadDynamicVariable(row.raw_elevenlabs_payload, "channel")
+    const interviewType: InterviewType =
+      channel === "video_room" || row.video_storage_path ? "video" : "audio"
+
     return {
       conversation_id: row.id,
       agent_name:
         (row.agent as { name: string } | null)?.name ??
         payloadDynamicVariable(row.raw_elevenlabs_payload, "agent_name"),
       candidate_name: candidateName,
+      interview_type: interviewType,
       to_number: row.to_number,
       started_on: row.started_at ? row.started_at.slice(0, 10) : null,
       started_at: row.started_at,
@@ -937,6 +988,11 @@ export async function getConversations(): Promise<Conversation[]> {
       audio_url: row.storage_path ? (signedUrlByPath.get(row.storage_path) ?? null) : null,
       audio_status: row.audio_status as AudioStatus,
       audio_mime_type: row.mime_type,
+      candidate_video_url: row.video_storage_path
+        ? (signedUrlByPath.get(row.video_storage_path) ?? null)
+        : null,
+      candidate_video_status: (row.video_status as MediaStatus | null) ?? null,
+      candidate_video_mime_type: row.video_mime_type,
       video_url: row.video_url,
     }
   })

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react"
+import { Captions, CaptionsOff, Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -11,11 +11,15 @@ function ControlButton({
   label,
   onClick,
   children,
+  /** `media` reads "off" as a warning (a muted mic or dead camera is something
+   * you'd want to notice); `neutral` reads it as an ordinary preference. */
+  tone = "media",
 }: {
   active: boolean
   label: string
   onClick: () => void
   children: React.ReactNode
+  tone?: "media" | "neutral"
 }) {
   return (
     <Button
@@ -26,7 +30,11 @@ function ControlButton({
       onClick={onClick}
       className={cn(
         "size-11 rounded-full text-white hover:text-white",
-        active ? "bg-white/10 hover:bg-white/20" : "bg-red-500/85 hover:bg-red-500"
+        active
+          ? "bg-white/10 hover:bg-white/20"
+          : tone === "media"
+            ? "bg-red-500/85 hover:bg-red-500"
+            : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80"
       )}
     >
       {children}
@@ -37,14 +45,18 @@ function ControlButton({
 export function RoomControls({
   micMuted,
   cameraOn,
+  transcriptOpen,
   onToggleMic,
   onToggleCamera,
+  onToggleTranscript,
   onEnd,
 }: {
   micMuted: boolean
   cameraOn: boolean
+  transcriptOpen: boolean
   onToggleMic: () => void
   onToggleCamera: () => void
+  onToggleTranscript: () => void
   onEnd: () => void
 }) {
   // Ending is destructive and unrecoverable — the conversation can't be resumed
@@ -73,6 +85,15 @@ export function RoomControls({
         onClick={onToggleCamera}
       >
         {cameraOn ? <Video className="size-5" /> : <VideoOff className="size-5" />}
+      </ControlButton>
+
+      <ControlButton
+        active={transcriptOpen}
+        tone="neutral"
+        label={transcriptOpen ? "Hide transcript" : "Show transcript"}
+        onClick={onToggleTranscript}
+      >
+        {transcriptOpen ? <Captions className="size-5" /> : <CaptionsOff className="size-5" />}
       </ControlButton>
 
       <Button

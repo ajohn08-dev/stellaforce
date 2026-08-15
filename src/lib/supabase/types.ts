@@ -771,6 +771,12 @@ export type Database = {
           transcript_status: string
           transcript_text: string | null
           updated_at: string
+          video_duration_seconds: number | null
+          video_file_size: number | null
+          video_filename: string | null
+          video_mime_type: string | null
+          video_status: string | null
+          video_storage_path: string | null
           video_url: string | null
         }
         Insert: {
@@ -805,6 +811,12 @@ export type Database = {
           transcript_status?: string
           transcript_text?: string | null
           updated_at?: string
+          video_duration_seconds?: number | null
+          video_file_size?: number | null
+          video_filename?: string | null
+          video_mime_type?: string | null
+          video_status?: string | null
+          video_storage_path?: string | null
           video_url?: string | null
         }
         Update: {
@@ -839,6 +851,12 @@ export type Database = {
           transcript_status?: string
           transcript_text?: string | null
           updated_at?: string
+          video_duration_seconds?: number | null
+          video_file_size?: number | null
+          video_filename?: string | null
+          video_mime_type?: string | null
+          video_status?: string | null
+          video_storage_path?: string | null
           video_url?: string | null
         }
         Relationships: [
@@ -3108,6 +3126,7 @@ export const Constants = {
     },
   },
 } as const
+
 type SchemaTables = Database["public"]["Tables"]
 type SchemaEnums = Database["public"]["Enums"]
 

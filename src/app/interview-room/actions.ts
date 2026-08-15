@@ -4,6 +4,12 @@ import { randomUUID } from "crypto"
 
 import { getCurrentProfile } from "@/lib/auth"
 import { serverEnv } from "@/lib/env"
+import {
+  buildInterviewPrompt,
+  formatQuestions,
+  getInterviewAgentConfig,
+} from "@/lib/interview-agent-config"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 /**
@@ -43,11 +49,30 @@ type InterviewRoomVariables = {
   client_id: string
   sub_stage_id: string
   campaign_id: string
+  // Interview content, from `src/lib/interview-agent-config.ts`. These only do
+  // anything if the agent's own prompt in ElevenLabs references the matching
+  // `{{placeholder}}` — sending them is free either way, and they also land in
+  // `raw_elevenlabs_payload`, so a recording records what it was asked with.
+  interview_name: string
+  agent_display_name: string
+  company_name: string
+  questions: string
+  question_count: number
+}
+
+/** Shape ElevenLabs accepts for a session-start override. Every field is
+ * refused unless the matching flag is enabled on the agent. */
+type InterviewOverrides = {
+  agent?: { prompt?: { prompt?: string }; firstMessage?: string }
 }
 
 export type InterviewRoomSession =
   | {
       ok: true
+      /** Prompt/first-message overrides, present only for agents that have
+       * opted in *and* had the matching flags enabled in ElevenLabs. Undefined
+       * otherwise — sending an unpermitted override fails the session. */
+      overrides?: InterviewOverrides
       /** WebRTC credential — the preferred transport, best audio quality. */
       token: string | null
       /** WebSocket credential, used when WebRTC's UDP/SCTP media path is blocked
@@ -105,6 +130,104 @@ export async function getInterviewRoomFailureReason(
     // Diagnostics must never be the thing that breaks the screen.
     return null
   }
+}
+
+/** Video lives in its own bucket, not alongside audio — see the
+ * `video_recordings_bucket` migration for why (size limit, retention clock, and
+ * access surface all differ). The `call_recordings` row still ties them
+ * together via `video_storage_path`. */
+const VIDEO_RECORDINGS_BUCKET = "video-recordings"
+
+/** Extension the bucket + players expect, from what MediaRecorder produced. */
+function videoExtension(mimeType: string): string {
+  if (mimeType.includes("mp4")) return "mp4"
+  if (mimeType.includes("matroska")) return "mkv"
+  return "webm"
+}
+
+/**
+ * Issues a one-off signed upload URL for a candidate's interview video.
+ *
+ * The browser uploads **directly to Storage** rather than POSTing the file to
+ * us: recordings run to tens of megabytes, which no Server Action body should
+ * carry, and a signed URL also works for a future candidate who has no login at
+ * all — unlike the bucket's `profiles.side = 'stellaforce'` RLS policy.
+ */
+export async function createInterviewVideoUpload(
+  conversationId: string,
+  mimeType: string
+): Promise<
+  { ok: true; path: string; token: string } | { ok: false; error: string }
+> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  if (!conversationId) return { ok: false, error: "No conversation to attach video to." }
+
+  const admin = createAdminClient()
+
+  // Prefer the identity the post-call webhook already resolved, so the object
+  // lands under the prefix the storage RLS policies expect. The webhook often
+  // hasn't arrived yet, in which case this is a test-bench run anyway.
+  const { data: existing } = await admin
+    .from("call_recordings")
+    .select("application_id, interviewer_type")
+    .eq("elevenlabs_conversation_id", conversationId)
+    .maybeSingle()
+
+  const file = `${Date.now()}-${conversationId}.${videoExtension(mimeType)}`
+  const path = existing?.application_id
+    ? `applications/${existing.application_id}/${existing.interviewer_type}/${file}`
+    : `test/${file}`
+
+  const { data, error } = await admin.storage
+    .from(VIDEO_RECORDINGS_BUCKET)
+    .createSignedUploadUrl(path)
+
+  if (error || !data) {
+    return { ok: false, error: `Could not prepare video upload: ${error?.message ?? "unknown"}` }
+  }
+  return { ok: true, path: data.path, token: data.token }
+}
+
+/**
+ * Links an uploaded video onto its `call_recordings` row.
+ *
+ * Upserts rather than updates because the browser usually finishes uploading
+ * before ElevenLabs' post-call webhook lands. Writing a stub keyed by
+ * `elevenlabs_conversation_id` lets the transcript payload merge into the same
+ * row afterwards — PostgREST's on-conflict update only touches the columns in
+ * each payload, so neither writer clobbers the other's.
+ */
+export async function finalizeInterviewVideo(input: {
+  conversationId: string
+  path: string
+  sizeBytes: number
+  mimeType: string
+  durationSeconds: number
+  status: "uploaded" | "failed"
+}): Promise<{ ok: boolean; error?: string }> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+
+  const admin = createAdminClient()
+  const { error } = await admin.from("call_recordings").upsert(
+    {
+      elevenlabs_conversation_id: input.conversationId,
+      // NOT NULL on the table, and always true here — a room interview is
+      // AI-conducted by definition.
+      interviewer_type: "ai",
+      video_storage_path: input.path,
+      video_filename: input.path.split("/").pop() ?? null,
+      video_mime_type: input.mimeType,
+      video_file_size: input.sizeBytes,
+      video_duration_seconds: input.durationSeconds,
+      video_status: input.status,
+    },
+    { onConflict: "elevenlabs_conversation_id" }
+  )
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
 }
 
 /** Throws a message already fit to show a user — callers surface it verbatim. */
@@ -221,10 +344,26 @@ export async function createInterviewRoomSession(
     return { ok: false, reason: "token_failed", error: why }
   }
 
+  // Interview content for this agent. Falls back to the agent row's own name
+  // and an empty question set, so an agent with no fixture still runs — it just
+  // uses whatever prompt it already has in ElevenLabs.
+  const config = getInterviewAgentConfig(agent.id)
+  const candidateName = "Jane Doe"
+
+  const overrides: InterviewOverrides | undefined = config?.allowPromptOverride
+    ? {
+        agent: {
+          prompt: { prompt: buildInterviewPrompt(config, candidateName) },
+          ...(config.firstMessage ? { firstMessage: config.firstMessage } : {}),
+        },
+      }
+    : undefined
+
   return {
     ok: true,
     token,
     signedUrl,
+    overrides,
     dynamicVariables: {
       channel: "video_room",
       agent_id: agent.id,
@@ -232,12 +371,17 @@ export async function createInterviewRoomSession(
       is_test: true,
       application_id: "",
       candidate_id: "",
-      candidate_name: "Jane Doe",
+      candidate_name: candidateName,
       job_id: "",
-      job_title: "Test Video Interview",
+      job_title: config?.interviewName ?? "Test Video Interview",
       client_id: "",
       sub_stage_id: "",
       campaign_id: randomUUID(),
+      interview_name: config?.interviewName ?? agent.name,
+      agent_display_name: config?.agentDisplayName ?? agent.name,
+      company_name: config?.companyName ?? "Stella Force",
+      questions: config ? formatQuestions(config.questions) : "",
+      question_count: config?.questions.length ?? 0,
     },
   }
 }
