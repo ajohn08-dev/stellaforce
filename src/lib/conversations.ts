@@ -15,10 +15,6 @@ export type Conversation = {
   conversation_id: string
   agent_name: string | null
   candidate_name: string | null
-  /** The number the agent dialled — the candidate's for a real screen, the
-   * recruiter-supplied one for a test run. E.164, kept as text so the leading
-   * `+` and country code survive. */
-  to_number: string | null
   /** Date-only slice of `started_at`, for formatDate. Null if the call never started. */
   started_on: string | null
   /** Full `started_at` timestamp — the detail sheet shows time-of-day, which
@@ -26,16 +22,42 @@ export type Conversation = {
   started_at: string | null
   duration_seconds: number | null
   is_test_call: boolean
+  interview_type: InterviewType
+  /** The number the agent dialled — the candidate's for a real screen, the
+   * recruiter-supplied one for a test run. E.164, kept as text so the leading
+   * `+` and country code survive. Null for a browser room, which has no phone
+   * leg; shown as metadata in the detail sheet rather than as a list column,
+   * since it's a lookup detail rather than something you scan a table by. */
+  to_number: string | null
   transcript: ConversationTranscriptTurn[]
-  /** Playable media for the call. `audio_url` is a short-lived signed URL —
-   * the `call-recordings` bucket is private, so the raw storage path isn't
-   * fetchable from the browser. `video_url` is a plain external link (video
-   * isn't owned/stored by us the way audio is). */
+  /** Playable media for the call. Both media buckets are private, so owned
+   * media is served through short-lived signed URLs; raw storage paths aren't
+   * fetchable from the browser. Audio lives in `call-recordings`, video in
+   * `video-recordings`.
+   *
+   * A room interview produces **two** recordings from different sources:
+   * `audio_url` is the ElevenLabs conversation (both participants), while
+   * `candidate_video_url` is the candidate's camera, captured in the browser
+   * and silent by design. Phone calls have audio only.
+   *
+   * `video_url` is unrelated to either — a plain external link for stages run
+   * on a third-party platform. */
   audio_url: string | null
   audio_status: AudioStatus
   audio_mime_type: string | null
+  candidate_video_url: string | null
+  candidate_video_status: MediaStatus | null
+  candidate_video_mime_type: string | null
   video_url: string | null
 }
+
+/** Same vocabulary as `audio_status`, reused for the candidate video column. */
+export type MediaStatus = "pending" | "uploaded" | "failed"
+
+/** How the interview reached the candidate. `video` is a browser interview
+ * room, `audio` an outbound phone screen — the same distinction a job stage
+ * makes with `job_workflow_sub_stages.format`. */
+export type InterviewType = "audio" | "video"
 
 /** Mirrors the `audio_status` CHECK on call_recordings. `pending` means the
  * transcript webhook landed but the audio payload hasn't been processed yet —

@@ -4,6 +4,7 @@ import { randomUUID } from "crypto"
 
 import { getCurrentProfile } from "@/lib/auth"
 import { serverEnv } from "@/lib/env"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 /**
@@ -105,6 +106,104 @@ export async function getInterviewRoomFailureReason(
     // Diagnostics must never be the thing that breaks the screen.
     return null
   }
+}
+
+/** Video lives in its own bucket, not alongside audio — see the
+ * `video_recordings_bucket` migration for why (size limit, retention clock, and
+ * access surface all differ). The `call_recordings` row still ties them
+ * together via `video_storage_path`. */
+const VIDEO_RECORDINGS_BUCKET = "video-recordings"
+
+/** Extension the bucket + players expect, from what MediaRecorder produced. */
+function videoExtension(mimeType: string): string {
+  if (mimeType.includes("mp4")) return "mp4"
+  if (mimeType.includes("matroska")) return "mkv"
+  return "webm"
+}
+
+/**
+ * Issues a one-off signed upload URL for a candidate's interview video.
+ *
+ * The browser uploads **directly to Storage** rather than POSTing the file to
+ * us: recordings run to tens of megabytes, which no Server Action body should
+ * carry, and a signed URL also works for a future candidate who has no login at
+ * all — unlike the bucket's `profiles.side = 'stellaforce'` RLS policy.
+ */
+export async function createInterviewVideoUpload(
+  conversationId: string,
+  mimeType: string
+): Promise<
+  { ok: true; path: string; token: string } | { ok: false; error: string }
+> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  if (!conversationId) return { ok: false, error: "No conversation to attach video to." }
+
+  const admin = createAdminClient()
+
+  // Prefer the identity the post-call webhook already resolved, so the object
+  // lands under the prefix the storage RLS policies expect. The webhook often
+  // hasn't arrived yet, in which case this is a test-bench run anyway.
+  const { data: existing } = await admin
+    .from("call_recordings")
+    .select("application_id, interviewer_type")
+    .eq("elevenlabs_conversation_id", conversationId)
+    .maybeSingle()
+
+  const file = `${Date.now()}-${conversationId}.${videoExtension(mimeType)}`
+  const path = existing?.application_id
+    ? `applications/${existing.application_id}/${existing.interviewer_type}/${file}`
+    : `test/${file}`
+
+  const { data, error } = await admin.storage
+    .from(VIDEO_RECORDINGS_BUCKET)
+    .createSignedUploadUrl(path)
+
+  if (error || !data) {
+    return { ok: false, error: `Could not prepare video upload: ${error?.message ?? "unknown"}` }
+  }
+  return { ok: true, path: data.path, token: data.token }
+}
+
+/**
+ * Links an uploaded video onto its `call_recordings` row.
+ *
+ * Upserts rather than updates because the browser usually finishes uploading
+ * before ElevenLabs' post-call webhook lands. Writing a stub keyed by
+ * `elevenlabs_conversation_id` lets the transcript payload merge into the same
+ * row afterwards — PostgREST's on-conflict update only touches the columns in
+ * each payload, so neither writer clobbers the other's.
+ */
+export async function finalizeInterviewVideo(input: {
+  conversationId: string
+  path: string
+  sizeBytes: number
+  mimeType: string
+  durationSeconds: number
+  status: "uploaded" | "failed"
+}): Promise<{ ok: boolean; error?: string }> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+
+  const admin = createAdminClient()
+  const { error } = await admin.from("call_recordings").upsert(
+    {
+      elevenlabs_conversation_id: input.conversationId,
+      // NOT NULL on the table, and always true here — a room interview is
+      // AI-conducted by definition.
+      interviewer_type: "ai",
+      video_storage_path: input.path,
+      video_filename: input.path.split("/").pop() ?? null,
+      video_mime_type: input.mimeType,
+      video_file_size: input.sizeBytes,
+      video_duration_seconds: input.durationSeconds,
+      video_status: input.status,
+    },
+    { onConflict: "elevenlabs_conversation_id" }
+  )
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
 }
 
 /** Throws a message already fit to show a user — callers surface it verbatim. */

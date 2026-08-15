@@ -13,7 +13,16 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { toast } from "sonner"
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Flag, Trash2 } from "lucide-react"
+import {
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Flag,
+  Phone,
+  Trash2,
+  Video,
+} from "lucide-react"
 
 import {
   Table,
@@ -111,13 +120,21 @@ const columns: ColumnDef<Conversation>[] = [
     },
   },
   {
-    accessorKey: "to_number",
-    header: "Phone number",
-    cell: ({ row }) => (
-      <span className="block truncate tabular-nums">
-        {row.original.to_number ?? "—"}
-      </span>
-    ),
+    accessorKey: "interview_type",
+    header: "Interview type",
+    cell: ({ row }) => {
+      const isVideo = row.original.interview_type === "video"
+      return (
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
+          {isVideo ? (
+            <Video className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <Phone className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          {isVideo ? "Video" : "Audio"}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "started_on",

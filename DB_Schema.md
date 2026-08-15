@@ -347,6 +347,21 @@ prefixes; client-side profiles get **read-only**, scoped to `applications/...`
 rows whose `application_id` resolves to their own `current_profile_client_id()`
 — no client access to `test/...` at all.
 
+**Storage bucket `video-recordings`** (private) — `video/webm`, `video/mp4`,
+`video/x-matroska`; **500 MB** cap. Holds the candidate's camera recording from
+a browser interview room, captured with `MediaRecorder` and uploaded straight
+from the page via a signed upload URL (the file never passes through a Server
+Action). Silent by design — the microphone belongs to the ElevenLabs SDK during
+the call, and its audio covers both participants. Same two path shapes and the
+same `storage.objects` RLS as `call-recordings` above, so client-side access
+stays scoped to their own `applications/...`. Deliberately a **separate bucket**
+rather than sharing `call-recordings`: video is 10–100x the size (a shared
+bucket forces one `file_size_limit` on both), a candidate's likeness may need a
+shorter retention clock than their voice, and biometric-adjacent media benefits
+from its own policy surface. The join back is
+`call_recordings.video_storage_path` — one row still describes the whole
+interview; only the bytes live elsewhere.
+
 **agents** **[tenant RLS-like — see RLS model]** (9 cols) — minimal registry
 for externally-hosted screening agents (e.g. an ElevenLabs conversational
 agent): `id` (pk), `name` (not null), `description`, `status` (enum

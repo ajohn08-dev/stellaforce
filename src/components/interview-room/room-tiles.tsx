@@ -1,9 +1,35 @@
 "use client"
 
 import * as React from "react"
-import { MicOff, VideoOff } from "lucide-react"
+import { Maximize2, MicOff, Minimize2, VideoOff } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+
+/**
+ * Per-tile expand/collapse affordance. Expanding a tile makes it the stage and
+ * demotes the other to a corner; collapsing returns both to the even split.
+ */
+function FocusButton({
+  focused,
+  label,
+  onClick,
+}: {
+  focused: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="absolute top-2 right-2 z-20 flex size-7 items-center justify-center rounded-md bg-black/50 text-white/70 backdrop-blur-sm transition-colors outline-none hover:bg-black/70 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60"
+    >
+      {focused ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+    </button>
+  )
+}
 
 /**
  * Samples a byte-frequency getter on an animation frame and hands a smoothed
@@ -82,11 +108,21 @@ export function AgentTile({
   isSpeaking,
   connected,
   getOutputFrequencyData,
+  /** Picture-in-picture rendering: shrinks the avatar and rings, and moves the
+   * name into a corner chip so it stays legible at tile size. */
+  compact = false,
+  className,
+  focused = false,
+  onToggleFocus,
 }: {
   agentName: string
   isSpeaking: boolean
   connected: boolean
   getOutputFrequencyData: (() => Uint8Array) | null
+  compact?: boolean
+  className?: string
+  focused?: boolean
+  onToggleFocus?: () => void
 }) {
   const outerRingRef = React.useRef<HTMLDivElement>(null)
   const innerRingRef = React.useRef<HTMLDivElement>(null)
@@ -110,32 +146,73 @@ export function AgentTile({
 
   useAudioLevel(getOutputFrequencyData, connected, applyLevel)
 
+  const status = !connected ? "Connecting…" : isSpeaking ? "Speaking…" : "Listening"
+
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-brand-neutral-900">
-      <div className="relative flex flex-col items-center gap-5">
+    <div
+      className={cn(
+        "relative flex items-center justify-center overflow-hidden border border-white/10 bg-brand-neutral-900",
+        compact ? "rounded-xl" : "size-full rounded-2xl",
+        className
+      )}
+    >
+      {onToggleFocus && (
+        <FocusButton
+          focused={focused}
+          label={focused ? "Shrink interviewer" : "Expand interviewer"}
+          onClick={onToggleFocus}
+        />
+      )}
+
+      <div className={cn("relative flex flex-col items-center", compact ? "gap-0" : "gap-5")}>
         <div className="relative flex items-center justify-center">
           <div
             ref={outerRingRef}
             aria-hidden
-            className="absolute size-44 rounded-full bg-brand-orange-600/25 opacity-0"
+            className={cn(
+              "absolute rounded-full bg-brand-orange-600/25 opacity-0",
+              compact ? "size-20" : "size-44"
+            )}
           />
           <div
             ref={innerRingRef}
             aria-hidden
-            className="absolute size-44 rounded-full bg-brand-orange-600/20 opacity-0"
+            className={cn(
+              "absolute rounded-full bg-brand-orange-600/20 opacity-0",
+              compact ? "size-20" : "size-44"
+            )}
           />
-          <div className="relative flex size-28 items-center justify-center rounded-full bg-gradient-to-br from-brand-orange-500 to-brand-orange-700 text-2xl font-semibold text-white shadow-lg">
+          <div
+            className={cn(
+              "relative flex items-center justify-center rounded-full bg-gradient-to-br from-brand-orange-500 to-brand-orange-700 font-semibold text-white shadow-lg",
+              compact ? "size-12 text-sm" : "size-28 text-2xl"
+            )}
+          >
             {initialsOf(agentName) || "SF"}
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-1.5 text-center">
-          <span className="text-sm font-medium text-white">{agentName}</span>
-          <span className="text-xs text-white/55">
-            {!connected ? "Connecting…" : isSpeaking ? "Speaking…" : "Listening"}
-          </span>
-        </div>
+        {!compact && (
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <span className="text-sm font-medium text-white">{agentName}</span>
+            <span className="text-xs text-white/55">{status}</span>
+          </div>
+        )}
       </div>
+
+      {compact && (
+        <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md bg-black/55 px-2 py-1 text-xs text-white backdrop-blur-sm">
+          <span
+            aria-hidden
+            className={cn(
+              "size-1.5 shrink-0 rounded-full",
+              isSpeaking && connected ? "bg-brand-orange-400" : "bg-white/40"
+            )}
+          />
+          <span className="truncate">{agentName}</span>
+          <span className="sr-only">{status}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -148,6 +225,8 @@ export function SelfTile({
   getInputFrequencyData,
   connected,
   className,
+  focused = false,
+  onToggleFocus,
 }: {
   stream: MediaStream | null
   cameraOn: boolean
@@ -156,6 +235,8 @@ export function SelfTile({
   getInputFrequencyData?: (() => Uint8Array) | null
   connected?: boolean
   className?: string
+  focused?: boolean
+  onToggleFocus?: () => void
 }) {
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const outlineRef = React.useRef<HTMLDivElement>(null)
@@ -183,6 +264,14 @@ export function SelfTile({
         className
       )}
     >
+      {onToggleFocus && (
+        <FocusButton
+          focused={focused}
+          label={focused ? "Shrink your video" : "Expand your video"}
+          onClick={onToggleFocus}
+        />
+      )}
+
       {/* Speaking outline, driven by input level rather than a boolean, so it
           reads as a live meter instead of a blinking indicator. */}
       <div

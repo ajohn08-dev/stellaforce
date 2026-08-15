@@ -10,6 +10,7 @@ import {
 import { AgentTile, SelfTile } from "@/components/interview-room/room-tiles"
 import { LiveTranscript, type TranscriptTurn } from "@/components/interview-room/live-transcript"
 import { RoomControls } from "@/components/interview-room/room-controls"
+import { cn } from "@/lib/utils"
 
 function formatElapsed(seconds: number) {
   const mins = Math.floor(seconds / 60)
@@ -53,6 +54,14 @@ export function InterviewStage({
 
   const connected = status === "connected"
 
+  // Off by default — the transcript is a reference aid, and a candidate reading
+  // along tends to stop looking at the camera.
+  const [transcriptOpen, setTranscriptOpen] = React.useState(false)
+
+  // "split" gives both participants equal weight, which is the honest default:
+  // neither the candidate nor the interviewer is the subordinate one.
+  const [focus, setFocus] = React.useState<"split" | "self" | "agent">("split")
+
   const [elapsed, setElapsed] = React.useState(0)
   React.useEffect(() => {
     if (!connected) return
@@ -82,39 +91,69 @@ export function InterviewStage({
         </span>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_20rem]">
-        <div className="relative min-h-0">
-          <AgentTile
-            agentName={agentName}
-            isSpeaking={isSpeaking}
-            connected={connected}
-            getOutputFrequencyData={connected ? controls.getOutputByteFrequencyData : null}
-          />
-
-          {/* Picture-in-picture self view, as in any video call. */}
+      <div
+        className={cn(
+          "grid min-h-0 flex-1 gap-4",
+          transcriptOpen && "lg:grid-cols-[1fr_20rem]"
+        )}
+      >
+        {/* Three layouts from one piece of state. Split shows both participants
+            at equal size; focusing either one promotes it to the stage and
+            demotes the other to a corner tile. Each tile carries its own
+            expand/collapse control, so it's the viewer's choice. */}
+        <div
+          className={cn(
+            "relative min-h-0",
+            focus === "split" && "grid gap-4 max-md:grid-rows-2 md:grid-cols-2"
+          )}
+        >
           <SelfTile
             stream={stream}
             cameraOn={cameraOn}
             micMuted={micMuted}
             connected={connected}
             getInputFrequencyData={connected ? controls.getInputByteFrequencyData : null}
-            className="absolute right-4 bottom-4 aspect-video w-40 shadow-xl sm:w-52"
+            focused={focus === "self"}
+            onToggleFocus={() => setFocus((f) => (f === "self" ? "split" : "self"))}
+            className={cn(
+              focus === "agent"
+                ? "absolute right-4 bottom-4 z-10 aspect-video w-40 shadow-xl sm:w-52"
+                : "size-full rounded-2xl"
+            )}
+          />
+
+          <AgentTile
+            agentName={agentName}
+            isSpeaking={isSpeaking}
+            connected={connected}
+            getOutputFrequencyData={connected ? controls.getOutputByteFrequencyData : null}
+            compact={focus === "self"}
+            focused={focus === "agent"}
+            onToggleFocus={() => setFocus((f) => (f === "agent" ? "split" : "agent"))}
+            className={cn(
+              focus === "self" &&
+                "absolute right-4 bottom-4 z-10 aspect-video w-40 shadow-xl sm:w-52"
+            )}
           />
         </div>
 
-        <LiveTranscript
-          turns={turns}
-          connected={connected}
-          agentName={agentName}
-          className="max-lg:max-h-56"
-        />
+        {transcriptOpen && (
+          <LiveTranscript
+            turns={turns}
+            connected={connected}
+            agentName={agentName}
+            className="max-lg:max-h-56"
+          />
+        )}
       </div>
 
       <RoomControls
         micMuted={micMuted}
         cameraOn={cameraOn}
+        transcriptOpen={transcriptOpen}
         onToggleMic={onToggleMic}
         onToggleCamera={onToggleCamera}
+        onToggleTranscript={() => setTranscriptOpen((open) => !open)}
         onEnd={() => {
           // Close the conversation *then* advance the phase. `onDisconnect`
           // would get us there too, but not if the socket is already gone —

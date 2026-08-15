@@ -38,12 +38,18 @@ export function ConversationDetailSheet({
     typeof document !== "undefined" ? (document.getElementById("app-content") ?? undefined) : undefined
 
   // Built by filtering rather than conditional JSX so a missing date/number
-  // never leaves an orphaned "·" separator behind.
+  // never leaves an orphaned "·" separator behind. The interview type carries
+  // the phone number with it when there is one — a browser room has no phone
+  // leg, so it simply reads "Video interview".
   const metadata = conversation
     ? [
         conversation.started_on ? formatDate(conversation.started_on) : null,
         conversation.started_at ? formatTime(conversation.started_at) : null,
-        conversation.to_number,
+        conversation.interview_type === "video"
+          ? "Video interview"
+          : conversation.to_number
+            ? `Audio interview · ${conversation.to_number}`
+            : "Audio interview",
       ].filter((part): part is string => Boolean(part))
     : []
 

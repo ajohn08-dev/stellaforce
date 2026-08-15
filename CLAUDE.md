@@ -197,6 +197,19 @@ webhook either way, so a room conversation lands in `call_recordings` as an
 ordinary `interviewer_type = 'ai'` row and appears on the Conversations page
 next to phone calls with no extra plumbing — `to_number` is simply null.
 
+**A room interview produces two recordings, from two sources.** The ElevenLabs
+audio (both participants) lands via the webhook below into the `call-recordings`
+bucket. The candidate's **camera** never reaches ElevenLabs at all — it is
+captured in the browser with `MediaRecorder`, uploaded straight to Storage via a
+signed upload URL (never through a Server Action; the files are tens of MB), and
+linked onto the same row via `call_recordings.video_storage_path`. It is
+**silent by design**: the mic belongs to the ElevenLabs SDK for the duration of
+the call, and its audio is the better track anyway. Video lives in its own
+**`video-recordings`** bucket (500 MB cap, video MIME types, RLS mirroring
+`call-recordings`) rather than beside the audio — size, retention clock, and
+access sensitivity all differ. `video_url` is unrelated to either: it stays a
+plain external link for third-party-hosted stages.
+
 That webhook is received by **`POST /api/calls/postcall`**
 (`src/lib/server/elevenlabs-postcall.ts`), HMAC-verified with
 `ELEVENLABS_POSTCALL_WEBHOOK_SECRET`. ElevenLabs delivers each conversation as

@@ -173,8 +173,9 @@ export function InterviewBriefing({
               </li>
               <li className="flex items-start gap-2">
                 <Video className="mt-0.5 size-4 shrink-0 text-white/40" />
-                Your camera is a preview for you only. The conversation itself is
-                audio, and it is recorded and transcribed.
+                Your camera and voice are recorded, and the conversation is
+                transcribed. The recording is shared with the hiring team
+                reviewing your application.
               </li>
             </ul>
           </div>
@@ -207,7 +208,7 @@ export function InterviewBriefing({
                 ? "Allow camera and microphone access to continue."
                 : preparing
                   ? "Setting up your session."
-                  : "The interviewer will greet you as soon as you join."}
+                  : "By starting, you agree to this interview being recorded."}
             </p>
           </div>
         </div>
