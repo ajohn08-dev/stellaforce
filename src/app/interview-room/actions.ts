@@ -1,0 +1,243 @@
+"use server"
+
+import { randomUUID } from "crypto"
+
+import { getCurrentProfile } from "@/lib/auth"
+import { serverEnv } from "@/lib/env"
+import { createClient } from "@/lib/supabase/server"
+
+/**
+ * The browser interview room talks to ElevenLabs **directly** — unlike the
+ * phone test run (`src/app/(app)/agents/actions.ts`), which hands off to n8n to
+ * place an outbound call. Only the token mint happens server-side, because it
+ * needs the REST key.
+ *
+ * Both channels converge again after the call: ElevenLabs fires the same
+ * `post_call_transcription` webhook either way, so a room conversation lands in
+ * `call_recordings` as an ordinary `interviewer_type = 'ai'` row and shows up on
+ * the Conversations page alongside phone calls with no extra plumbing.
+ */
+
+/** Mirrors the phone path's `CallDispatchPayload` field-for-field where the two
+ * overlap, so the post-call webhook can write `call_recordings` from one shape
+ * regardless of channel. `channel` is the only addition — it rides in
+ * `raw_elevenlabs_payload` and is read back via `payloadDynamicVariable()`
+ * (`src/lib/data.ts`), which is why telling the channels apart needs no column.
+ *
+ * Note the absent-value convention differs from the phone path by necessity:
+ * ElevenLabs dynamic variables are `string | number | boolean` with no null, so
+ * the id fields carry `""` where `CallDispatchPayload` carries `null`. The
+ * webhook must therefore treat empty string as absent for these keys. Omitting
+ * them entirely isn't an option — an agent prompt that interpolates a missing
+ * variable errors at conversation start. */
+type InterviewRoomVariables = {
+  channel: "video_room"
+  agent_id: string
+  agent_name: string
+  is_test: boolean
+  application_id: string
+  candidate_id: string
+  candidate_name: string
+  job_id: string
+  job_title: string
+  client_id: string
+  sub_stage_id: string
+  campaign_id: string
+}
+
+export type InterviewRoomSession =
+  | {
+      ok: true
+      /** WebRTC credential — the preferred transport, best audio quality. */
+      token: string | null
+      /** WebSocket credential, used when WebRTC's UDP/SCTP media path is blocked
+       * or degraded (corporate VPNs, restrictive firewalls, low tunnel MTUs).
+       * Plain TCP:443, so it survives most middleboxes. */
+      signedUrl: string | null
+      dynamicVariables: InterviewRoomVariables
+    }
+  | {
+      /** The room renders its full UI and explains the gap rather than failing
+       * hard — `reason` picks which explanation. */
+      ok: false
+      reason: "unauthorized" | "not_found" | "not_configured" | "token_failed"
+      error: string
+    }
+
+const TOKEN_ENDPOINT = "https://api.elevenlabs.io/v1/convai/conversation/token"
+const SIGNED_URL_ENDPOINT = "https://api.elevenlabs.io/v1/convai/conversation/get-signed-url"
+const CONVERSATION_ENDPOINT = "https://api.elevenlabs.io/v1/convai/conversations"
+
+/**
+ * Why a conversation actually ended, straight from ElevenLabs.
+ *
+ * The browser SDK reports server-side terminations as "Server error: Unknown
+ * error", which is useless to whoever is looking at the screen — a blown quota,
+ * a misconfigured agent, and a genuine outage all look identical. ElevenLabs
+ * records the real reason against the conversation, so we fetch it and say it
+ * out loud. Returns null if it can't be determined; callers fall back to
+ * whatever the SDK gave them.
+ */
+export async function getInterviewRoomFailureReason(
+  conversationId: string
+): Promise<string | null> {
+  const profile = await getCurrentProfile()
+  if (!profile) return null
+
+  const apiKey = serverEnv.elevenlabsApiKey
+  if (!apiKey || !conversationId) return null
+
+  try {
+    const data = await fetchJson<{
+      status?: unknown
+      metadata?: { termination_reason?: unknown; error?: { reason?: unknown } }
+    }>(`${CONVERSATION_ENDPOINT}/${encodeURIComponent(conversationId)}`, apiKey)
+
+    if (data.status !== "failed") return null
+
+    const reason =
+      (typeof data.metadata?.error?.reason === "string" && data.metadata.error.reason) ||
+      (typeof data.metadata?.termination_reason === "string" &&
+        data.metadata.termination_reason) ||
+      null
+    return reason || null
+  } catch {
+    // Diagnostics must never be the thing that breaks the screen.
+    return null
+  }
+}
+
+/** Throws a message already fit to show a user — callers surface it verbatim. */
+async function fetchJson<T>(url: string, apiKey: string): Promise<T> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15_000)
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: { "xi-api-key": apiKey },
+      signal: controller.signal,
+    })
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? `Could not reach ElevenLabs: ${err.message}`
+        : "Could not reach ElevenLabs."
+    )
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(
+      `ElevenLabs refused the session (${response.status}). ${body.slice(0, 200)}`
+    )
+  }
+  return (await response.json()) as T
+}
+
+/**
+ * Mints short-lived ElevenLabs client credentials for a browser interview room.
+ *
+ * This is the test-bench path: a recruiter opening the room from the Agents
+ * page, with a dummy candidate identity and `is_test: true` — the same
+ * convention `triggerAgentTestCall` uses. The production path (a real candidate
+ * arriving via an emailed session code) will reuse this function with real
+ * application identity once the invite flow exists.
+ */
+export async function createInterviewRoomSession(
+  agentId: string
+): Promise<InterviewRoomSession> {
+  const profile = await getCurrentProfile()
+  if (!profile) {
+    return {
+      ok: false,
+      reason: "unauthorized",
+      error: "You must be signed in to open an interview room.",
+    }
+  }
+
+  const supabase = await createClient()
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("id, name, external_agent_id")
+    .eq("id", agentId)
+    .maybeSingle()
+
+  if (!agent) {
+    return { ok: false, reason: "not_found", error: "That screening agent no longer exists." }
+  }
+
+  // Two independent prerequisites, reported separately — "add the key" and
+  // "create this agent in ElevenLabs" are different jobs for whoever is reading.
+  const apiKey = serverEnv.elevenlabsApiKey
+  if (!apiKey) {
+    return {
+      ok: false,
+      reason: "not_configured",
+      error:
+        "ELEVENLABS_API_KEY isn't set on the server, so no interview session can be started yet.",
+    }
+  }
+  if (!agent.external_agent_id) {
+    return {
+      ok: false,
+      reason: "not_configured",
+      error: `"${agent.name}" hasn't been created in ElevenLabs yet — it has no external agent ID to connect to.`,
+    }
+  }
+
+  const externalId = encodeURIComponent(agent.external_agent_id)
+
+  // Both credentials are minted up front, in parallel, so the browser can fall
+  // back from WebRTC to WebSocket mid-session without a second round trip (and
+  // without a user gesture to spend on one).
+  const [tokenResult, signedUrlResult] = await Promise.allSettled([
+    fetchJson<{ token?: unknown }>(`${TOKEN_ENDPOINT}?agent_id=${externalId}`, apiKey),
+    fetchJson<{ signed_url?: unknown }>(
+      `${SIGNED_URL_ENDPOINT}?agent_id=${externalId}`,
+      apiKey
+    ),
+  ])
+
+  // Either credential is sufficient to hold an interview, so only a failure of
+  // *both* is fatal. This matters in practice: the two endpoints rate-limit
+  // independently, and WebRTC is also the one likelier to be blocked outright.
+  const token =
+    tokenResult.status === "fulfilled" && typeof tokenResult.value.token === "string"
+      ? tokenResult.value.token
+      : null
+  const signedUrl =
+    signedUrlResult.status === "fulfilled" &&
+    typeof signedUrlResult.value.signed_url === "string"
+      ? signedUrlResult.value.signed_url
+      : null
+
+  if (!token && !signedUrl) {
+    const why =
+      tokenResult.status === "rejected"
+        ? String(tokenResult.reason).replace(/^Error:\s*/, "")
+        : "ElevenLabs returned no usable session credentials."
+    return { ok: false, reason: "token_failed", error: why }
+  }
+
+  return {
+    ok: true,
+    token,
+    signedUrl,
+    dynamicVariables: {
+      channel: "video_room",
+      agent_id: agent.id,
+      agent_name: agent.name,
+      is_test: true,
+      application_id: "",
+      candidate_id: "",
+      candidate_name: "Jane Doe",
+      job_id: "",
+      job_title: "Test Video Interview",
+      client_id: "",
+      sub_stage_id: "",
+      campaign_id: randomUUID(),
+    },
+  }
+}

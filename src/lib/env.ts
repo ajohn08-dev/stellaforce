@@ -96,6 +96,14 @@ export const serverEnv = {
       process.env.ELEVENLABS_POSTCALL_WEBHOOK_SECRET
     )
   },
+  /** ElevenLabs REST key, used to mint short-lived per-conversation client
+   * tokens for the browser interview room. Deliberately **optional** (`null`
+   * when unset) rather than `required()`: the room is built to render its full
+   * UI and report "not connected yet" instead of throwing, so the flow stays
+   * testable before the key is provisioned. */
+  get elevenlabsApiKey(): string | null {
+    return process.env.ELEVENLABS_API_KEY?.trim() || null
+  },
   get googleClientId() {
     return required("GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID)
   },

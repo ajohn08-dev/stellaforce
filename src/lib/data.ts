@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { isSupabaseConfigured } from "@/lib/env"
 import type {
   ActivityEventRow,
+  AgentRow,
   ApplicationRow,
   CandidateCertificationRow,
   CandidateEducationRow,
@@ -982,4 +983,15 @@ export async function getScreeningAgents(): Promise<ScreeningAgent[]> {
     ...agent,
     client_names: [...(clientsByAgent.get(agent.id) ?? [])].sort(),
   }))
+}
+
+/** A single agent, for the browser interview room. Not filtered by channel:
+ * an ElevenLabs conversational agent is channel-agnostic — whether a stage runs
+ * over the phone or in a room is `job_workflow_sub_stages.format`, not a
+ * property of the agent — so any agent can be taken into a room to test. */
+export async function getAgentById(agentId: string): Promise<AgentRow | null> {
+  if (!isSupabaseConfigured) return null
+  const supabase = await createClient()
+  const { data } = await supabase.from("agents").select("*").eq("id", agentId).maybeSingle()
+  return data ?? null
 }

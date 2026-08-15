@@ -168,7 +168,60 @@ migrating the full app layer to V3.2 is an ongoing pass.
 - `/clients` — list
 - `/settings` — signed-in user's email/role
 - `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)
+- `/interview-room/[agentId]` — browser interview room: a briefing/device-check
+  screen, then a live audio conversation with an ElevenLabs agent presented in a
+  video-call frame (local camera preview + agent tile + live transcript). Sits
+  **outside** the `(app)` route group — full-viewport, no sidebar/header — but is
+  still behind auth via `src/proxy.ts`. The camera is preview-only; video is
+  never transmitted. Reached from the Agents page test-run dialog. See
+  **Interview channels** below.
 - `/login` — email/password sign-in
+
+## Interview channels (phone vs. room)
+
+An AI screening stage can reach a candidate two ways. **The channel is a
+property of the stage, not of the agent** — an ElevenLabs conversational agent
+is channel-agnostic, and the same agent row can run either way. The channel
+lives in `job_workflow_sub_stages.format` (`stage_format`: `phone | video |
+onsite | async`) alongside `interviewer_type = 'ai'`; there is deliberately **no
+modality column on `agents`**, which would be a second, competing source of
+truth.
+
+| | Outbound leg | Implementation |
+|---|---|---|
+| **Phone** (`format = 'phone'`) | App → n8n → ElevenLabs places a call | `triggerAgentTestCall` / `triggerApplicationScreeningCall` (`src/app/(app)/agents/actions.ts`) |
+| **Room** (`format = 'video'`) | Browser → ElevenLabs directly | `createInterviewRoomSession` (`src/app/interview-room/actions.ts`) mints a client token; `@elevenlabs/react` runs the conversation |
+
+**The two converge on the return leg.** ElevenLabs fires the same post-call
+webhook either way, so a room conversation lands in `call_recordings` as an
+ordinary `interviewer_type = 'ai'` row and appears on the Conversations page
+next to phone calls with no extra plumbing — `to_number` is simply null.
+
+That webhook is received by **`POST /api/calls/postcall`**
+(`src/lib/server/elevenlabs-postcall.ts`), HMAC-verified with
+`ELEVENLABS_POSTCALL_WEBHOOK_SECRET`. ElevenLabs delivers each conversation as
+**two payloads**: `post_call_transcription` creates the row, then
+`post_call_audio` (base64 MP3) is uploaded to the `call-recordings` bucket and
+linked onto it. Both are keyed on `elevenlabs_conversation_id`, so redelivery
+is idempotent. **The webhook needs retries enabled** — an audio payload that
+beats its transcript gets a 409 and must be redelivered, and without retries
+that recording is lost. Configure it workspace-wide in ElevenLabs; it is not
+per-agent and not per-channel. Telling the channels apart needs no column: the room passes a
+`channel: 'video_room'` dynamic variable, which rides in
+`raw_elevenlabs_payload` and is read back via `payloadDynamicVariable()`
+(`src/lib/data.ts`). Note that ElevenLabs dynamic variables cannot be null, so
+the room's absent id fields carry `""` where the phone path's `CallDispatchPayload`
+carries `null`.
+
+The Agents-page test dialog offers **both** channels for every agent, since the
+channel is picked per job stage rather than baked into the agent.
+
+**⚠️ Missing link.** `job_workflow_sub_stages.agent_id` /
+`workflow_template_sub_stages.agent_id` exist in the schema but **no UI ever
+sets them** — the workflow stages tab lets you pick `interviewer_type = 'ai'`
+and a format, but not *which* agent. Until an agent picker exists, a real
+candidate can't be launched into either channel from a job; only the Agents-page
+test runs work.
 
 ## App shell
 Left sidebar (`src/components/app-sidebar.tsx`) + top header
