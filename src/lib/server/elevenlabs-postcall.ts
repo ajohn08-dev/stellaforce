@@ -211,17 +211,21 @@ export async function handleTranscription(
   const vars = d.conversation_initiation_client_data?.dynamic_variables ?? {}
   const admin = createAdminClient()
 
-  // Prefer the agent uuid we passed through ourselves; fall back to resolving
-  // the external id, which covers conversations started outside the app
-  // (ElevenLabs' own playground, batch calls).
+  // Prefer the agent uuid we passed through ourselves. The fallback covers
+  // conversations started outside the app (ElevenLabs' own playground, batch
+  // calls) and is deliberately non-unique: every `agents` row shares one
+  // `external_agent_id`, since they are all views onto the single ElevenLabs
+  // agent. So this picks the oldest match rather than using `.maybeSingle()`,
+  // which would error on multiple rows and silently drop the agent entirely.
   let agentId = optionalId(vars.agent_id)
   if (!agentId) {
-    const { data: agent } = await admin
+    const { data: agents } = await admin
       .from("agents")
       .select("id")
       .eq("external_agent_id", d.agent_id)
-      .maybeSingle()
-    agentId = agent?.id ?? null
+      .order("created_at", { ascending: true })
+      .limit(1)
+    agentId = agents?.[0]?.id ?? null
   }
 
   const applicationId = optionalId(vars.application_id)

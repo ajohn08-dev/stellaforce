@@ -7,6 +7,7 @@ import {
   type JobCandidateOption,
 } from "@/components/jobs/workspace/add-candidate-to-job-dialog"
 import { JobTeamPanel, type JobTeamMemberItem } from "@/components/jobs/workspace/job-team-panel"
+import { JobAutomationMenu } from "@/components/jobs/workspace/job-automation-menu"
 import type { MockJob } from "@/lib/mock-jobs"
 
 export function JobWorkspaceHeader({
@@ -45,6 +46,7 @@ export function JobWorkspaceHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        <JobAutomationMenu />
         <JobTeamPanel jobId={jobId} members={teamMembers} />
         {job.status === "open" && (
           <AddCandidateToJobDialog jobId={jobId} candidates={candidateOptions} />

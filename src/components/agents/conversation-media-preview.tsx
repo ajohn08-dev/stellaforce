@@ -28,6 +28,7 @@ export function ConversationMediaPreview({
     candidate_video_url,
     candidate_video_status,
     candidate_video_mime_type,
+    candidate_video_offset_seconds,
   } = conversation
 
   // Externally-hosted recording — self-contained, nothing of ours to pair it with.
@@ -50,6 +51,7 @@ export function ConversationMediaPreview({
         videoMimeType={candidate_video_mime_type}
         audioUrl={audio_url}
         audioMimeType={audio_mime_type}
+        offsetSeconds={candidate_video_offset_seconds}
       />
     )
   }

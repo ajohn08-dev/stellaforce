@@ -97,7 +97,7 @@ export function ConversationDetailSheet({
                 >
                   <span className="text-xs text-muted-foreground">
                     {turn.speaker === "agent"
-                      ? (conversation.agent_name ?? "Agent")
+                      ? (conversation.agent_display_name ?? conversation.agent_name ?? "Agent")
                       : (conversation.candidate_name ?? "Candidate")}
                   </span>
                   <p

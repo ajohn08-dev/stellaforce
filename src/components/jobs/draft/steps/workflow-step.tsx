@@ -272,7 +272,7 @@ const STAGE_SCROLL_STEP = 240
 
 /** Stage chips never wrap — a template's real stage count can run long, so
  * they scroll horizontally instead, with chevrons that only render when
- * there's more to scroll to (mirrors PipelineBoard's tab scroller). */
+ * there's more to scroll to (mirrors JobWorkspaceTabs' tab scroller). */
 function StageChipRow({
   stages,
   selectedStageId,

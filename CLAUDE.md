@@ -164,7 +164,12 @@ migrating the full app layer to V3.2 is an ongoing pass.
 - `/candidates/[id]` — profile view
 - `/candidates/new` — ingestion flow (manual + AI)
 - `/jobs` — list (was `/job-orders`)
-- `/jobs/[id]` — detail with attached candidates (applications)
+- `/jobs/[id]` — the job workspace. One tab row (`JobWorkspaceTabs`): **Pulse**
+  first — open days / active candidates / average time per stage, then the
+  job's activity feed and the suggested actions derived from it
+  (`src/lib/job-pulse.ts`, all computed server-side) — followed by one tab per
+  sub-stage of the job's snapshotted pipeline, each listing the applications
+  parked there. A draft job renders the 5-step setup wizard instead.
 - `/clients` — list
 - `/settings` — signed-in user's email/role
 - `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)

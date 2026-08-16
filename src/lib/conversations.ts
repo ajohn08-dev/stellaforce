@@ -13,7 +13,14 @@ export type ConversationTranscriptTurn = {
 
 export type Conversation = {
   conversation_id: string
+  /** Names the interview, e.g. "Who Interview" — from the `agents` row. Used in
+   * the list and the sheet header. */
   agent_name: string | null
+  /** Names the interviewer, e.g. "Priya" — read back from the dynamic variables
+   * stored on the recording, so an old conversation keeps whatever name it was
+   * actually conducted under rather than whatever the config says today. Falls
+   * back to `agent_name`. */
+  agent_display_name: string | null
   candidate_name: string | null
   /** Date-only slice of `started_at`, for formatDate. Null if the call never started. */
   started_on: string | null
@@ -48,6 +55,10 @@ export type Conversation = {
   candidate_video_url: string | null
   candidate_video_status: MediaStatus | null
   candidate_video_mime_type: string | null
+  /** Seconds the candidate video leads the conversation audio. The player seeks
+   * video to `audio.currentTime + this`, because recording starts on the click
+   * while ElevenLabs starts on connect. */
+  candidate_video_offset_seconds: number
   video_url: string | null
 }
 

@@ -27,6 +27,9 @@ type Phase = "briefing" | "live" | "ended"
 type RoomProps = {
   agentId: string
   agentName: string
+  /** The interviewer's own name, e.g. "Priya" — what the agent calls itself in
+   * conversation, as opposed to `agentName`, which names the interview. */
+  agentDisplayName: string
   agentDescription: string | null
   estimatedMinutes: number | null
 }
@@ -70,6 +73,9 @@ export function InterviewRoom(props: RoomProps) {
   const canFallbackRef = React.useRef(false)
   const conversationIdRef = React.useRef<string | null>(null)
   const heardAgentRef = React.useRef(false)
+  /** When the conversation opened, against the same clock as the recorder's
+   * start — their difference is `video_offset_seconds`. */
+  const connectedAtRef = React.useRef(0)
 
   /** Replaces the SDK's opaque error text with ElevenLabs' own reason, once we
    * can fetch it. Fire-and-forget: the ended screen is already on screen. */
@@ -108,6 +114,12 @@ export function InterviewRoom(props: RoomProps) {
 
   const handleConnect = React.useCallback(({ conversationId }: { conversationId: string }) => {
     conversationIdRef.current = conversationId
+    // Stamp when the conversation actually opened. ElevenLabs starts its own
+    // recording about here, whereas ours started on the click — the difference
+    // is the offset the player needs to shift the video by. Measured rather
+    // than eliminated: delaying the recorder until this callback meant that
+    // whenever it didn't fire in time there was no recording at all.
+    connectedAtRef.current = Date.now()
   }, [])
 
   /** Returns true if it consumed the failure by scheduling a retry. */
@@ -172,6 +184,7 @@ export function InterviewRoom(props: RoomProps) {
         endedByUserRef={endedByUserRef}
         canFallbackRef={canFallbackRef}
         conversationIdRef={conversationIdRef}
+        connectedAtRef={connectedAtRef}
         onOpenedOn={handleOpenedOn}
       />
     </ConversationProvider>
@@ -181,6 +194,7 @@ export function InterviewRoom(props: RoomProps) {
 function RoomFlow({
   agentId,
   agentName,
+  agentDisplayName,
   agentDescription,
   estimatedMinutes,
   phase,
@@ -195,6 +209,7 @@ function RoomFlow({
   endedByUserRef,
   canFallbackRef,
   conversationIdRef,
+  connectedAtRef,
   onOpenedOn,
 }: RoomProps & {
   phase: Phase
@@ -209,6 +224,7 @@ function RoomFlow({
   endedByUserRef: React.RefObject<boolean>
   canFallbackRef: React.RefObject<boolean>
   conversationIdRef: React.RefObject<string | null>
+  connectedAtRef: React.RefObject<number>
   onOpenedOn: (transport: Transport) => void
 }) {
   const controls = useConversationControls()
@@ -250,6 +266,13 @@ function RoomFlow({
         sizeBytes: result.blob.size,
         mimeType: result.mimeType,
         durationSeconds: result.durationSeconds,
+        // How far ahead of the conversation audio this video starts. Clamped:
+        // a negative or absurd value means a clock we can't trust, and 0 (no
+        // correction) is a better failure than a wrong shift.
+        offsetSeconds:
+          connectedAtRef.current > 0 && result.startedAt > 0
+            ? Math.min(30, Math.max(0, (connectedAtRef.current - result.startedAt) / 1000))
+            : 0,
         status: "uploaded",
       })
       setVideoState("uploaded")
@@ -268,7 +291,7 @@ function RoomFlow({
       }).catch(() => {})
       setVideoState("failed")
     }
-  }, [recorder, conversationIdRef])
+  }, [recorder, conversationIdRef, connectedAtRef])
 
   // Credentials are fetched up front, the moment the devices are live — see the
   // gesture note on InterviewRoom. It also means the click is instant rather
@@ -303,8 +326,8 @@ function RoomFlow({
     try {
       media.releaseMicrophone()
       startedAtRef.current = Date.now()
-      // After releaseMicrophone, so the stream is video-only and no second
-      // capture competes with the SDK for the mic.
+      // After releaseMicrophone, so the stream is video-only and nothing
+      // competes with the SDK for the mic.
       recorder.start(media.stream)
 
       if (session.token) {
@@ -389,6 +412,7 @@ function RoomFlow({
   return (
     <InterviewStage
       agentName={agentName}
+      agentDisplayName={agentDisplayName}
       turns={turns}
       micMuted={micMuted}
       cameraOn={media.cameraOn}
