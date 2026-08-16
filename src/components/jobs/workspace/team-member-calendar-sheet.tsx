@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react"
 
 import {
   Sheet,
@@ -26,10 +26,12 @@ import type { CalendarBusyBlock } from "@/lib/server/calendar-events"
 import {
   DEFAULT_TIMEZONE,
   TIMEZONES,
+  formatZonedDateShort,
   formatZonedDayLabel,
   formatZonedTime,
   timezoneAbbreviation,
   zonedDaySequence,
+  zonedParts,
   zonedTimeToUtc,
   type ZonedDay,
 } from "@/lib/timezone"
@@ -61,7 +63,6 @@ type BookingMode = "book" | "propose"
 type SheetView = "calendar" | "create" | "propose"
 
 const GRID_DAYS = 7
-const SUGGESTION_COUNT = 5
 /** Enough to cover every free slot in the fetched window. */
 const ALL_SLOTS_LIMIT = 500
 /** Cap on how many times can be proposed at once — a wall of options helps nobody. */
@@ -113,9 +114,10 @@ export function TeamMemberCalendarSheet({
   const [selected, setSelected] = React.useState<number[]>([])
   const [view, setView] = React.useState<SheetView>("calendar")
   const [pendingSlot, setPendingSlot] = React.useState<Slot | null>(null)
+  const [dayIndex, setDayIndex] = React.useState(0)
 
-  // One source of truth for what's bookable: the pills are just the first few
-  // of the same list the grid renders, so the two can never disagree.
+  // One source of truth for what's bookable: the day-grouped pills and the grid
+  // cells both render from this list, so the two can never disagree.
   const slots = React.useMemo(
     () =>
       busy
@@ -130,13 +132,13 @@ export function TeamMemberCalendarSheet({
         : [],
     [busy, timeZone, preferredDays, slotMinutes, openedAt]
   )
-  const suggestions = slots.slice(0, SUGGESTION_COUNT)
   const selectedSlots = slots.filter((s) => selected.includes(s.start))
 
   /** Any control that changes what counts as a slot invalidates the selection. */
   function resetSelection() {
     setSelected([])
     setPendingSlot(null)
+    setDayIndex(0)
   }
 
   function handleSlotClick(slot: Slot) {
@@ -176,20 +178,43 @@ export function TeamMemberCalendarSheet({
   return (
     <Sheet open={!!state} onOpenChange={handleOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col p-0 sm:max-w-4xl">
-        <SheetHeader className="px-4 pt-4">
-          <SheetTitle className="flex items-center gap-2">
-            {view !== "calendar" && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Back to calendar"
-                onClick={() => setView("calendar")}
+        {/* pr-10 keeps the timezone control clear of the sheet's close button. */}
+        <SheetHeader className="px-4 pt-4 pr-10">
+          <div className="flex items-center justify-between gap-3">
+            <SheetTitle className="flex items-center gap-2">
+              {view !== "calendar" && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Back to calendar"
+                  onClick={() => setView("calendar")}
+                >
+                  <ArrowLeft />
+                </Button>
+              )}
+              {title}
+            </SheetTitle>
+            {view === "calendar" && !loading && !error && busy && (
+              <Select
+                value={timeZone}
+                onValueChange={(v) => {
+                  setTimeZone(v as string)
+                  resetSelection()
+                }}
               >
-                <ArrowLeft />
-              </Button>
+                <SelectTrigger className="w-52 shrink-0" aria-label="Timezone">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIMEZONES.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
-            {title}
-          </SheetTitle>
+          </div>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
@@ -215,11 +240,6 @@ export function TeamMemberCalendarSheet({
           ) : (
             <div className="flex flex-col gap-4 py-1">
               <ControlsRow
-                timeZone={timeZone}
-                onTimeZoneChange={(tz) => {
-                  setTimeZone(tz)
-                  resetSelection()
-                }}
                 slotMinutes={slotMinutes}
                 onSlotMinutesChange={(m) => {
                   setSlotMinutes(m)
@@ -242,10 +262,12 @@ export function TeamMemberCalendarSheet({
               />
 
               <NextAvailability
-                slots={suggestions}
+                slots={slots}
                 timeZone={timeZone}
                 selected={selected}
                 mode={mode}
+                dayIndex={dayIndex}
+                onDayIndexChange={setDayIndex}
                 onSelect={handleSlotClick}
                 hasPreferredDays={preferredDays.length > 0}
               />
@@ -287,8 +309,6 @@ export function TeamMemberCalendarSheet({
 // ── Controls ─────────────────────────────────────────────────────────────────
 
 function ControlsRow({
-  timeZone,
-  onTimeZoneChange,
   slotMinutes,
   onSlotMinutesChange,
   preferredDays,
@@ -296,8 +316,6 @@ function ControlsRow({
   mode,
   onModeChange,
 }: {
-  timeZone: string
-  onTimeZoneChange: (tz: string) => void
   slotMinutes: number
   onSlotMinutesChange: (minutes: number) => void
   preferredDays: number[]
@@ -306,22 +324,35 @@ function ControlsRow({
   onModeChange: (mode: BookingMode) => void
 }) {
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Timezone</span>
-          <Select value={timeZone} onValueChange={(v) => onTimeZoneChange(v as string)}>
-            <SelectTrigger className="w-52">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TIMEZONES.map((tz) => (
-                <SelectItem key={tz.value} value={tz.value}>
-                  {tz.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
+        <div
+          role="radiogroup"
+          aria-label="What clicking a time does"
+          className="inline-flex shrink-0 rounded-full border border-border p-0.5"
+        >
+          {(
+            [
+              ["book", "Book a time"],
+              ["propose", "Propose times"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={mode === value}
+              onClick={() => onModeChange(value)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs transition-colors",
+                mode === value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="flex items-center gap-2">
@@ -369,50 +400,31 @@ function ControlsRow({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div
-          role="radiogroup"
-          aria-label="What clicking a time does"
-          className="inline-flex rounded-full border border-border p-0.5"
-        >
-          {(
-            [
-              ["book", "Book a time"],
-              ["propose", "Propose times"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={mode === value}
-              onClick={() => onModeChange(value)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs transition-colors",
-                mode === value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <span className="text-xs text-muted-foreground">
-          {mode === "book"
-            ? "Click an open time to set up the interview."
-            : `Pick up to ${MAX_PROPOSED} times to send.`}
-        </span>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        {mode === "book"
+          ? "Click an open time to set up the interview."
+          : `Pick up to ${MAX_PROPOSED} times to send.`}
+      </p>
     </div>
   )
 }
 
+/**
+ * Openings grouped by day, one day at a time. Paging by date rather than
+ * listing a flat "next five" keeps the times readable (no repeated date on
+ * every pill) and lets a recruiter look past the first available day without
+ * scrolling the grid.
+ *
+ * Only days that actually have openings are paged through — stepping onto an
+ * empty day would be a dead end.
+ */
 function NextAvailability({
   slots,
   timeZone,
   selected,
   mode,
+  dayIndex,
+  onDayIndexChange,
   onSelect,
   hasPreferredDays,
 }: {
@@ -420,9 +432,24 @@ function NextAvailability({
   timeZone: string
   selected: number[]
   mode: BookingMode
+  dayIndex: number
+  onDayIndexChange: (index: number) => void
   onSelect: (slot: Slot) => void
   hasPreferredDays: boolean
 }) {
+  const groups: { key: string; slots: Slot[] }[] = []
+  for (const slot of slots) {
+    const p = zonedParts(slot.start, timeZone)
+    const key = `${p.year}-${p.month}-${p.day}`
+    const last = groups[groups.length - 1]
+    if (last && last.key === key) last.slots.push(slot)
+    else groups.push({ key, slots: [slot] })
+  }
+
+  // Clamp rather than reset: a control change can shrink the list underneath us.
+  const index = Math.min(Math.max(dayIndex, 0), Math.max(groups.length - 1, 0))
+  const current = groups[index]
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline gap-2">
@@ -432,39 +459,64 @@ function NextAvailability({
         </span>
       </div>
 
-      {slots.length === 0 ? (
+      {!current ? (
         <p className="text-sm text-muted-foreground">
           {hasPreferredDays
             ? "No open slots in the next 14 days on the selected days."
             : "Select at least one preferred day to see availability."}
         </p>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {slots.map((slot) => {
-            const isSelected = mode === "propose" && selected.includes(slot.start)
-            return (
-              <button
-                key={slot.start}
-                type="button"
-                onClick={() => onSelect(slot)}
-                aria-pressed={mode === "propose" ? isSelected : undefined}
-                className={cn(
-                  "rounded-full border px-3 py-1.5 text-sm transition-colors",
-                  isSelected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-background hover:bg-muted"
-                )}
-              >
-                <span className="font-medium">
-                  {formatZonedDayLabel(slot.start, timeZone)}
-                </span>{" "}
-                <span className={isSelected ? undefined : "text-muted-foreground"}>
+        <>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Previous day with availability"
+              disabled={index === 0}
+              onClick={() => onDayIndexChange(index - 1)}
+            >
+              <ChevronLeft />
+            </Button>
+            <span className="min-w-20 text-center text-sm font-medium">
+              {formatZonedDateShort(current.slots[0].start, timeZone)}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Next day with availability"
+              disabled={index >= groups.length - 1}
+              onClick={() => onDayIndexChange(index + 1)}
+            >
+              <ChevronRight />
+            </Button>
+            <span className="ml-1 text-xs text-muted-foreground">
+              {formatZonedDayLabel(current.slots[0].start, timeZone)} ·{" "}
+              {current.slots.length} open
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {current.slots.map((slot) => {
+              const isSelected = mode === "propose" && selected.includes(slot.start)
+              return (
+                <button
+                  key={slot.start}
+                  type="button"
+                  onClick={() => onSelect(slot)}
+                  aria-pressed={mode === "propose" ? isSelected : undefined}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                    isSelected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background hover:bg-muted"
+                  )}
+                >
                   {formatZonedTime(slot.start, timeZone)}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+                </button>
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )

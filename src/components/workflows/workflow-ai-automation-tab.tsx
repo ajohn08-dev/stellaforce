@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
+import { AUTOMATION_EVENT_GROUPS } from "@/lib/automation-events"
 import { Switch } from "@/components/ui/switch"
 
 const SUB_NAV_ITEMS = ["AI Capabilities", "SLA", "Automation"] as const
@@ -42,29 +43,6 @@ const SLA_ROWS: ToggleRow[] = [
   },
   { key: "offer_sent", label: "Offer sent", description: "Awaiting candidate decision on offer" },
   { key: "needs_attention", label: "Needs Attention", description: "No activity for some amount of time" },
-]
-
-const CANDIDATE_EVENT_ROWS = [
-  "Candidate added to stage",
-  "Candidate data is updated",
-  "Candidate leaves stage (qualified or disqualified)",
-  "Candidate withdraws application",
-  "Candidate skipped / fast-tracked to later stage",
-]
-
-const INTERVIEW_SCHEDULING_ROWS = [
-  "Interview scheduled",
-  "Interview rescheduled",
-  "Interview completed",
-  "Interview canceled",
-  "Interview no-show – candidate",
-  "Interview no-show – interviewer",
-]
-
-const EVALUATION_DECISION_ROWS = [
-  "All required evaluations completed",
-  "Evaluation overdue (no scorecard after 24 hours)",
-  "Decision made (advance / reject / offer created).",
 ]
 
 function ToggleRowItem({
@@ -182,26 +160,14 @@ export function WorkflowAiAutomationTab() {
               </p>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Label>Candidate Events</Label>
-              {CANDIDATE_EVENT_ROWS.map((label) => (
-                <AutomationEventRow key={label} label={label} />
-              ))}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label>Interview & Scheduling</Label>
-              {INTERVIEW_SCHEDULING_ROWS.map((label) => (
-                <AutomationEventRow key={label} label={label} />
-              ))}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label>Evaluation & Decision Events</Label>
-              {EVALUATION_DECISION_ROWS.map((label) => (
-                <AutomationEventRow key={label} label={label} />
-              ))}
-            </div>
+            {AUTOMATION_EVENT_GROUPS.map((group) => (
+              <div key={group.title} className="flex flex-col gap-2">
+                <Label>{group.title}</Label>
+                {group.events.map((event) => (
+                  <AutomationEventRow key={event.id} label={event.label} />
+                ))}
+              </div>
+            ))}
           </div>
         )}
       </div>

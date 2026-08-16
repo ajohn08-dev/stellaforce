@@ -172,6 +172,15 @@ export function formatZonedDayLabel(
   })
 }
 
+/** e.g. "10 Aug" — day + short month in the given zone. */
+export function formatZonedDateShort(
+  instant: Date | number | string,
+  timeZone: string
+): string {
+  const date = instant instanceof Date ? instant : new Date(instant)
+  return date.toLocaleDateString("en-GB", { timeZone, day: "numeric", month: "short" })
+}
+
 /** Short zone name for the current moment, e.g. "PDT" — for labelling times. */
 export function timezoneAbbreviation(timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-US", {
