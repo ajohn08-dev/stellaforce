@@ -50,11 +50,18 @@ export function SyncedInterviewPlayer({
   videoMimeType,
   audioUrl,
   audioMimeType,
+  /** Seconds the video file starts *before* the audio file. Recording begins on
+   * the "Start Interview" click, while ElevenLabs begins on connect, so the
+   * video carries a head of extra footage the audio doesn't have. Without this
+   * shift the picture shows an earlier moment than the sound — which reads as
+   * the video lagging. */
+  offsetSeconds = 0,
 }: {
   videoUrl: string
   videoMimeType: string | null
   audioUrl: string
   audioMimeType: string | null
+  offsetSeconds?: number
 }) {
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const audioRef = React.useRef<HTMLAudioElement>(null)
@@ -72,6 +79,9 @@ export function SyncedInterviewPlayer({
     const audio = audioRef.current
     if (!video || !audio) return
 
+    /** Where the video should be to show the same real moment as the audio. */
+    const videoTimeFor = (audioTime: number) => Math.max(0, audioTime + offsetSeconds)
+
     const onVideoMeta = () => primeSeekable(video)
     const onAudioMeta = () => setDuration(audio.duration)
     const onPlay = () => {
@@ -88,7 +98,7 @@ export function SyncedInterviewPlayer({
     }
     const onSeeked = () => {
       // A user scrub is the one case worth a hard seek regardless of cost.
-      if (video.seekable.length > 0) video.currentTime = audio.currentTime
+      if (video.seekable.length > 0) video.currentTime = videoTimeFor(audio.currentTime)
       video.playbackRate = 1
     }
     const onTimeUpdate = () => {
@@ -98,13 +108,13 @@ export function SyncedInterviewPlayer({
       // The two files start a beat apart — recording begins on the click, the
       // conversation once ElevenLabs connects — and encoders drift over a long
       // interview.
-      const drift = video.currentTime - audio.currentTime
+      const drift = video.currentTime - videoTimeFor(audio.currentTime)
       const size = Math.abs(drift)
 
       if (size > 1.5 && video.seekable.length > 0) {
         // Far out of step: only a seek closes a gap this size. Expensive on a
         // fragmented MP4 with no index, which is why the threshold is generous.
-        video.currentTime = audio.currentTime
+        video.currentTime = videoTimeFor(audio.currentTime)
         video.playbackRate = 1
       } else if (size > 0.2) {
         // Close: ease back by running the picture slightly fast or slow. Much
@@ -138,7 +148,7 @@ export function SyncedInterviewPlayer({
       audio.removeEventListener("seeked", onSeeked)
       audio.removeEventListener("timeupdate", onTimeUpdate)
     }
-  }, [])
+  }, [offsetSeconds])
 
   function togglePlay() {
     const audio = audioRef.current

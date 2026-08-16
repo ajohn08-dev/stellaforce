@@ -54,8 +54,14 @@ export function useInterviewRecorder() {
   const startedAtRef = React.useRef(0)
   const [state, setState] = React.useState<RecorderState>("idle")
 
-  /** Starts recording. Synchronous — it runs inside the "Start Interview"
-   * gesture alongside `startSession`, and must not introduce an await. */
+  /**
+   * Starts recording, from the "Start Interview" click.
+   *
+   * Deliberately *not* deferred to the SDK's `onConnect` to align with
+   * ElevenLabs' own recording: when that callback didn't fire in time the
+   * result was no recording at all. Starting here always works, and the
+   * resulting head start is measured (`startedAt`) and corrected at playback.
+   */
   const start = React.useCallback((stream: MediaStream | null) => {
     if (!stream || stream.getVideoTracks().length === 0) return
 
@@ -107,6 +113,8 @@ export function useInterviewRecorder() {
     blob: Blob
     mimeType: string
     durationSeconds: number
+    /** Wall clock at which recording began, for offset measurement. */
+    startedAt: number
   } | null> => {
     const recorder = recorderRef.current
     if (!recorder || recorder.state === "inactive") {
@@ -129,6 +137,7 @@ export function useInterviewRecorder() {
         resolve({
           blob: new Blob(chunks, { type: mimeType }),
           mimeType,
+          startedAt: startedAtRef.current,
           durationSeconds: Math.max(
             1,
             Math.round((Date.now() - startedAtRef.current) / 1000)

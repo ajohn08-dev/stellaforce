@@ -71,6 +71,9 @@ function interviewFieldsFor(agentId: string, agentName: string, candidateName: s
     question_count: config?.questions.length ?? 0,
     prompt_override:
       config?.allowPromptOverride ? buildInterviewPrompt(config, candidateName) : null,
+    // Null unless a config explicitly overrides it — the ElevenLabs agent's own
+    // first message is templated with the dynamic variables above and already
+    // differentiates per interview.
     first_message_override: config?.allowPromptOverride
       ? (config.firstMessage ?? null)
       : null,

@@ -29,6 +29,7 @@ function formatElapsed(seconds: number) {
  */
 export function InterviewStage({
   agentName,
+  agentDisplayName,
   turns,
   micMuted,
   cameraOn,
@@ -38,7 +39,11 @@ export function InterviewStage({
   onToggleCamera,
   onEnd,
 }: {
+  /** Names the interview — shown in the header. */
   agentName: string
+  /** Names the interviewer — shown on the tile and against each turn, because
+   * that's who is actually speaking. */
+  agentDisplayName: string
   turns: TranscriptTurn[]
   micMuted: boolean
   cameraOn: boolean
@@ -123,7 +128,7 @@ export function InterviewStage({
           />
 
           <AgentTile
-            agentName={agentName}
+            agentName={agentDisplayName}
             isSpeaking={isSpeaking}
             connected={connected}
             getOutputFrequencyData={connected ? controls.getOutputByteFrequencyData : null}
@@ -141,7 +146,7 @@ export function InterviewStage({
           <LiveTranscript
             turns={turns}
             connected={connected}
-            agentName={agentName}
+            agentName={agentDisplayName}
             className="max-lg:max-h-56"
           />
         )}

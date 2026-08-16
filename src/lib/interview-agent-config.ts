@@ -46,17 +46,20 @@ export type InterviewAgentConfig = {
   /** Opt in **only** once prompt overrides are enabled for this agent in
    * ElevenLabs. See the note above; leaving it false is the safe default. */
   allowPromptOverride?: boolean
-  /** Overrides the agent's opening line. Requires
-   * `overrides.…agent.first_message = true` in ElevenLabs, same as above. */
+  /** Overrides the agent's opening line. Normally leave unset: the ElevenLabs
+   * agent's own first message is templated with the dynamic variables this
+   * config supplies, so it already varies per interview. Set this only to
+   * depart from that greeting entirely. */
   firstMessage?: string
 }
 
-const DEFAULT_COMPANY = "Stella Force"
+const DEFAULT_COMPANY = "Stellaforce"
 
 export const INTERVIEW_AGENT_CONFIGS: Record<string, InterviewAgentConfig> = {
   // CSM Onboarding Screen
   "40ed8d0c-5362-410a-aa65-9cdb46cae53b": {
     interviewName: "Customer Success Screen",
+    allowPromptOverride: true,
     agentDisplayName: "Neha",
     companyName: DEFAULT_COMPANY,
     questions: [
@@ -69,25 +72,41 @@ export const INTERVIEW_AGENT_CONFIGS: Record<string, InterviewAgentConfig> = {
       "Keep it light and conversational — this is a first touch, not a deep evaluation. If the candidate is clearly unavailable or not customer-facing, close politely rather than working through every question.",
   },
 
-  // Data & Analytics Screen
+  // Who Interview (repurposed from the seeded "Data & Analytics Screen" — see
+  // the repurpose_data_agent_as_who_interview migration, which renames the row
+  // the UI actually renders)
   "8490ea4c-ad8f-4f25-a0f7-74ff7e50b737": {
-    interviewName: "Data & Analytics Screen",
+    interviewName: "Who Interview",
+    allowPromptOverride: true,
     agentDisplayName: "Priya",
-    companyName: DEFAULT_COMPANY,
+    companyName: "Nehaes",
     questions: [
-      "Walk me through your SQL experience — what's the most complex query or pipeline you've owned?",
-      "Which tools do you reach for day to day: warehouse, BI, orchestration?",
-      "Tell me about an analysis where the result changed a decision.",
-      "How comfortable are you presenting findings to non-technical stakeholders?",
-      "Are you prepared to complete a short take-home case study?",
+      "Walk me through your career decisions and the experiences that best prepared you for this role.",
+      "Why this role and company now, and what would make it a meaningful next step for you?",
+      "Tell me about the accomplishment most relevant to this job. What was the situation, your specific role, the actions you took, and the measurable outcome?",
+      "Describe the hardest goal you have achieved. What obstacles did you face, and how did you overcome them?",
+      "Tell me about a complex or ambiguous problem you solved. How did you diagnose it, decide what to do, and measure whether your solution worked?",
+      "Describe a time your initial approach failed or new information changed your plan. What did you do differently, and what did you learn?",
+      "Tell me about a difficult stakeholder or team relationship. How did you build alignment or resolve the conflict?",
+      "What is the most useful critical feedback you have received, and what concrete change did you make because of it?",
+      "Here is a realistic problem you would face in this role. What questions would you ask first, what would your plan be, and what result would you aim to achieve?",
+      "If hired, what would you aim to accomplish in your first 90 days, what support would you need, and what questions or concerns do you have about the role?",
     ],
-    guidance:
-      "Probe for depth on SQL specifically — self-reported fluency varies wildly. Ask one follow-up when an answer stays abstract.",
+    guidance: [
+      "This is a structured Who-style interview: a deep, evidence-gathering conversation, not a quick screen. Your job is to collect specific, verifiable detail — not to sell the role, coach the candidate, or evaluate them aloud.",
+      "For every answer, drive to four things: the situation, what THIS candidate personally did, the actions they took, and the measurable outcome. When someone says 'we', ask what their own part was. When you hear an adjective ('significant', 'successful', 'a lot'), ask for the number.",
+      "Ask at most two follow-ups per question, then move on. Good follow-ups are short and neutral: 'What was your role specifically?', 'What was the result?', 'How did you know it worked?', 'What would you do differently?'. Never suggest an answer or finish their sentence.",
+      "Stay warm but neutral. Do not praise answers, agree with judgements, or signal whether something was the right call — that biases everything after it. A brief acknowledgement and the next question is enough.",
+      "For question 9, if the candidate asks what the problem is, give them one concrete, plausible scenario from this role and let them work it. Do not grade their answer; capture their reasoning.",
+      "Ten questions is a lot of ground. Keep your own turns short, do not recap what they just said, and if time is running long, prioritise questions 3, 5, 6, and 10 — accomplishment, problem-solving, adaptability, and the first 90 days.",
+      "Close by thanking them, telling them the team will follow up, and asking if they have questions about the process.",
+    ].join(" "),
   },
 
   // Engineering First-Pass Screen
   "696a04bd-4ae4-432a-896f-c62a1a077ef4": {
     interviewName: "Engineering First-Pass Screen",
+    allowPromptOverride: true,
     agentDisplayName: "Sam",
     companyName: DEFAULT_COMPANY,
     questions: [
@@ -103,6 +122,7 @@ export const INTERVIEW_AGENT_CONFIGS: Record<string, InterviewAgentConfig> = {
   // Executive Search Pre-Screen
   "749af294-97c7-4ead-b1c7-ff40bfa458f3": {
     interviewName: "Executive Pre-Screen",
+    allowPromptOverride: true,
     agentDisplayName: "Alexandra",
     companyName: DEFAULT_COMPANY,
     questions: [
@@ -118,6 +138,7 @@ export const INTERVIEW_AGENT_CONFIGS: Record<string, InterviewAgentConfig> = {
   // Generalist Recruiter Screen
   "ad106fe1-3bb7-498a-bc98-a699d7870b20": {
     interviewName: "Recruiter Screen",
+    allowPromptOverride: true,
     agentDisplayName: "Jordan",
     companyName: DEFAULT_COMPANY,
     questions: [
@@ -133,6 +154,7 @@ export const INTERVIEW_AGENT_CONFIGS: Record<string, InterviewAgentConfig> = {
   // Sales AE Qualifier
   "a568d985-c551-4d56-91a2-3cf0033fc51b": {
     interviewName: "Account Executive Qualifier",
+    allowPromptOverride: true,
     agentDisplayName: "Marcus",
     companyName: DEFAULT_COMPANY,
     questions: [

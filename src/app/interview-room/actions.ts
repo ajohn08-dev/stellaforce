@@ -204,6 +204,9 @@ export async function finalizeInterviewVideo(input: {
   sizeBytes: number
   mimeType: string
   durationSeconds: number
+  /** Seconds the video leads the conversation audio — see the
+   * `call_recordings_video_offset` migration. */
+  offsetSeconds?: number
   status: "uploaded" | "failed"
 }): Promise<{ ok: boolean; error?: string }> {
   const profile = await getCurrentProfile()
@@ -221,6 +224,7 @@ export async function finalizeInterviewVideo(input: {
       video_mime_type: input.mimeType,
       video_file_size: input.sizeBytes,
       video_duration_seconds: input.durationSeconds,
+      video_offset_seconds: input.offsetSeconds ?? 0,
       video_status: input.status,
     },
     { onConflict: "elevenlabs_conversation_id" }
@@ -350,6 +354,12 @@ export async function createInterviewRoomSession(
   const config = getInterviewAgentConfig(agent.id)
   const candidateName = "Jane Doe"
 
+  // Only the prompt is overridden. The agent's own first message in ElevenLabs
+  // is templated with `{{agent_display_name}}`, `{{company_name}}`,
+  // `{{interview_name}}` and `{{candidate_name}}` — the same dynamic variables
+  // sent below — so it already differentiates per interview and is the better
+  // place to edit a greeting. `firstMessage` stays available for a config that
+  // genuinely needs to depart from it.
   const overrides: InterviewOverrides | undefined = config?.allowPromptOverride
     ? {
         agent: {

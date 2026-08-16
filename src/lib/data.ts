@@ -919,7 +919,7 @@ export async function getConversations(): Promise<Conversation[]> {
   const { data } = await supabase
     .from("call_recordings")
     .select(
-      "id, elevenlabs_conversation_id, started_at, duration_seconds, is_test, to_number, transcript_text, raw_elevenlabs_payload, storage_path, mime_type, audio_status, video_url, video_storage_path, video_mime_type, video_status, agent:agents(name), candidate:candidates(full_name, first_name, last_name)"
+      "id, elevenlabs_conversation_id, started_at, duration_seconds, is_test, to_number, transcript_text, raw_elevenlabs_payload, storage_path, mime_type, audio_status, video_url, video_storage_path, video_mime_type, video_status, video_offset_seconds, agent:agents(name), candidate:candidates(full_name, first_name, last_name)"
     )
     .eq("interviewer_type", "ai")
     .order("started_at", { ascending: false, nullsFirst: false })
@@ -977,6 +977,10 @@ export async function getConversations(): Promise<Conversation[]> {
       agent_name:
         (row.agent as { name: string } | null)?.name ??
         payloadDynamicVariable(row.raw_elevenlabs_payload, "agent_name"),
+      agent_display_name:
+        payloadDynamicVariable(row.raw_elevenlabs_payload, "agent_display_name") ??
+        (row.agent as { name: string } | null)?.name ??
+        null,
       candidate_name: candidateName,
       interview_type: interviewType,
       to_number: row.to_number,
@@ -993,6 +997,7 @@ export async function getConversations(): Promise<Conversation[]> {
         : null,
       candidate_video_status: (row.video_status as MediaStatus | null) ?? null,
       candidate_video_mime_type: row.video_mime_type,
+      candidate_video_offset_seconds: Number(row.video_offset_seconds ?? 0),
       video_url: row.video_url,
     }
   })

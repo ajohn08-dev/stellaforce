@@ -775,6 +775,7 @@ export type Database = {
           video_file_size: number | null
           video_filename: string | null
           video_mime_type: string | null
+          video_offset_seconds: number
           video_status: string | null
           video_storage_path: string | null
           video_url: string | null
@@ -815,6 +816,7 @@ export type Database = {
           video_file_size?: number | null
           video_filename?: string | null
           video_mime_type?: string | null
+          video_offset_seconds?: number
           video_status?: string | null
           video_storage_path?: string | null
           video_url?: string | null
@@ -855,6 +857,7 @@ export type Database = {
           video_file_size?: number | null
           video_filename?: string | null
           video_mime_type?: string | null
+          video_offset_seconds?: number
           video_status?: string | null
           video_storage_path?: string | null
           video_url?: string | null
