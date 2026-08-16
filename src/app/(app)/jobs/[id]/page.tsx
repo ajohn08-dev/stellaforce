@@ -2,14 +2,16 @@ import { notFound } from "next/navigation"
 
 import { JobDraftSpace } from "@/components/jobs/draft/job-draft-space"
 import { JobWorkspaceHeader } from "@/components/jobs/workspace/job-workspace-header"
-import { PipelineBoard } from "@/components/jobs/workspace/pipeline-board"
+import { JobWorkspaceTabs } from "@/components/jobs/workspace/job-workspace-tabs"
 import { SetJobBreadcrumb } from "@/components/jobs/workspace/set-job-breadcrumb"
 import { titleCase } from "@/lib/constants"
 import {
   getApplicationActivity,
   getApplicationEvaluations,
   getApplicationScorecards,
+  getApplicationStageHistory,
   getCandidates,
+  getJobActivity,
   getJobCompetencies,
   getJobOrder,
   getJobPipeline,
@@ -21,6 +23,12 @@ import {
 } from "@/lib/data"
 import { getCurrentProfile } from "@/lib/auth"
 import { buildJobEvalContext, toBoardStages, toMockJob } from "@/lib/job-adapter"
+import {
+  buildPulseActions,
+  buildPulseEvents,
+  buildPulseFilterOptions,
+  buildPulseStats,
+} from "@/lib/job-pulse"
 
 export default async function JobWorkspacePage({
   params,
@@ -105,10 +113,12 @@ export default async function JobWorkspacePage({
       getJobScorecard(id),
     ])
   const applicationIds = pipeline.applications.map((a) => a.application_id)
-  const [evaluations, scorecards, activity] = await Promise.all([
+  const [evaluations, scorecards, activity, jobActivity, stageHistory] = await Promise.all([
     getApplicationEvaluations(applicationIds),
     getApplicationScorecards(applicationIds),
     getApplicationActivity(applicationIds),
+    getJobActivity(id),
+    getApplicationStageHistory(applicationIds),
   ])
   const jobEvalContext = buildJobEvalContext(
     subStages,
@@ -122,6 +132,22 @@ export default async function JobWorkspacePage({
   // eslint-disable-next-line react-hooks/purity
   const nowMs = Date.now()
   const stages = toBoardStages(pipeline, nowMs)
+  const pulseStats = buildPulseStats({
+    jobCreatedAt: job.created_at,
+    events: jobActivity,
+    applications: pipeline.applications,
+    stageHistory,
+    nowMs,
+  })
+  const pulseEvents = buildPulseEvents(jobActivity)
+  const pulseActions = buildPulseActions({
+    applications: pipeline.applications,
+    subStages,
+    evaluations,
+    events: jobActivity,
+    nowMs,
+  })
+  const pulseFilters = buildPulseFilterOptions(subStages, pipeline.applications)
   const inPipeline = new Set(pipeline.applications.map((a) => a.candidate_id))
   const candidateOptions = candidates
     .filter((c) => !inPipeline.has(c.candidate_id))
@@ -143,7 +169,15 @@ export default async function JobWorkspacePage({
         />
       </div>
       <div className="min-h-0 flex-1">
-        <PipelineBoard stages={stages} jobEvalContext={jobEvalContext} />
+        <JobWorkspaceTabs
+          stats={pulseStats}
+          events={pulseEvents}
+          actions={pulseActions}
+          stageOptions={pulseFilters.stages}
+          candidateOptions={pulseFilters.candidates}
+          stages={stages}
+          jobEvalContext={jobEvalContext}
+        />
       </div>
     </div>
   )

@@ -7,6 +7,7 @@ import type {
   ActivityEventRow,
   AgentRow,
   ApplicationRow,
+  ApplicationStageHistoryRow,
   CandidateCertificationRow,
   CandidateEducationRow,
   CandidateRow,
@@ -844,15 +845,43 @@ export async function getCandidateTimeline(candidateId: string): Promise<Activit
   return data ?? []
 }
 
-/** All activity for one job — compliance/analytics timeline. */
-export async function getJobActivity(jobId: string): Promise<ActivityEventRow[]> {
+export type JobActivityEvent = ActivityEventRow & {
+  actor: { full_name: string | null } | null
+  candidate: { candidate_id: string; full_name: string | null } | null
+  sub_stage: { id: string; name: string } | null
+}
+
+/**
+ * All activity for one job — compliance/analytics timeline, and the feed the
+ * workspace Pulse tab renders. Joined with actor/candidate/sub-stage so the
+ * feed can label a row ("Candidate advanced — Anna John, HR Interview")
+ * without a second round trip per event.
+ */
+export async function getJobActivity(jobId: string): Promise<JobActivityEvent[]> {
   if (!isSupabaseConfigured) return []
   const supabase = await createClient()
   const { data } = await supabase
     .from("activity_events")
-    .select("*")
+    .select(
+      "*, actor:profiles(full_name), candidate:candidates(candidate_id, full_name), sub_stage:job_workflow_sub_stages(id, name)"
+    )
     .eq("job_id", jobId)
     .order("created_at", { ascending: false })
+  return (data ?? []) as JobActivityEvent[]
+}
+
+/** Every stage visit for a set of applications — `entered_at`/`exited_at`
+ * pairs are what "average time per stage" on the Pulse tab is computed from. */
+export async function getApplicationStageHistory(
+  applicationIds: string[]
+): Promise<ApplicationStageHistoryRow[]> {
+  if (!isSupabaseConfigured || applicationIds.length === 0) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("application_stage_history")
+    .select("*")
+    .in("application_id", applicationIds)
+    .order("entered_at", { ascending: true })
   return data ?? []
 }
 
