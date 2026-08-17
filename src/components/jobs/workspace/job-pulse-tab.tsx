@@ -167,14 +167,11 @@ function StatCard({ stat }: { stat: PulseStat }) {
   return (
     <div className="flex flex-1 flex-col gap-6 rounded-lg border border-border bg-white p-4">
       <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-      <div>
-        <div className="flex items-baseline gap-1.5">
-          <p className="text-3xl font-medium tracking-tight text-foreground tabular-nums">
-            {stat.value}
-          </p>
-          {stat.unit && <span className="text-sm text-muted-foreground">{stat.unit}</span>}
-        </div>
-        {stat.hint && <p className="mt-1 text-xs text-muted-foreground">{stat.hint}</p>}
+      <div className="flex items-baseline gap-1.5">
+        <p className="text-3xl font-medium tracking-tight text-foreground tabular-nums">
+          {stat.value}
+        </p>
+        {stat.unit && <span className="text-sm text-muted-foreground">{stat.unit}</span>}
       </div>
     </div>
   )
