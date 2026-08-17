@@ -32,8 +32,6 @@ export type PulseStat = {
   value: string
   /** Trailing unit rendered smaller next to the value ("days"). */
   unit?: string
-  /** Caption under the number, used when the number is an approximation. */
-  hint?: string
 }
 
 export type PulseEvent = {
@@ -139,8 +137,8 @@ export function buildPulseEvents(events: JobActivityEvent[]): PulseEvent[] {
  * "Average time per stage" prefers completed stage visits
  * (`application_stage_history` rows with an `exited_at`). Nothing writes that
  * table yet, so when it's empty the stat falls back to how long the current
- * candidates have been sitting where they are, and says so via `hint` rather
- * than passing the approximation off as the real number.
+ * candidates have been sitting where they are — an under-count until stage
+ * history is written, since those stays haven't finished.
  */
 export function buildPulseStats({
   jobCreatedAt,
@@ -165,7 +163,6 @@ export function buildPulseStats({
 
   const completedVisits = stageHistory.filter((v) => v.exited_at !== null)
   let stageValue = "—"
-  let stageHint: string | undefined
   if (completedVisits.length > 0) {
     const totalDays = completedVisits.reduce(
       (sum, v) =>
@@ -179,13 +176,12 @@ export function buildPulseStats({
       0
     )
     stageValue = (totalDays / active.length).toFixed(1)
-    stageHint = "so far, in current stage"
   }
 
   return [
     { label: "Open Days", value: String(openDays), unit: "days" },
     { label: "Active Candidates", value: String(active.length) },
-    { label: "Average Time Per Stage", value: stageValue, unit: "days", hint: stageHint },
+    { label: "Average Time Per Stage", value: stageValue, unit: "days" },
   ]
 }
 
