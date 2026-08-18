@@ -243,7 +243,11 @@ export const GLOBAL_QUESTIONS: Question[] = [
     "Who are your customers?",
     "Is this hardware or software?",
   ]),
-  q("q-why-role-open", "Why is this role open?", "why_role_open", [
+  // Job-only. "Why is the company hiring" and "why is *this* req open" are two
+  // different questions wearing one phrase: the first is a company growth story,
+  // the second is backfill-versus-new-territory and has no honest company-wide
+  // answer. Already derived from the role's own `rolePurpose`.
+  jobOnly("q-why-role-open", "Why is this role open?", "why_role_open", [
     "Is this a backfill?",
     "Did someone leave?",
     "Is this a new position?",

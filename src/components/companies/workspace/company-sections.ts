@@ -60,10 +60,13 @@ export const SECTION_GROUPS: SectionGroup[] = [
         clearance: "cleared_for_candidates",
       },
       {
-        key: "why-hiring",
-        label: "Why they're hiring",
+        // Was "Why they're hiring", which promised an answer about a specific
+        // req — a question that has no honest company-wide answer and now lives
+        // on the role. What's left is the pitch, so the label says that.
+        key: "why-join",
+        label: "Why join",
         purpose:
-          "What changed at the company, what makes it distinct, and why now — asked in almost every screen.",
+          "The pitch: what the company offers, why it's growing, what makes it distinct, and why now.",
         clearance: "cleared_for_candidates",
       },
     ],

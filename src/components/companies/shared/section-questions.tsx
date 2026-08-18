@@ -671,17 +671,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export type { AnswerScope }
 
 /**
- * **What the agent will actually say on one job** — one line per question, the
- * resolved answer, and where it came from.
+ * **Everything this role's agent will say, question by question — and the one
+ * place to change any of it.**
  *
- * This is the other half of the stack. In the company workspace you read the
- * cascade; standing on a job you want the opposite — no cascade at all, just the
- * answer and a badge saying which scope produced it. Both call `resolveAnswer`,
- * so the badge here and the winner marked over there cannot disagree.
+ * A published job is an *instance*: the catalog projected onto the company, the
+ * company and team answers applied, the role's own fields folded in, and
+ * whatever this role answers for itself on top. Nothing is seeded and nothing is
+ * assigned — the job simply resolves. What a recruiter needs from that is not a
+ * cascade diagram but a list they can act on, so the rows group by **what you'd
+ * do about them**:
  *
- * "Answer differently for this role" is the only way a job-scoped answer gets
- * created, and it opens *underneath the answer it replaces* — you can't write an
- * override without seeing what you're overriding.
+ *  - *Needs an answer* — open, with the box already there. No click to reach it.
+ *  - *Set for this role* — what makes this job different, editable in place.
+ *  - *Inherited* — collapsed, because it's working; one click to override, and
+ *    the override box opens directly under the answer it replaces.
+ *
+ * Grouping by action rather than by scope is the difference between a screen you
+ * read and a screen you work in. The scope still shows, as a badge on every row.
  */
 export function JobAnswers({
   company,
@@ -691,7 +697,6 @@ export function JobAnswers({
   jobId: string
 }) {
   const [overriding, setOverriding] = React.useState<string[]>([])
-
   const job = company.jobs.find((j) => j.id === jobId) ?? null
 
   const rows = companyQuestions(company)
@@ -703,81 +708,192 @@ export function JobAnswers({
         hit: resolveAnswer(company, entry, { jobId }),
       }
     })
-    .filter((r) => r.catalog && r.hit)
+    .filter((r) => r.catalog)
 
-  if (rows.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-        No answers reach this role yet. Anything written at the company or on a
-        team above it will appear here.
-      </p>
-    )
-  }
+  const needs = rows.filter((r) => !r.hit)
+  const own = rows.filter((r) => r.hit && r.hit.scope.kind === "job")
+  const inherited = rows.filter((r) => r.hit && r.hit.scope.kind !== "job")
 
   return (
-    <ul className="divide-y divide-border rounded-lg border border-border">
-      {rows.map(({ entry, catalog, hit }) => {
-        // A derived answer sits at job scope but nobody wrote it, so it must not
-        // wear the "Set for this role" badge — that would claim a deliberate
-        // override where there's only a mirrored field.
-        const derived = Boolean(hit!.answer.derivedFrom)
-        const own = hit!.scope.kind === "job" && !derived
-        const isOverriding = overriding.includes(entry.questionId)
-
-        return (
+    <div className="space-y-3">
+      <JobAnswerGroup
+        title="Needs an answer"
+        count={needs.length}
+        tone="warn"
+        empty="Nothing outstanding — every question this role can be asked has an answer."
+        defaultOpen
+      >
+        {needs.map(({ entry, catalog }) => (
           <li key={entry.questionId} className="space-y-1.5 p-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="min-w-0 text-sm font-medium">{catalog!.intent}</p>
-              <span
-                className={cn(
-                  "shrink-0 rounded-md px-1.5 py-0.5 text-xs",
-                  own
-                    ? "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                {derived ? "From this role's own fields" : hit!.scope.badge}
-              </span>
-            </div>
+            <p className="text-sm font-medium">{catalog!.intent}</p>
+            <p className="text-xs text-muted-foreground">
+              {catalog!.answerableAt === "job"
+                ? "Only answerable on a role — there's no company answer to fall back to."
+                : "No company answer either, so the agent hands this back to you."}
+            </p>
+            <EditableTextarea
+              fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
+              value=""
+              label={`${catalog!.intent} — ${job?.title ?? "this role"}`}
+              ariaLabel={`Answer to ${catalog!.intent} for this role`}
+              placeholder="Write the answer for this role."
+              rows={2}
+            />
+          </li>
+        ))}
+      </JobAnswerGroup>
 
-            <p className="text-sm text-muted-foreground">{hit!.answer.body}</p>
+      <JobAnswerGroup
+        title="Set for this role"
+        count={own.length}
+        tone="own"
+        empty="This role says nothing different from the company yet."
+        defaultOpen
+      >
+        {own.map(({ entry, catalog, hit }) => {
+          const derived = Boolean(hit!.answer.derivedFrom)
+          return (
+            <li key={entry.questionId} className="space-y-1.5 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="min-w-0 text-sm font-medium">{catalog!.intent}</p>
+                <span className="shrink-0 rounded-md bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+                  {derived ? "From this role's own fields" : "Set for this role"}
+                </span>
+              </div>
 
-            {hit!.answer.derivedFrom && (
-              // Says plainly that nobody wrote this sentence — it mirrors a
-              // field on the job and will follow it when it changes.
-              <p className="text-xs text-muted-foreground">
-                Written from {hit!.answer.derivedFrom}. Edit the field and this
-                follows it.
-              </p>
-            )}
-
-            {!own &&
-              (isOverriding ? (
-                <div className="pt-1">
+              {derived ? (
+                <>
+                  <p className="text-sm text-muted-foreground">{hit!.answer.body}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Written from {hit!.answer.derivedFrom}. Edit that field and
+                    this follows it — or write something different below.
+                  </p>
                   <EditableTextarea
                     fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
                     value=""
-                    label={`${catalog!.intent} — this role`}
+                    label={`${catalog!.intent} — ${job?.title ?? "this role"}`}
                     ariaLabel={`Answer to ${catalog!.intent} for this role`}
-                    placeholder="Write the answer for this role. Leave it empty to keep inheriting."
+                    placeholder="Leave empty to keep following the field above."
                     rows={2}
                   />
-                </div>
+                </>
+              ) : (
+                <EditableTextarea
+                  fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
+                  value={hit!.answer.body}
+                  label={`${catalog!.intent} — ${job?.title ?? "this role"}`}
+                  ariaLabel={`Answer to ${catalog!.intent} for this role`}
+                  rows={2}
+                />
+              )}
+            </li>
+          )
+        })}
+      </JobAnswerGroup>
+
+      <JobAnswerGroup
+        title="Inherited"
+        count={inherited.length}
+        tone="quiet"
+        empty="Nothing reaches this role from the company or its teams yet."
+      >
+        {inherited.map(({ entry, catalog, hit }) => {
+          const isOverriding = overriding.includes(entry.questionId)
+          return (
+            <li key={entry.questionId} className="space-y-1.5 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="min-w-0 text-sm font-medium">{catalog!.intent}</p>
+                <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                  {hit!.scope.badge}
+                </span>
+              </div>
+
+              <p className="text-sm text-muted-foreground">{hit!.answer.body}</p>
+
+              {isOverriding ? (
+                <EditableTextarea
+                  fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
+                  value=""
+                  label={`${catalog!.intent} — ${job?.title ?? "this role"}`}
+                  ariaLabel={`Answer to ${catalog!.intent} for this role`}
+                  placeholder="Write the answer for this role. Leave it empty to keep inheriting."
+                  rows={2}
+                />
               ) : (
                 <Button
                   variant="ghost"
                   size="sm"
                   className="-ml-2 text-xs text-muted-foreground"
-                  onClick={() =>
-                    setOverriding((prev) => [...prev, entry.questionId])
-                  }
+                  onClick={() => setOverriding((prev) => [...prev, entry.questionId])}
                 >
                   Answer differently for this role
                 </Button>
-              ))}
-          </li>
-        )
-      })}
-    </ul>
+              )}
+            </li>
+          )
+        })}
+      </JobAnswerGroup>
+    </div>
+  )
+}
+
+function JobAnswerGroup({
+  title,
+  count,
+  tone,
+  empty,
+  defaultOpen = false,
+  children,
+}: {
+  title: string
+  count: number
+  tone: "warn" | "own" | "quiet"
+  empty: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = React.useState(defaultOpen && count > 0)
+
+  return (
+    <section
+      className={cn(
+        "rounded-lg border",
+        tone === "warn" && count > 0
+          ? "border-amber-300 dark:border-amber-900"
+          : "border-border"
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        disabled={count === 0}
+        className="flex w-full items-center gap-2.5 p-3 text-left disabled:opacity-70"
+      >
+        <ChevronRight
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-90"
+          )}
+        />
+        <span className="min-w-0 flex-1 text-sm font-medium">{title}</span>
+        <span
+          className={cn(
+            "shrink-0 text-sm tabular-nums",
+            tone === "warn" && count > 0
+              ? "text-amber-700 dark:text-amber-300"
+              : "text-muted-foreground"
+          )}
+        >
+          {count}
+        </span>
+      </button>
+
+      {count === 0 && (
+        <p className="px-3 pb-3 text-xs text-muted-foreground">{empty}</p>
+      )}
+
+      {open && count > 0 && <ul className="divide-y divide-border border-t border-border">{children}</ul>}
+    </section>
   )
 }

@@ -17,9 +17,8 @@ import {
 } from "@/components/companies/workspace/section-shell"
 import { JobStatusBadge } from "@/components/jobs/job-status-badge"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
-import { JobAnswers, SectionQuestions } from "@/components/companies/shared/section-questions"
+import { JobAnswers } from "@/components/companies/shared/section-questions"
 import {
-  questionsForJob,
   jobCoverage,
   type CompanyReadiness,
   type JobCoverage,
@@ -78,7 +77,7 @@ export function JobsSection({
           <ArrowLeft className="size-3.5" />
           All jobs
         </Button>
-        <JobDetail company={company} job={job} today={today} />
+        <JobDetail company={company} job={job} />
       </SectionShell>
     )
   }
@@ -189,15 +188,7 @@ function JobRow({ company, coverage }: { company: Company; coverage: JobCoverage
   )
 }
 
-function JobDetail({
-  company,
-  job,
-  today,
-}: {
-  company: Company
-  job: CompanyJob
-  today: Date
-}) {
+function JobDetail({ company, job }: { company: Company; job: CompanyJob }) {
   const chain = teamPath(company, job.teamId)
 
   return (
@@ -252,15 +243,6 @@ function JobDetail({
         )}
       </section>
 
-      {/* Questions only this role can answer, plus any company question it has
-          overridden — the job's own knowledge, in the one place it belongs. */}
-      <SectionQuestions
-        company={company}
-        today={today}
-        entries={questionsForJob(company, job)}
-        emptyPrompt="Nothing role-specific yet. Questions whose answer depends on this role appear here as soon as a candidate asks one."
-      />
-
       <AgentKnowledgePanel
         bundles={{
           candidate: compileAgentContext(company, job, "candidate"),
@@ -269,10 +251,13 @@ function JobDetail({
       />
 
       <section className="space-y-2">
-        <h4 className="text-sm font-medium">Every question, and where its answer comes from</h4>
+        <h4 className="text-sm font-medium">Everything the agent will say, and where it comes from</h4>
         <p className="text-xs text-muted-foreground">
+          {/* The instance, stated plainly: this role starts as everything above
+              it and diverges only where you say so. */}
           Inherits from {[company.preferredName, ...chain.map((t) => t.name).reverse()].join(" › ")}.
-          The most specific answer wins.
+          The most specific answer wins, and every edit here applies to this role
+          alone.
         </p>
         {/* Was a list of counts — "4 answers", "6 blocks" — which told you
             something was inherited without telling you *what*, and so couldn't

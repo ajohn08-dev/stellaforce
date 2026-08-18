@@ -185,8 +185,8 @@ migrating the full app layer to V3.2 is an ongoing pass.
   navigates by a **left rail of four collapsible groups**, not tabs (`?section=`
   drives it, so every section is deep-linkable). Only the group you're in is open
   on load: **Unanswered questions** (an inbox, above the groups) → *About the
-  company* (Profile · What they do · Culture & working style · Why they're
-  hiring) → *Pay, benefits & policies* (Locations & work model · Benefits · Work
+  company* (Profile · What they do · Culture & working style · Why
+  join) → *Pay, benefits & policies* (Locations & work model · Benefits · Work
   authorization · Compensation approach) → *Teams & jobs* (Departments & teams ·
   Jobs) → *Internal notes* (Recruiter brief · Activity log), the last group
   omitted entirely for profiles without the capability.
@@ -241,6 +241,19 @@ migrating the full app layer to V3.2 is an ongoing pass.
   hand-written fixture in that file, where `companyName` defaults to the literal
   "Stellaforce". Until that join exists, **none of this affects what a candidate
   hears.**
+
+  **The nav passes the same test.** *"Why they're hiring"* was two questions in
+  one label — a company growth story (real, company-level) and *"why is **this**
+  req open?"* (backfill vs new territory, no honest company-wide answer). The
+  question moved to the role, the section became **Why join** — the pitch: EVP,
+  why they're growing, what makes them distinct, why now. Two leaks got fixed on
+  the way: `evp` sat in *Culture & working style* while `why_join_now` sat in the
+  other section, though both are pitch; and `role_family_context` moved to Teams,
+  where `Team.commonRoleFamilies` already lived. `market_positioning` joined
+  *What they do*, pairing with the competition question. `Locations` keeps
+  remote and travel — a company default is genuinely true there and the job
+  override handles the rest, which is the cascade doing its job rather than the
+  nav needing to.
 
   **One rule places everything: a question lives where its answer can be true.**
   `Question.answerableAt` is `'company'` or `'job'`. Company-answerable questions

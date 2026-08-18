@@ -98,7 +98,7 @@ with content a recruiter is reading and editing.
   Unanswered questions      4      ← inbox, not reference material
 
 ▸ About the company         4      Profile · What they do ·
-                                   Culture & working style · Why they're hiring
+                                   Culture & working style · Why join
 ▸ Pay, benefits & policies  4      Locations & work model · Benefits ·
                                    Work authorization · Compensation approach
 ▸ Teams & jobs              2      Departments & teams › · Jobs ›
@@ -169,7 +169,7 @@ policy resolves to an escalation, never to a guess.
 | Section | Tier | Why |
 |---|---|---|
 | Profile | **Core** | Default landing. The facts every job and agent starts from. |
-| What they do · Culture · Why they're hiring | **Core** | The candidate-safe story; most-edited after intake. |
+| What they do · Culture · Why join | **Core** | The candidate-safe story; most-edited after intake. |
 | Locations · Benefits · Work authorization | **Core** | The three highest-frequency candidate questions. |
 | Compensation · Interview process | Secondary | Important, but mostly policy statements that rarely change. |
 | Unanswered questions | Inbox | A work queue, above the groups. Consulted when it has items. |
@@ -424,7 +424,7 @@ with candidates"* — the account block; below that, commercial terms in a
 `RestrictedPanel`. The divider does work a badge can't: it tells you which *region*
 of the page you're reading, so you don't have to check each field before speaking.
 
-**What they do · Culture & working style · Why they're hiring.** One component
+**What they do · Culture & working style · Why join.** One component
 (`NarrativeSection`) over `knowledge-card` stacks, differing only in which
 `KnowledgeKind`s route to each (`knowledgeSection()`). Blocks are edited in place —
 no modal, no page-level edit mode, because filling this in after an intake call is a
@@ -1007,7 +1007,7 @@ edit, because both render the same `QuestionRow` bound to the same draft keys.
 
 **LumaGrid.** *"Is the Central territory an existing book or greenfield?"* —
 `faq-lg-15`, `approvedAnswer: ""`, `askedCount: 6`, `category: "why_role_open"`,
-so it renders under **Why they're hiring** and in the inbox.
+and `answerableAt: "job"`, so it renders on the Central AE rather than in any company section.
 
 ## D.10b Audiences
 

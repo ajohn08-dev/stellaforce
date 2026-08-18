@@ -18,7 +18,7 @@ import {
 
 /**
  * The candidate-safe knowledge blocks belonging to one section — **What they
- * do**, **Culture & working style**, and **Why they're hiring** all use this,
+ * do**, **Culture & working style**, and **Why join** all use this,
  * differing only in which `KnowledgeKind`s route to them (`knowledgeSection()`).
  *
  * The questions candidates ask about this topic sit underneath the facts, since

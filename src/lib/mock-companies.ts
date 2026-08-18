@@ -1390,7 +1390,8 @@ const LUMAGRID_CUSTOM_QUESTIONS: Question[] = [
     category: "why_role_open",
     variants: [],
     sensitive: false,
-    answerableAt: "company",
+    // About one specific territory on one specific req.
+    answerableAt: "job",
     defaultAgentUse: "on_request",
     prohibitions: [],
   },

@@ -91,7 +91,7 @@ export type CompanySection =
   | "profile"
   | "what-they-do"
   | "culture"
-  | "why-hiring"
+  | "why-join"
   // Working here
   | "locations"
   | "benefits"
@@ -568,17 +568,26 @@ export function knowledgeSection(kind: KnowledgeKind): CompanySection {
   switch (kind) {
     case "brief_note":
       return "brief"
-    case "evp":
+    // Culture is *how people actually work*. The employer value proposition is
+    // a pitch — the same kind of thing as "why join now", which sat in the other
+    // section, so the boundary was already leaking.
     case "culture":
     case "leadership_principles":
     case "career_growth":
       return "culture"
+    case "evp":
     case "why_hiring":
     case "differentiators":
-    case "market_positioning":
     case "why_join_now":
+      return "why-join"
+    // Where the company sits in its market pairs with the competition question,
+    // which routes to what-they-do.
+    case "market_positioning":
+      return "what-they-do"
+    // "Context reusable across several roles of the same kind" — and
+    // `Team.commonRoleFamilies` already exists as a field.
     case "role_family_context":
-      return "why-hiring"
+      return "teams"
     default:
       return "what-they-do"
   }
@@ -607,8 +616,10 @@ export function faqSection(category: FaqCategory): CompanySection {
     case "accessibility":
     case "objections":
       return "culture"
+    // Job-only (see `questionsForSection`); this is only its topical home for
+    // the inbox's "where would this land" label.
     case "why_role_open":
-      return "why-hiring"
+      return "jobs"
     case "remote_model":
     case "office_expectations":
     case "travel":

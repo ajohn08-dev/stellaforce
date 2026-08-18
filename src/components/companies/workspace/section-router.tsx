@@ -36,7 +36,7 @@ export function SectionRouter({
 
     case "what-they-do":
     case "culture":
-    case "why-hiring":
+    case "why-join":
       return <NarrativeSection {...common} />
 
     case "locations":
