@@ -111,6 +111,24 @@ export function teamPath(company: Company, teamId: string | null | undefined): T
   return path
 }
 
+/**
+ * The roles that sit under a team — **the only candidates who will ever hear its
+ * knowledge.**
+ *
+ * This is a real boundary, not a statistic. `compileAgentContext` walks
+ * `teamPath(job.teamId)`, so a candidate screening for a role on Channel Growth
+ * receives Channel Growth and Go-to-Market and *never* a sibling team they
+ * aren't applying to. A team with no role under it reaches nobody at all.
+ *
+ * The protection was already true in the compile; what was missing was the UI
+ * saying it, so "Cleared for candidates" on a team read as "cleared for every
+ * candidate" when it has only ever meant "cleared for candidates on the roles
+ * beneath this".
+ */
+export function jobsUnderTeam(company: Company, teamId: string): CompanyJob[] {
+  return company.jobs.filter((j) => teamPath(company, j.teamId).some((t) => t.id === teamId))
+}
+
 /** Direct children of a team, or the roots when `parentId` is null. */
 export function childTeams(company: Company, parentId: string | null): Team[] {
   return company.teams.filter((t) => t.parentTeamId === parentId)

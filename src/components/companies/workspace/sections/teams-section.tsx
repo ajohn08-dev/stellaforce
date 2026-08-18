@@ -12,7 +12,8 @@ import {
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import { SectionQuestions } from "@/components/companies/shared/section-questions"
 import { questionsForSection, type CompanyReadiness } from "@/lib/company-readiness"
-import { childTeams, teamPath } from "@/lib/company-inheritance"
+import { cn } from "@/lib/utils"
+import { childTeams, jobsUnderTeam, teamPath } from "@/lib/company-inheritance"
 import { type Company, type Team } from "@/lib/mock-companies"
 
 /**
@@ -74,6 +75,14 @@ export function TeamsSection({
         </Button>
       }
     >
+      {company.teams.length > 0 && (
+        <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+          A candidate only ever hears about the teams their own role sits under.
+          Knowledge on a team never reaches a candidate screening for a role
+          somewhere else in the org.
+        </p>
+      )}
+
       {company.teams.length === 0 ? (
         <SectionEmpty
           title="No teams yet — that's fine"
@@ -101,9 +110,21 @@ export function TeamsSection({
 /**
  * A team and everything under it, recursively.
  *
- * One component for every tier, because there is only one kind of thing now. The
- * indent is `teamPath().length`, so a four-deep org draws itself with no new
- * code.
+ * **Four lines, in the order someone reads them:** who it is and who hears it,
+ * what an agent says about it, the facts, then the setting. The previous card
+ * stacked seven competing rows — title, mission, a loud green visibility
+ * sentence, a reach stat, a second paragraph that restated the mission in
+ * candidate words, a meta line, role-family pills, and a full-width "create a
+ * team inside" divider — so nothing led and the two paragraphs read as
+ * duplication.
+ *
+ * The mission and the candidate-facing description are genuinely two things (one
+ * internal, one spoken), but a list is the wrong place to show both unlabelled.
+ * The card shows what the **agent** would say, since that's what this workspace
+ * is for; the drilldown shows both, labelled. Role families moved there too.
+ *
+ * One component for every tier — there is only one kind of thing now — so a
+ * four-deep org draws itself with no new code.
  */
 function TeamBranch({ company, team }: { company: Company; team: Team }) {
   const children = childTeams(company, team.id)
@@ -112,65 +133,62 @@ function TeamBranch({ company, team }: { company: Company; team: Team }) {
     ? company.jobs.find((j) => j.id === team.createdBecauseJobId)
     : null
 
-  // The inverse of "Created for X". A team exists because a job needed context
-  // the company profile couldn't give, so the count of jobs still inheriting
-  // from it is what says whether it's still earning its place — and an orphaned
-  // team becomes visible instead of quietly accumulating.
-  const usedBy = company.jobs.filter((j) =>
-    teamPath(company, j.teamId).some((t) => t.id === team.id)
-  ).length
+  // Not a statistic — the audience. A candidate only ever hears about the teams
+  // their own role sits under, so this is exactly who this team's knowledge can
+  // reach, and zero means nobody.
+  const reach = jobsUnderTeam(company, team.id)
+  const reachLabel =
+    reach.length === 0
+      ? "No role sits under this"
+      : `${reach.length} role${reach.length === 1 ? "" : "s"}`
 
   return (
     <div style={{ paddingLeft: depth > 0 ? "1.5rem" : undefined }}>
-      <section className="rounded-lg border border-border p-4">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Users className="size-4 shrink-0 text-muted-foreground" />
-              <Link
-                href={`/companies/${company.id}?section=teams&team=${team.id}`}
-                className="font-medium hover:underline"
-              >
-                {team.name}
-              </Link>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">{team.mission}</p>
-            <ItemVisibility
-              idPrefix={`team-${team.id}`}
-              visibility={team.visibility}
-              label={team.name}
-            />
-          </div>
-
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {usedBy === 0
-              ? "No jobs use this"
-              : `${usedBy} job${usedBy === 1 ? "" : "s"} inherit${usedBy === 1 ? "s" : ""} from this`}
+      <section className="space-y-2 rounded-lg border border-border p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <Link
+            href={`/companies/${company.id}?section=teams&team=${team.id}`}
+            className="inline-flex items-center gap-2 font-medium hover:underline"
+          >
+            <Users className="size-4 shrink-0 text-muted-foreground" />
+            {team.name}
+          </Link>
+          <span
+            className={cn(
+              "shrink-0 text-xs",
+              reach.length === 0
+                ? "text-amber-700 dark:text-amber-300"
+                : "text-muted-foreground"
+            )}
+          >
+            {reachLabel}
           </span>
         </div>
 
-        {team.description && <p className="mt-2 text-sm">{team.description}</p>}
+        <p className="text-sm text-muted-foreground">
+          {team.description ?? team.mission}
+        </p>
 
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {team.sizeRange && <span>{team.sizeRange} people</span>}
           {team.operatingModel && <span>{team.operatingModel}</span>}
           {because && <span>Created for {because.title}</span>}
-        </div>
+        </p>
 
-        {team.commonRoleFamilies.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {team.commonRoleFamilies.map((r) => (
-              <Badge key={r} variant="secondary">
-                {r}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-3 border-t border-border pt-2">
-          <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+          <ItemVisibility
+            idPrefix={`team-${team.id}`}
+            visibility={team.visibility}
+            label={team.name}
+            audienceNote={
+              reach.length === 0
+                ? "— but no role sits under this, so no candidate hears it"
+                : `on ${reachLabel}`
+            }
+          />
+          <Button variant="ghost" size="xs" className="gap-1 text-xs text-muted-foreground">
             <Plus className="size-3" />
-            Create a team inside {team.name}
+            Nested team
           </Button>
         </div>
       </section>
@@ -210,6 +228,16 @@ function TeamDetail({ company, team }: { company: Company; team: Team }) {
         )}
         <p className="text-sm">{team.mission}</p>
       </div>
+
+      {team.commonRoleFamilies.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {team.commonRoleFamilies.map((r) => (
+            <Badge key={r} variant="secondary">
+              {r}
+            </Badge>
+          ))}
+        </div>
+      )}
 
       {manager && (
         <section className="space-y-1.5 rounded-lg border border-border p-4">

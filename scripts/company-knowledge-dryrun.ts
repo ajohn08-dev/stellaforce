@@ -11,6 +11,7 @@ import {
   withDerived,
   unansweredItems,
   appliesToJob,
+  jobsUnderTeam,
   type Answer,
 } from "@/lib/company-inheritance"
 import { compileAgentContext } from "@/lib/company-agent-context"
@@ -215,3 +216,41 @@ console.log(
 console.log(
   `  Inbox rows for this role: ${unansweredItems(company).filter((i) => i.job?.id === NEW_JOB.id).length}`
 )
+
+// ── STEP 8 — the boundary ──────────────────────────────────────────────────
+// A candidate only hears about the teams their own role sits under. This is a
+// safety property, not a preference: it's what stops an agent describing a team
+// the candidate isn't applying to. Proven by planting a sibling team with
+// distinctive content and checking it never enters the bundle.
+rule("STEP 8 — Sibling-team isolation")
+const sibling = {
+  ...structuredClone(company.teams.find((t) => t.id === "team-lg-channel")!),
+  id: "team-lg-enterprise",
+  name: "Enterprise Sales",
+  mission: "Close large direct deals.",
+  description: "SENTINEL-SIBLING: the enterprise team is being restructured.",
+  dayInTheLife: "SENTINEL-WEEK: four days of forecast calls.",
+  workingStyle: "SENTINEL-STYLE: heavily managed.",
+  createdBecauseJobId: null,
+}
+company.teams.push(sibling)
+
+console.log("  Reach of each team (who can hear it):")
+for (const t of company.teams)
+  console.log(`      ${t.name.padEnd(18)} ${jobsUnderTeam(company, t.id).length} role(s)`)
+
+let leaks = 0
+for (const audience of ["candidate", "internal"] as const) {
+  const blob = JSON.stringify(compileAgentContext(company, NEW_JOB, audience))
+  const found = ["SENTINEL-SIBLING", "SENTINEL-WEEK", "SENTINEL-STYLE"].filter((m) =>
+    blob.includes(m)
+  )
+  leaks += found.length
+  console.log(
+    `  ${audience.padEnd(10)} sibling-team content in the bundle: ${found.length === 0 ? "none ✓" : found.join(", ") + " ✗"}`
+  )
+}
+if (leaks > 0) {
+  console.error("\n  FAILED: a team the candidate isn't applying to reached the agent.")
+  process.exit(1)
+}

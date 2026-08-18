@@ -268,6 +268,17 @@ migrating the full app layer to V3.2 is an ongoing pass.
   the readiness check from a company-level "is there an interview answer" to a
   per-job `role_process` ("does this role have stages").
 
+  **A candidate only ever hears about the teams their own role sits under.**
+  `compileAgentContext` walks `teamPath(job.teamId)`, so a sibling team the
+  candidate isn't applying to never enters the bundle — for either audience. The
+  compile always did this; what was missing was the UI saying it, so "Cleared for
+  candidates" on a team read as *every* candidate when it has only ever meant
+  candidates on the roles beneath it. Team cards now carry that reach
+  (`jobsUnderTeam`) as the audience, not a statistic: *"Cleared for candidates on
+  1 role"*, and a team with no role under it says *"— but no role sits under
+  this, so no candidate hears it"* in amber. The dry run plants a sentinel
+  sibling team and fails if its content reaches the bundle.
+
   **`npm run knowledge-dryrun`** walks a job from wizard fields to a live
   instance and back out through edits (`scripts/company-knowledge-dryrun.ts`),
   calling the same functions the UI renders from. It's how the model gets

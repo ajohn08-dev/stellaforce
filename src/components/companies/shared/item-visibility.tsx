@@ -18,10 +18,15 @@ export function ItemVisibility({
   idPrefix,
   visibility,
   label,
+  audienceNote,
+  className,
 }: {
   idPrefix: string
   visibility: VisibilityBlock
   label: string
+  /** Narrows who "candidates" means — see `VisibilitySentence`. */
+  audienceNote?: string
+  className?: string
 }) {
   const draft = useVisibilityDraft(idPrefix, visibility, label)
 
@@ -30,7 +35,8 @@ export function ItemVisibility({
       clearance={draft.clearance}
       agentUse={draft.agentUse}
       onChange={draft.onChange}
-      className="text-xs"
+      audienceNote={audienceNote}
+      className={className ?? "text-xs"}
     />
   )
 }

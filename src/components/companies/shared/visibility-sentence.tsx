@@ -54,12 +54,19 @@ export function VisibilitySentence({
   agentUse,
   onChange,
   readOnly = false,
+  audienceNote,
   className,
 }: {
   clearance: Clearance
   agentUse: AgentUse | null
   onChange?: (next: { clearance: Clearance; agentUse: AgentUse | null }) => void
   readOnly?: boolean
+  /**
+   * Narrows who "candidates" means for this item — "on 1 role", "on no role
+   * yet". Team knowledge only reaches candidates screening for a role beneath
+   * it, so the unqualified sentence overstates the audience.
+   */
+  audienceNote?: string
   className?: string
 }) {
   const Icon = CLEARANCE_ICONS[clearance]
@@ -102,6 +109,10 @@ export function VisibilitySentence({
           })
         }
       />
+
+      {clearance === "cleared_for_candidates" && audienceNote && (
+        <span className="opacity-80">{audienceNote}</span>
+      )}
 
       {clearance === "cleared_for_candidates" && agentUse ? (
         <>
