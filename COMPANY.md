@@ -210,6 +210,19 @@ Shared conventions across every screen below, stated once:
 
 ## B.1 Company list — `/companies`
 
+**The page shell matches `/jobs`.** A bordered toolbar strip — search left, Add
+company right — then a filter row with the readiness pills left and the view
+toggle right, then a body that scrolls on its own. The `<h1>Companies</h1>`
+duplicated the breadcrumb the app header already renders, and the subtitle
+explaining what company knowledge is for was orientation sitting above a list
+someone opens daily; both are gone.
+
+**Search and the pills are `?q=` and `?status=`, filtered server-side.** They
+were component state while the view toggle was a URL param, so switching between
+table and cards remounted the toolbar and silently dropped your scope — which the
+code claimed it preserved. Now all three controls agree, and a filtered list is
+shareable.
+
 **Five columns, not eight.** Industry, funding stage, and headquarters each had
 their own column — three of reference material nobody scans, taking the width
 from the one column anyone acts on, which was truncating mid-word. Industry and
