@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import {
-  AlertTriangle,
   Ban,
   ChevronDown,
   ChevronRight,
@@ -41,6 +40,7 @@ import { formatTimestamp } from "@/components/companies/shared/activity-row"
 import { cn } from "@/lib/utils"
 import type { CompiledAgentContext } from "@/lib/company-agent-context"
 import type { CompanyReadiness } from "@/lib/company-readiness"
+import { SectionNote } from "@/components/companies/shared/section-note"
 import { jobAnswerGaps } from "@/lib/company-readiness"
 import type { Company, CompanyVersion } from "@/lib/mock-companies"
 
@@ -224,13 +224,8 @@ function JobCoverageAtPublish({ company }: { company: Company }) {
   if (jobs.length === 0) return null
 
   return (
-    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-50/60 p-3 dark:bg-amber-950/20">
-      <p className="flex items-center gap-1.5 text-xs font-medium">
-        <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400" />
-        After this publish, agents still can&apos;t answer
-      </p>
-
-      <ul className="space-y-2">
+    <SectionNote kind="attention" title="After this publish, agents still can't answer">
+      <ul className="mt-1 space-y-2">
         {jobs.map(({ job, gaps }) => (
           <li key={job.id}>
             <p className="text-xs font-medium text-muted-foreground">{job.title}</p>
@@ -258,11 +253,11 @@ function JobCoverageAtPublish({ company }: { company: Company }) {
         ))}
       </ul>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="mt-2 text-xs">
         Candidates hear the fallback and get routed to you. Publishing anyway is
         fine.
       </p>
-    </div>
+    </SectionNote>
   )
 }
 

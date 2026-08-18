@@ -64,9 +64,9 @@ export function ActivityRow({
       <span
         className={cn(
           "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full",
-          entry.event === "restricted_expanded"
-            ? "bg-destructive/10 text-destructive"
-            : isSystem
+          // Opening a restricted item is an event worth finding in the log,
+          // not an incident — it gets the system tint, not an alarm.
+          entry.event === "restricted_expanded" || isSystem
               ? "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
               : "bg-muted text-muted-foreground"
         )}

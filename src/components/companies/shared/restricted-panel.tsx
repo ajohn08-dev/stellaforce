@@ -34,7 +34,7 @@ export function RestrictedPanel({
   return (
     <div
       className={cn(
-        "rounded-lg border border-dashed border-destructive/30 bg-destructive/[0.03]",
+        "rounded-lg border border-dashed border-border bg-muted/30",
         className
       )}
     >
@@ -47,11 +47,11 @@ export function RestrictedPanel({
           canExpand ? "cursor-pointer" : "cursor-default"
         )}
       >
-        <Lock className="mt-0.5 size-4 shrink-0 text-destructive" />
+        <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
             <span className="text-sm font-medium">{title}</span>
-            <span className="text-xs text-destructive">Restricted</span>
+            <span className="text-xs text-muted-foreground">Restricted</span>
           </span>
           <span className="mt-0.5 block text-xs text-muted-foreground">
             {canExpand
@@ -75,7 +75,7 @@ export function RestrictedPanel({
       </button>
 
       {canExpand && open && (
-        <div className="border-t border-destructive/20 p-3 text-sm">{children}</div>
+        <div className="border-t border-border p-3 text-sm">{children}</div>
       )}
     </div>
   )

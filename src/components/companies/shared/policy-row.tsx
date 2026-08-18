@@ -40,7 +40,7 @@ const VALUE_STYLES: Record<ImmigrationValue, string> = {
   role_dependent: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
   case_by_case: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
   unknown: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-  restricted: "bg-destructive/10 text-destructive",
+  restricted: "bg-muted text-muted-foreground",
 }
 
 /**
@@ -134,7 +134,7 @@ export function PolicyRow({
               className={cn(
                 "flex items-center gap-2 rounded-md p-2.5 text-xs",
                 isRestricted
-                  ? "bg-destructive/[0.06] text-destructive"
+                  ? "bg-muted text-muted-foreground"
                   : "bg-muted text-muted-foreground"
               )}
             >

@@ -20,6 +20,7 @@ import { useFieldScope } from "@/components/companies/shared/field-scope"
 import { TrustWarning } from "@/components/companies/shared/trust-warning"
 import { VisibilitySentence } from "@/components/companies/shared/visibility-sentence"
 import { useVisibilityDraft } from "@/components/companies/shared/use-visibility-draft"
+import { SectionNote } from "@/components/companies/shared/section-note"
 import { formatDate } from "@/lib/constants"
 import { draftKey } from "@/lib/company-draft-keys"
 import {
@@ -623,26 +624,24 @@ function AnsweredDetail({
       )}
 
       {winning?.answer.escalationInstructions && (
-        <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 dark:bg-amber-950/30">
-          <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
-              When to hand off instead
-            </p>
-            <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-300">
-              {winning.answer.escalationInstructions}
-            </p>
-          </div>
-        </div>
+        // A handoff instruction is how the agent is *meant* to behave, not a
+        // problem — so it reads as a rule rather than a warning.
+        <SectionNote
+          kind="rule"
+          icon={<ShieldAlert className="size-4" />}
+          title="When to hand off instead"
+        >
+          {winning.answer.escalationInstructions}
+        </SectionNote>
       )}
 
       {prohibitions.length > 0 && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/[0.04] p-3">
-          <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
-            <Ban className="size-3.5" />
-            Never say, however the question is phrased
-          </p>
-          <ul className="mt-2 space-y-1">
+        <SectionNote
+          kind="rule"
+          icon={<Ban className="size-4" />}
+          title="Never say, however the question is phrased"
+        >
+          <ul className="space-y-1">
             {prohibitions.map((claim) => (
               <li
                 key={claim}
@@ -652,23 +651,23 @@ function AnsweredDetail({
                   // Rule 2 made visible: catalog prohibitions accumulate onto
                   // every company and no scope can drop one.
                   <Lock
-                    className="mt-0.5 size-3 shrink-0 text-destructive"
+                    className="mt-0.5 size-3 shrink-0"
                     aria-label="Standing rule — applies at every company"
                   />
                 ) : (
-                  <Ban className="mt-0.5 size-3 shrink-0 text-destructive" />
+                  <Ban className="mt-0.5 size-3 shrink-0" />
                 )}
                 {claim}
               </li>
             ))}
           </ul>
           {[...standing].length > 0 && (
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-2 text-xs">
               Locked rules come with the question and apply at every company. A
               team or role can add to this list, never remove from it.
             </p>
           )}
-        </div>
+        </SectionNote>
       )}
 
       {winning && <TrustWarning item={winning.answer} today={today} />}

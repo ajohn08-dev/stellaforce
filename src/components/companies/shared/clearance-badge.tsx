@@ -23,7 +23,9 @@ const CLEARANCE_STYLES: Record<Clearance, string> = {
   cleared_for_candidates:
     "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
   recruiters_only: "bg-muted text-muted-foreground",
-  restricted: "bg-destructive/10 text-destructive",
+  // A state, not a failure — the strictest rung of the ladder is the system
+  // working. Red is reserved for a check that fails.
+  restricted: "bg-muted text-muted-foreground",
 }
 
 const CLEARANCE_ICONS: Record<Clearance, typeof Users> = {

@@ -3,6 +3,7 @@ import { Ban, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PolicyRow } from "@/components/companies/shared/policy-row"
 import { RestrictedPanel } from "@/components/companies/shared/restricted-panel"
+import { SectionNote } from "@/components/companies/shared/section-note"
 import { SectionQuestions } from "@/components/companies/shared/section-questions"
 import { EditableText, FieldRow } from "@/components/companies/shared/editable-field"
 import {
@@ -78,16 +79,14 @@ export function PolicySection({
       )}
 
       {standingProhibition && (
-        <p className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.04] p-3 text-sm text-destructive">
-          <Ban className="mt-0.5 size-4 shrink-0" />
-          <span>
-            {standingProhibition}
-            <span className="mt-0.5 block text-xs opacity-80">
-              This holds regardless of how the fields above are set. It can&apos;t be
-              switched off.
-            </span>
-          </span>
-        </p>
+        <SectionNote
+          kind="rule"
+          icon={<Ban className="size-4" />}
+          title={standingProhibition}
+        >
+          This holds regardless of how the fields above are set. It can&apos;t be
+          switched off.
+        </SectionNote>
       )}
 
       <SectionQuestions

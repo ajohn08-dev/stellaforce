@@ -997,6 +997,42 @@ Teams gained an editable per-item sentence for the same reason: a bulk change
 writes `team-<id>-clearance`, and a read-only badge that can't move while the
 thing it describes does is worse than no badge.
 
+## The four kinds of message, and only four
+
+Before this there were five visual treatments for "here is some information", and
+**red meant four different things**: a blocking readiness failure, a standing
+prohibition, a `restricted` clearance, and an item past its review date. Amber
+meant four more. When a permanent rule that cannot be changed shouts as loudly as
+a broken agent, the colour stops carrying information and people stop reading
+both.
+
+One component — `shared/section-note.tsx` — with kinds separated by **what the
+reader can do about it**:
+
+| Kind | Means | Can you act? | Colour |
+|---|---|---|---|
+| `rule` | Always true here, can't be switched off | **No** — read once | None. Quiet. |
+| `attention` | Something needs you; nothing is broken | Yes | Amber |
+| `blocking` | An agent can't run, or a candidate hears something wrong | Yes, now | **Red — only here** |
+| `empty` | Nothing recorded yet | Optionally | Dashed, muted |
+
+The counter-intuitive one is `rule`. *"The agent may never confirm a figure"*
+feels like the most serious thing on the page, so it had the loudest styling —
+but it's the system **working**, and there is no action attached to it. Making it
+calm is what lets red keep meaning *this is wrong right now*.
+
+**Orientation is not on the list.** *What is this section for* already has a home
+in `SectionDef.purpose`, rendered under every section title; a second box
+repeating it was the inconsistency this replaced.
+
+**Status is not a message either.** `restricted` is the strictest rung of the
+clearance ladder, not a failure — it renders muted with a lock, in the badge, the
+visibility sentence, the policy row, the restricted panel, and the activity log.
+Stale knowledge is `attention`, not danger: "re-confirm this" is work, not a
+broken agent. After this pass red survives in exactly three places — the rail's
+blocking gap badge, the `blocked` readiness pill, and the hover state of a
+delete affordance.
+
 **Provenance stays in the data but is not rendered as metadata.** The
 `VisibilityBlock` still carries `source`, `verifiedBy`, `lastVerifiedAt`,
 `nextReviewAt`, and `owner` — the readiness engine needs every one of them to compute

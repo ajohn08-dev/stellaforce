@@ -4,6 +4,7 @@ import { MessageCircleOff } from "lucide-react"
 
 import { EditableTextarea } from "@/components/companies/shared/editable-field"
 import { draftKey } from "@/lib/company-draft-keys"
+import { SectionNote } from "@/components/companies/shared/section-note"
 import { SectionShell } from "@/components/companies/workspace/section-shell"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import type { CompanyReadiness } from "@/lib/company-readiness"
@@ -41,13 +42,13 @@ export function FallbacksSection({
 
   return (
     <SectionShell section={section} readiness={readiness}>
-      <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+      <SectionNote kind="rule">
         These four cover every conversation, at every role. They start as
         Stellaforce&apos;s wording; edit any of them to sound like this company.
         There is deliberately no per-topic version — an agent that declines
         differently depending on the subject sounds like it&apos;s hiding
         something.
-      </p>
+      </SectionNote>
 
       <div className="space-y-3">
         {resolved.map((fallback) => {

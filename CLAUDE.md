@@ -390,6 +390,15 @@ migrating the full app layer to V3.2 is an ongoing pass.
   recruiter" (sets `agentUse: 'escalate'`, giving the agent defined behaviour on
   the topic rather than a hole).
 
+  **Four kinds of message, and only four** (`shared/section-note.tsx`), separated
+  by what the reader can do: `rule` (always true, can't be switched off — quiet,
+  no colour), `attention` (needs you, nothing broken — amber), `blocking` (an
+  agent can't run — **red, and only here**), `empty` (dashed). Red used to mean
+  four different things and amber four more; a standing prohibition shouting as
+  loudly as a failed check is how both stop being read. Orientation isn't on the
+  list — it lives in `SectionDef.purpose`. Status isn't either: `restricted` is
+  the strictest rung, not a failure, so it renders muted with a lock everywhere.
+
   **Activity is a projection of `activity_events`**, not a company-owned history,
   and there is deliberately **no per-item history drawer and no per-item
   provenance strip**. Both were answering rarely-asked questions with

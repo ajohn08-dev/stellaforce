@@ -76,11 +76,12 @@ export function TrustWarning({
 
   return (
     <p
+      // Both states are `attention`: stale knowledge and an unverified claim
+      // each mean "go and confirm this", and neither means an agent is broken.
+      // Stale used to render destructive-red, which is reserved for a check that
+      // actually fails.
       className={cn(
-        "flex items-start gap-2 rounded-md px-2.5 py-2 text-xs",
-        stale
-          ? "bg-destructive/[0.06] text-destructive"
-          : "bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300",
+        "flex items-start gap-2 rounded-md bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300",
         className
       )}
     >

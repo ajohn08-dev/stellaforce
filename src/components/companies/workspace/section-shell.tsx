@@ -1,7 +1,8 @@
 import Link from "next/link"
-import { AlertOctagon, AlertTriangle, ArrowRight } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { SectionNote } from "@/components/companies/shared/section-note"
 import { FieldScopeProvider } from "@/components/companies/shared/field-scope"
 import {
   SectionVisibilityBar,
@@ -64,32 +65,20 @@ export function SectionShell({
 
         {warnings.length > 0 && (
           <ul className="space-y-2">
-            {warnings.map((w) => {
-              const blocking = w.status === "fail" && w.severity === "critical"
-              const Icon = blocking ? AlertOctagon : AlertTriangle
-              return (
-                <li
-                  key={w.key}
-                  className={cn(
-                    "flex items-start gap-2.5 rounded-lg border p-3 text-sm",
-                    blocking
-                      ? "border-destructive/30 bg-destructive/[0.04]"
-                      : "border-amber-500/30 bg-amber-50/60 dark:bg-amber-950/20"
-                  )}
+            {warnings.map((w) => (
+              <li key={w.key}>
+                <SectionNote
+                  kind={
+                    w.status === "fail" && w.severity === "critical"
+                      ? "blocking"
+                      : "attention"
+                  }
+                  title={w.label}
                 >
-                  <Icon
-                    className={cn(
-                      "mt-0.5 size-4 shrink-0",
-                      blocking ? "text-destructive" : "text-amber-600 dark:text-amber-400"
-                    )}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{w.label}</p>
-                    <p className="text-muted-foreground">{w.explanation}</p>
-                  </div>
-                </li>
-              )
-            })}
+                  {w.explanation}
+                </SectionNote>
+              </li>
+            ))}
           </ul>
         )}
 

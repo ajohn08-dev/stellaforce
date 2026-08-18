@@ -5,6 +5,7 @@ import { ArrowLeft, Plus, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ClearanceBadge } from "@/components/companies/shared/clearance-badge"
+import { SectionNote } from "@/components/companies/shared/section-note"
 import { ItemVisibility } from "@/components/companies/shared/item-visibility"
 import {
   SectionEmpty,
@@ -77,11 +78,11 @@ export function TeamsSection({
       }
     >
       {company.teams.length > 0 && (
-        <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+        <SectionNote kind="rule">
           A candidate only ever hears about the teams their own role sits under.
           Knowledge on a team never reaches a candidate screening for a role
           somewhere else in the org.
-        </p>
+        </SectionNote>
       )}
 
       {company.teams.length === 0 ? (

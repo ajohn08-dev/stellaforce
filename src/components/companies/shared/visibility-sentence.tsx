@@ -73,8 +73,10 @@ export function VisibilitySentence({
   const escalating = clearance === "cleared_for_candidates" && agentUse === "escalate"
 
   const tone =
+    // Restricted is the strictest rung, not a failure. The lock icon carries
+    // it; red is reserved for a check that actually fails.
     clearance === "restricted"
-      ? "text-destructive"
+      ? "text-muted-foreground"
       : escalating
         ? "text-amber-800 dark:text-amber-300"
         : clearance === "recruiters_only"
