@@ -24,6 +24,8 @@ import {
   companyQuestions,
   isUnanswered,
   questionOf,
+  resolveAnswer,
+  withDerived,
   unansweredQuestions as unansweredCompanyQuestions,
   type CompanyQuestion,
 } from "@/lib/company-inheritance"
@@ -518,6 +520,41 @@ export function jobCoverage(company: Company): JobCoverage[] {
   })
 }
 
+/**
+ * Per-job, what an agent screening for this role **still can't answer** — shown
+ * at publish, as a warning rather than a block.
+ *
+ * Publishing is the moment company knowledge reaches every agent on every job
+ * here, and it was the one moment that said nothing about whether those agents
+ * could actually do their work. A blocking gate would be wrong — plenty of
+ * companies run screens with gaps, and the agent escalating is a designed
+ * outcome, not a failure — but silence is worse than either.
+ *
+ * Sensitive topics come first: an unanswered sponsorship question is a candidate
+ * hearing "I'll have to check" on the thing that decides whether they apply.
+ */
+export function jobAnswerGaps(
+  company: Company,
+  job: CompanyJob
+): { question: string; sensitive: boolean }[] {
+  return companyQuestions(company)
+    .map((raw) => withDerived(company, raw, job))
+    .filter((q) => !resolveAnswer(company, q, { jobId: job.id }, { publishedOnly: true }))
+    .map((q) => {
+      const catalog = questionOf(company, q)
+      return {
+        question: catalog?.intent ?? q.questionId,
+        sensitive: catalog?.sensitive ?? false,
+        askedCount: q.askedCount,
+      }
+    })
+    .sort((a, b) => {
+      if (a.sensitive !== b.sensitive) return Number(b.sensitive) - Number(a.sensitive)
+      return b.askedCount - a.askedCount
+    })
+    .map(({ question, sensitive }) => ({ question, sensitive }))
+}
+
 // ---------------------------------------------------------------------------
 // Issue queues
 // ---------------------------------------------------------------------------
@@ -887,7 +924,7 @@ function computeAgentContext(company: Company) {
   const all = [...narrative, ...company.policies, ...allAnswers(company).map((a) => a.answer)]
 
   return {
-    narrativeBlocks: narrative.filter(agentCanUse).length,
+    narrativeBlocks: narrative.filter((k) => agentCanUse(k)).length,
     faqAnswers: allAnswers(company).filter((a) => agentCanUse(a.answer)).length,
     policies: company.policies.filter((p) => agentCanUse(p) && p.candidateFacingText).length,
     escalationRules: all.filter(agentMustEscalate).length,

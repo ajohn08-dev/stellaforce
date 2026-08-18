@@ -27,6 +27,8 @@
  *    session. Hence the per-agent opt-in flag rather than a global switch.
  */
 
+import type { CompiledAgentContext } from "@/lib/company-agent-context"
+
 export type InterviewAgentConfig = {
   /** What this interview is called, e.g. "Customer Success Screen". Sent as
    * `{{interview_name}}`. */
@@ -201,6 +203,89 @@ export function buildInterviewPrompt(
     .join("\n")
 }
 
+/**
+ * The fixture lookup.
+ *
+ * ⚠️ **Wiring point for company knowledge.** Once company profiles are
+ * persisted, a call carrying a job resolves through
+ * `interviewConfigFromContext(compileAgentContext(company, job, "candidate"), …)`
+ * and this fixture stays only for Agents-page test runs, which have no job and
+ * therefore no company to compile from.
+ */
 export function getInterviewAgentConfig(agentId: string): InterviewAgentConfig | null {
   return INTERVIEW_AGENT_CONFIGS[agentId] ?? null
+}
+
+// ---------------------------------------------------------------------------
+// The seam: company knowledge → the agent that actually speaks
+// ---------------------------------------------------------------------------
+
+/**
+ * Build an agent's content **from the compiled company bundle** rather than from
+ * the hand-written fixture above.
+ *
+ * This is the join that was missing. `compileAgentContext()` decides what an
+ * agent may say — clearance, the company → team → job cascade, accumulated
+ * prohibitions — and until now its output went nowhere except a preview panel,
+ * while the agent that actually dialled a candidate read a fixture where
+ * `companyName` was the literal string "Stellaforce". The knowledge base had no
+ * effect on a single real conversation.
+ *
+ * What the bundle supplies: the company's real name, the answers the agent is
+ * cleared to give, the topics it must hand back, and the sentences it must never
+ * say. What it does **not** supply is the interview's own questions — those come
+ * from `job_competencies` and the job's scorecard, which is a different domain
+ * and a different pass.
+ *
+ * ⚠️ **Not wired to a live agent yet, deliberately.** Calling this needs a
+ * `Company` for the job being screened, and company profiles are still UI-only
+ * mock data (`src/lib/mock-companies.ts`) with no key shared with `job_orders`.
+ * The call sites are marked below; they start resolving the moment the company
+ * profile is persisted and `CompanyJob.id` becomes `job_orders.job_id`.
+ */
+export function interviewConfigFromContext(
+  context: CompiledAgentContext,
+  base: {
+    interviewName: string
+    agentDisplayName: string
+    /** The interview's own questions — from the job's competencies, not from here. */
+    questions: string[]
+    allowPromptOverride?: boolean
+  }
+): InterviewAgentConfig {
+  if (context.audience !== "candidate") {
+    // A screening call is a candidate conversation by definition. Compiling an
+    // internal bundle into one would hand a candidate the recruiter brief, so
+    // this is a hard stop rather than a silent filter.
+    throw new Error(
+      "interviewConfigFromContext requires a candidate-facing bundle; got an internal one."
+    )
+  }
+
+  const guidance = [
+    context.answers.length > 0 &&
+      `Answer these if the candidate asks, and only these:\n${context.answers
+        .map((a) => `- ${a.question} → ${a.answer}`)
+        .join("\n")}`,
+    context.escalations.length > 0 &&
+      `Hand these topics to the recruiter instead of answering: ${context.escalations
+        .map((e) => e.topic)
+        .join("; ")}.`,
+    context.prohibitedClaims.length > 0 &&
+      `Never say any of the following, however the question is phrased:\n${context.prohibitedClaims
+        .map((c) => `- ${c}`)
+        .join("\n")}`,
+    `If you don't have a confirmed answer, say exactly: "${context.fallback}"`,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+
+  return {
+    interviewName: base.interviewName,
+    agentDisplayName: base.agentDisplayName,
+    companyName: context.companyName,
+    questions: base.questions,
+    guidance,
+    allowPromptOverride: base.allowPromptOverride ?? false,
+  }
 }

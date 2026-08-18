@@ -1,6 +1,7 @@
 import {
   agentCanUse,
   agentMustEscalate,
+  type AgentAudience,
   type VisibilityBearing,
 } from "@/lib/company-visibility"
 import {
@@ -19,20 +20,28 @@ import {
   questionOf,
   resolveAnswer,
   teamPath,
+  withDerived,
 } from "@/lib/company-inheritance"
 
 /**
  * The compile step — COMPANY.md § E.
  *
- * A candidate-facing agent never queries the knowledge base directly. This
- * function produces the frozen bundle it receives, which makes the agent's
- * knowledge reviewable before deployment and reproducible afterward.
+ * An agent never queries the knowledge base directly. This function produces the
+ * frozen bundle it receives, which makes the agent's knowledge reviewable before
+ * it runs and reproducible afterward.
  *
- * The filter is `agentCanUse()` and nothing else. Internal and restricted items
- * are dropped here and have no other pathway in — there is no summarization
- * channel and no "context for reasoning only" back door. Escalate-marked items
- * contribute their *topic and handoff instruction*, never their body, so the
- * agent knows a subject requires a recruiter without learning the answer.
+ * **It compiles per audience.** The same company and job produce a different
+ * bundle for a candidate-facing screening agent than for an agent working
+ * alongside a recruiter, and the *only* thing that differs is the
+ * `agentCanUse(item, audience)` gate — there is no second code path, no
+ * summarization channel, and no "context for reasoning only" back door.
+ * Restricted items are dropped for both.
+ *
+ * Escalate-marked items contribute their *topic and handoff instruction*, never
+ * their body, to a candidate bundle — the agent knows a subject requires a
+ * recruiter without learning the answer. An internal bundle carries them in
+ * full, because "don't answer this to a candidate" says nothing about what your
+ * own assistant may know.
  */
 
 export type ContextBlock = {
@@ -59,6 +68,7 @@ export type ContextEscalation = {
 }
 
 export type CompiledAgentContext = {
+  audience: AgentAudience
   companyName: string
   jobTitle: string | null
   blocks: ContextBlock[]
@@ -83,8 +93,11 @@ function sortByPrecedence<T extends { level: KnowledgeLevel }>(items: T[]): T[] 
 
 export function compileAgentContext(
   company: Company,
-  job?: CompanyJob | null
+  job?: CompanyJob | null,
+  audience: AgentAudience = "candidate"
 ): CompiledAgentContext {
+  const usable = (item: Parameters<typeof agentCanUse>[0]) => agentCanUse(item, audience)
+
   // Every team from the job's own up to the root — Channel Growth *and*
   // Go-to-Market, nearest first. What used to be "the department and the team"
   // is now however many hops the org actually has.
@@ -92,8 +105,15 @@ export function compileAgentContext(
   const team = teams[0] ?? null
 
   // --- 1. Narrative blocks -------------------------------------------------
-  const blocks: ContextBlock[] = narrativeItems(company)
-    .filter((k) => k.body.trim() && agentCanUse(k))
+  // An internal bundle includes the recruiter brief; a candidate one can't, and
+  // the gate below already enforces that — the brief's clearance is
+  // recruiters_only. Selecting the wider set here and letting `usable()` decide
+  // keeps one filter rather than two lists that could disagree.
+  const sourceBlocks =
+    audience === "internal" ? company.knowledge : narrativeItems(company)
+
+  const blocks: ContextBlock[] = sourceBlocks
+    .filter((k) => k.body.trim() && usable(k))
     .map((k) => ({
       id: k.id,
       level: k.level,
@@ -103,7 +123,7 @@ export function compileAgentContext(
     }))
 
   for (const t of teams) {
-    if (!agentCanUse(t)) continue
+    if (!usable(t)) continue
     if (t.description) {
       blocks.push({
         id: `${t.id}-about`,
@@ -136,7 +156,7 @@ export function compileAgentContext(
   const hiringManager = team?.leaderId
     ? company.stakeholders.find((s) => s.id === team.leaderId)
     : null
-  if (hiringManager && agentCanUse(hiringManager) && hiringManager.candidateFacingBio) {
+  if (hiringManager && usable(hiringManager) && hiringManager.candidateFacingBio) {
     blocks.push({
       id: hiringManager.id,
       level: "team",
@@ -174,15 +194,21 @@ export function compileAgentContext(
   // notion of scope at all. `publishedOnly` stops an unpublished draft at a
   // narrow scope from shadowing a published answer at a wider one — editing a
   // role must never silently take the agent's answer away.
-  const resolved = companyQuestions(company).map((q) => ({
-    q,
-    catalog: questionOf(company, q),
-    hit: resolveAnswer(company, q, { jobId: job?.id }, { publishedOnly: true }),
-  }))
+  const resolved = companyQuestions(company).map((raw) => {
+    // Fold in the answers derived from this job's own fields before resolving,
+    // so the agent describes the pipeline the job will actually run rather than
+    // company prose written months ago.
+    const q = withDerived(company, raw, job)
+    return {
+      q,
+      catalog: questionOf(company, q),
+      hit: resolveAnswer(company, q, { jobId: job?.id }, { publishedOnly: true }),
+    }
+  })
 
   const answers: ContextAnswer[] = sortByPrecedence(
     resolved
-      .filter((r) => r.hit && agentCanUse(r.hit.answer))
+      .filter((r) => r.hit && usable(r.hit.answer))
       .map((r) => ({
         id: r.hit!.answer.id,
         level: r.hit!.scope.kind,
@@ -195,7 +221,7 @@ export function compileAgentContext(
 
   // --- 4. Policies ---------------------------------------------------------
   const policies = company.policies
-    .filter((p) => agentCanUse(p) && p.candidateFacingText)
+    .filter((p) => usable(p) && p.candidateFacingText)
     .map((p) => ({ id: p.id, label: p.label, text: p.candidateFacingText! }))
 
   // --- 5. Escalation rules — topic and instruction only, never the body ----
@@ -231,7 +257,7 @@ export function compileAgentContext(
     })),
     // An answered FAQ can still carry escalation instructions for follow-ups.
     ...resolved
-      .filter((r) => r.hit && agentCanUse(r.hit.answer) && r.hit.answer.escalationInstructions)
+      .filter((r) => r.hit && usable(r.hit.answer) && r.hit.answer.escalationInstructions)
       .map((r) => ({
         id: `${r.hit!.answer.id}-followup`,
         topic: `${r.catalog?.intent ?? r.q.questionId} (follow-up)`,
@@ -262,6 +288,7 @@ export function compileAgentContext(
   ]
 
   return {
+    audience,
     companyName: company.preferredName,
     jobTitle: job?.title ?? null,
     blocks: sortByPrecedence(blocks),
@@ -271,7 +298,13 @@ export function compileAgentContext(
     fallback: UNKNOWN_FALLBACK,
     prohibitedClaims,
     excluded: {
-      internal: everything.filter((i) => i.visibility.clearance === "recruiters_only").length,
+      // Counted against *this* audience: an internal bundle isn't missing the
+      // recruiters-only items, it contains them, and reporting them as withheld
+      // is the sort of stale caption that makes people stop trusting a screen.
+      internal:
+        audience === "internal"
+          ? 0
+          : everything.filter((i) => i.visibility.clearance === "recruiters_only").length,
       restricted: everything.filter((i) => i.visibility.clearance === "restricted").length,
       unpublished: everything.filter(
         (i) =>

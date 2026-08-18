@@ -55,6 +55,12 @@ export type Answer = {
   escalationInstructions: string | null
   /** Added to — never replacing — the catalog's prohibitions and any wider scope's. */
   prohibitedClaims: string[]
+  /**
+   * Set when this answer was synthesised from a field the recruiter already
+   * filled in on the job — "this role's reporting line". Never stored; see
+   * `derivedAnswers`.
+   */
+  derivedFrom?: string
   visibility: VisibilityBlock
 }
 
@@ -306,6 +312,111 @@ export function effectiveProhibitions(
     for (const claim of answer.prohibitedClaims) out.add(claim)
   }
   return [...out]
+}
+
+// ---------------------------------------------------------------------------
+// Derived answers
+// ---------------------------------------------------------------------------
+
+/**
+ * **Answers the recruiter already wrote, without knowing they were writing
+ * them.**
+ *
+ * A job's reporting line, travel, location and pipeline are typed into the job
+ * itself — and they are also, word for word, the answers to four catalog
+ * questions. Asking someone to type the reporting line in the wizard and then
+ * write "Who would I report to?" separately guarantees two things: they won't,
+ * and if they do, the two will disagree within a month.
+ *
+ * So these are **derived, never stored**: synthesised at job scope, marked with
+ * where they came from, and beaten by any answer a recruiter actually writes for
+ * that job. Change the field, the answer changes with it.
+ *
+ * The interview process is the important one. The company section holds prose
+ * ("three stages: a recruiter screen, an on-site…") while the job holds the
+ * stages it will genuinely run. Nothing reconciled them, so an agent could
+ * confidently describe a process the pipeline doesn't perform — the kind of
+ * error a candidate discovers, not a recruiter. Deriving it means the sentence
+ * can't be wrong.
+ */
+export function derivedAnswers(company: Company, job: CompanyJob): Answer[] {
+  const scope: AnswerScope = { kind: "job", refId: job.id }
+
+  const derive = (
+    questionId: string,
+    body: string | null,
+    derivedFrom: string
+  ): (Answer & { questionId: string }) | null => {
+    if (!body?.trim()) return null
+    return {
+      id: `derived-${job.id}-${questionId}`,
+      questionId,
+      scope,
+      body,
+      expandedAnswer: null,
+      escalationInstructions: null,
+      prohibitedClaims: [],
+      derivedFrom,
+      // Derived answers are as published as the field they mirror: the recruiter
+      // already committed to it on the job. Marking them draft would hide them
+      // from the very agent that needs them.
+      visibility: {
+        clearance: "cleared_for_candidates",
+        agentUse: "on_request",
+        state: "published",
+        source: `Derived from ${derivedFrom}`,
+        verification: "verified",
+        lastVerifiedAt: null,
+        verifiedBy: null,
+        owner: "",
+        reviewCadenceDays: null,
+        nextReviewAt: null,
+        isPresetDefault: true,
+      },
+    }
+  }
+
+  return [
+    derive("q-reporting-line", job.reportsTo, "this role's reporting line"),
+    derive("q-travel", job.travel, "this role's travel requirement"),
+    derive("q-remote", job.location, "this role's location"),
+    derive("q-typical-week", job.typicalWeek, "this role's typical week"),
+    derive("q-why-role-open", job.rolePurpose, "why this role exists"),
+    derive(
+      "q-interview-process",
+      job.interviewStages.length > 0
+        ? `${job.interviewStages.length} stages: ${job.interviewStages.join(", ")}.`
+        : null,
+      "this role's pipeline"
+    ),
+  ].filter(Boolean) as Answer[]
+}
+
+/**
+ * A question with its derived job answers folded in — what every surface
+ * standing on a job should resolve against.
+ *
+ * A written job-scoped answer always beats the derived one: deriving is a
+ * default, not a lock. Nothing else in the chain is touched.
+ */
+export function withDerived(
+  company: Company,
+  question: CompanyQuestion,
+  job: CompanyJob | null | undefined
+): CompanyQuestion {
+  if (!job) return question
+
+  const hasWrittenJobAnswer = question.answers.some(
+    (a) => a.scope.kind === "job" && a.scope.refId === job.id && isWritten(a)
+  )
+  if (hasWrittenJobAnswer) return question
+
+  const derived = derivedAnswers(company, job).filter(
+    (a) => (a as Answer & { questionId?: string }).questionId === question.questionId
+  )
+  if (derived.length === 0) return question
+
+  return { ...question, answers: [...question.answers, ...derived] }
 }
 
 // ---------------------------------------------------------------------------

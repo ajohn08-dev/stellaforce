@@ -454,6 +454,15 @@ export type CompanyJob = {
    * when `CompanyJob.id` becomes `job_orders.job_id`.
    */
   status: MockJobStatus
+  /**
+   * The job's pipeline stage names, in order — the interview process a candidate
+   * is actually put through.
+   *
+   * ⚠️ **Fixture stand-in.** The real source is `job_workflow_sub_stages`,
+   * snapshotted from the workflow template at publish. It's mirrored here so the
+   * derived interview-process answer can be built without a database.
+   */
+  interviewStages: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -1965,6 +1974,13 @@ const LUMAGRID_JOBS: CompanyJob[] = [
     ],
     roleRisks:
       "The territory is broad and partially greenfield, so the candidate must be comfortable building process and operating amid ambiguity.",
+    interviewStages: [
+      "Recruiter screen",
+      "Hiring manager interview",
+      "Partner-strategy exercise",
+      "Panel with sales engineering",
+      "Offer",
+    ],
     overrides: [
       {
         fieldKey: "location",
@@ -2277,6 +2293,7 @@ const VERITY: Company = {
     {
       id: "job-vh-01",
       title: "Senior Data Engineer",
+      interviewStages: [],
       teamId: null,
       location: "Boston, MA",
       travel: null,
@@ -2625,6 +2642,7 @@ const HARBORLINE: Company = {
     {
       id: "job-hl-01",
       title: "Yard Operations Supervisor",
+      interviewStages: ["Recruiter screen", "On-site with the yard director", "Shift walkthrough"],
       teamId: null,
       location: "Newark, NJ",
       travel: null,

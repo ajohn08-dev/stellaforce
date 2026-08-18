@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  AlertTriangle,
   Ban,
   ChevronDown,
   ChevronRight,
@@ -40,7 +41,8 @@ import { formatTimestamp } from "@/components/companies/shared/activity-row"
 import { cn } from "@/lib/utils"
 import type { CompiledAgentContext } from "@/lib/company-agent-context"
 import type { CompanyReadiness } from "@/lib/company-readiness"
-import type { CompanyVersion } from "@/lib/mock-companies"
+import { jobAnswerGaps } from "@/lib/company-readiness"
+import type { Company, CompanyVersion } from "@/lib/mock-companies"
 
 function sectionLabel(key: string): string {
   return ALL_SECTIONS.find((s) => s.key === key)?.label ?? key
@@ -60,10 +62,12 @@ function sectionLabel(key: string): string {
  * than merely convenient.
  */
 export function PublishButton({
+  company,
   context,
   readiness,
   versions,
 }: {
+  company: Company
   context: CompiledAgentContext
   readiness: CompanyReadiness
   versions: CompanyVersion[]
@@ -185,6 +189,8 @@ export function PublishButton({
             ))}
           </ul>
 
+          <JobCoverageAtPublish company={company} />
+
           <AgentContextDisclosure context={context} readiness={readiness} />
 
           <DialogFooter>
@@ -195,6 +201,67 @@ export function PublishButton({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+/**
+ * What agents still can't answer, per active job — the thing publishing never
+ * said.
+ *
+ * Publishing is the moment this knowledge reaches every agent on every job at
+ * this company. It's the right moment to say what those agents will have to
+ * escalate, and the wrong moment to block: a screen with gaps is normal, and the
+ * agent handing the question back is a designed outcome. So this is a list, not
+ * a gate, and it stays quiet when there's nothing to say.
+ */
+function JobCoverageAtPublish({ company }: { company: Company }) {
+  const jobs = company.jobs
+    .filter((j) => j.status === "open" || j.status === "draft")
+    .map((job) => ({ job, gaps: jobAnswerGaps(company, job) }))
+    .filter((row) => row.gaps.length > 0)
+
+  if (jobs.length === 0) return null
+
+  return (
+    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-50/60 p-3 dark:bg-amber-950/20">
+      <p className="flex items-center gap-1.5 text-xs font-medium">
+        <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400" />
+        After this publish, agents still can&apos;t answer
+      </p>
+
+      <ul className="space-y-2">
+        {jobs.map(({ job, gaps }) => (
+          <li key={job.id}>
+            <p className="text-xs font-medium text-muted-foreground">{job.title}</p>
+            <p className="text-sm">
+              {gaps.slice(0, 3).map((g, i) => (
+                <span key={g.question}>
+                  {i > 0 && " · "}
+                  <span
+                    className={cn(
+                      g.sensitive && "text-amber-800 dark:text-amber-300"
+                    )}
+                  >
+                    {g.question}
+                  </span>
+                </span>
+              ))}
+              {gaps.length > 3 && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  and {gaps.length - 3} more
+                </span>
+              )}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      <p className="text-xs text-muted-foreground">
+        Candidates hear the fallback and get routed to you. Publishing anyway is
+        fine.
+      </p>
     </div>
   )
 }

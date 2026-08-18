@@ -99,9 +99,13 @@ export const CLEARANCE_SHORT_LABELS: Record<Clearance, string> = {
 }
 
 export const CLEARANCE_HELP: Record<Clearance, string> = {
-  cleared_for_candidates: "The agent can use this in candidate conversations.",
-  recruiters_only: "Stays inside your team. The agent never receives it.",
-  restricted: "Never leaves your team, never reaches an agent.",
+  cleared_for_candidates: "A screening agent can use this in candidate conversations.",
+  // Was "the agent never receives it", which stopped being true the moment
+  // agents started working alongside recruiters rather than only calling
+  // candidates. The wall is around the candidate, not around every machine.
+  recruiters_only:
+    "Never reaches a candidate. Agents working alongside you can still use it.",
+  restricted: "Named staff only. No agent of any kind receives it.",
 }
 
 /** The heading above the clearance choices. */
@@ -153,22 +157,62 @@ export const AGENT_USE_ORDER: AgentUse[] = [
 // ---------------------------------------------------------------------------
 
 /**
+ * Who is asking. **Not every agent is a candidate-facing agent.**
+ *
+ * The knowledge base also feeds agents that work *with* the platform — a
+ * recruiter's assistant drafting a submission, a sourcing agent ranking a
+ * shortlist, whatever runs on `/chat`. Those are on our side of the wall, and
+ * the recruiter brief, the hiring manager's quirks, and the sponsorship budget
+ * are exactly what they need.
+ */
+export type AgentAudience = "candidate" | "internal"
+
+export const AGENT_AUDIENCE_LABELS: Record<AgentAudience, string> = {
+  candidate: "Candidate-facing",
+  internal: "Internal",
+}
+
+export const AGENT_AUDIENCE_HELP: Record<AgentAudience, string> = {
+  candidate: "What a screening agent may say to a candidate.",
+  internal: "What an agent working alongside you may use. Never reaches a candidate.",
+}
+
+/**
  * **The single place the disclosure decision is made.** Every surface that asks
- * "will the agent say this?" — the preview dialog, the readiness checks, the
+ * "will the agent say this?" — the knowledge panel, the readiness checks, the
  * context compile — calls this and nothing else.
  *
- * An `escalate` item deliberately fails the gate: it contributes its topic and
- * its escalation instruction to the agent's context, never its body. The agent
- * learns *that* the subject requires a handoff, not what the answer would be.
+ * It takes an **audience** because the clearance ladder was being read as a
+ * boolean. `recruiters_only` never meant "no agent, ever" — it meant "not to a
+ * candidate". Reading it as the former is what made the internal agents
+ * invisible in this model:
+ *
+ * | Clearance | Candidate-facing | Internal |
+ * |---|---|---|
+ * | `cleared_for_candidates` | ✅ | ✅ |
+ * | `recruiters_only` | ❌ | ✅ |
+ * | `restricted` | ❌ | ❌ |
+ *
+ * `restricted` bars both, which is the point of having a third rung: some
+ * things go to named people and to no machine at all.
+ *
+ * The `agentUse` dial is **candidate-only** by construction — "state
+ * proactively", "answer only if asked", and "always escalate" are all
+ * descriptions of a candidate conversation. An internal agent ignores it, so an
+ * `escalate` item (sponsorship, say) still reaches your assistant in full while
+ * a candidate agent gets only the topic and the handoff instruction.
  */
-export function agentCanUse(item: VisibilityBearing): boolean {
+export function agentCanUse(
+  item: VisibilityBearing,
+  audience: AgentAudience = "candidate"
+): boolean {
   const v = item.visibility
-  return (
-    v.clearance === "cleared_for_candidates" &&
-    v.state === "published" &&
-    v.verification !== "stale" &&
-    v.agentUse !== "escalate"
-  )
+  if (v.state !== "published" || v.verification === "stale") return false
+  if (v.clearance === "restricted") return false
+
+  if (audience === "internal") return true
+
+  return v.clearance === "cleared_for_candidates" && v.agentUse !== "escalate"
 }
 
 /**

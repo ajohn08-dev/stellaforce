@@ -31,6 +31,7 @@ import {
   questionOf,
   resolveAnswer,
   stackDepth,
+  withDerived,
   type Answer,
   type AnswerScope,
   type CompanyQuestion,
@@ -632,12 +633,17 @@ export function JobAnswers({
 }) {
   const [overriding, setOverriding] = React.useState<string[]>([])
 
+  const job = company.jobs.find((j) => j.id === jobId) ?? null
+
   const rows = companyQuestions(company)
-    .map((entry) => ({
-      entry,
-      catalog: questionOf(company, entry),
-      hit: resolveAnswer(company, entry, { jobId }),
-    }))
+    .map((raw) => {
+      const entry = withDerived(company, raw, job)
+      return {
+        entry,
+        catalog: questionOf(company, entry),
+        hit: resolveAnswer(company, entry, { jobId }),
+      }
+    })
     .filter((r) => r.catalog && r.hit)
 
   if (rows.length === 0) {
@@ -652,7 +658,11 @@ export function JobAnswers({
   return (
     <ul className="divide-y divide-border rounded-lg border border-border">
       {rows.map(({ entry, catalog, hit }) => {
-        const own = hit!.scope.kind === "job"
+        // A derived answer sits at job scope but nobody wrote it, so it must not
+        // wear the "Set for this role" badge — that would claim a deliberate
+        // override where there's only a mirrored field.
+        const derived = Boolean(hit!.answer.derivedFrom)
+        const own = hit!.scope.kind === "job" && !derived
         const isOverriding = overriding.includes(entry.questionId)
 
         return (
@@ -667,11 +677,20 @@ export function JobAnswers({
                     : "bg-muted text-muted-foreground"
                 )}
               >
-                {hit!.scope.badge}
+                {derived ? "From this role's own fields" : hit!.scope.badge}
               </span>
             </div>
 
             <p className="text-sm text-muted-foreground">{hit!.answer.body}</p>
+
+            {hit!.answer.derivedFrom && (
+              // Says plainly that nobody wrote this sentence — it mirrors a
+              // field on the job and will follow it when it changes.
+              <p className="text-xs text-muted-foreground">
+                Written from {hit!.answer.derivedFrom}. Edit the field and this
+                follows it.
+              </p>
+            )}
 
             {!own &&
               (isOverriding ? (

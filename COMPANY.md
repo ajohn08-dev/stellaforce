@@ -969,6 +969,25 @@ edit, because both render the same `QuestionRow` bound to the same draft keys.
 `faq-lg-15`, `approvedAnswer: ""`, `askedCount: 6`, `category: "why_role_open"`,
 so it renders under **Why they're hiring** and in the inbox.
 
+## D.10b Audiences
+
+`agentCanUse(item, audience)` — `'candidate' | 'internal'`.
+
+| Clearance | Candidate-facing agent | Internal agent |
+|---|---|---|
+| `cleared_for_candidates` | ✅ | ✅ |
+| `recruiters_only` | ❌ | ✅ |
+| `restricted` | ❌ | ❌ |
+
+`restricted` bars both — that's the point of a third rung. `agentUse` is
+candidate-only by construction (every value describes a candidate conversation),
+so an internal bundle ignores it and carries `escalate` items in full.
+
+`compileAgentContext(company, job, audience)` runs one code path through that one
+gate. The **"What the agent knows"** panel renders both bundles with a toggle;
+flipping it moves the withheld items up into the list, which is the clearest
+statement of the ladder available anywhere in the product.
+
 ## D.11 AgentReadinessCheck
 
 `id` · `companyId` · `jobId?` · `checkKey` · `scope` (`company` · `job`) ·

@@ -135,6 +135,7 @@ export function CompanyWorkspaceHeader({
         </Button>
 
         <PublishButton
+          company={company}
           context={agentContext}
           readiness={readiness}
           versions={company.versions}

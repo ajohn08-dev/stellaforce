@@ -17,6 +17,8 @@ import {
   type CompanyReadiness,
   type JobCoverage,
 } from "@/lib/company-readiness"
+import { AgentKnowledgePanel } from "@/components/companies/shared/agent-knowledge-panel"
+import { compileAgentContext } from "@/lib/company-agent-context"
 import { teamPath } from "@/lib/company-inheritance"
 import {
   allTeams,
@@ -201,8 +203,15 @@ function JobDetail({ company, job }: { company: Company; job: CompanyJob }) {
         </section>
       )}
 
+      <AgentKnowledgePanel
+        bundles={{
+          candidate: compileAgentContext(company, job, "candidate"),
+          internal: compileAgentContext(company, job, "internal"),
+        }}
+      />
+
       <section className="space-y-2">
-        <h4 className="text-sm font-medium">What the agent says on this role</h4>
+        <h4 className="text-sm font-medium">Every question, and where its answer comes from</h4>
         <p className="text-xs text-muted-foreground">
           Inherits from {[company.preferredName, ...chain.map((t) => t.name).reverse()].join(" › ")}.
           The most specific answer wins.

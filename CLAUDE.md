@@ -199,6 +199,49 @@ migrating the full app layer to V3.2 is an ongoing pass.
   editing the answer about that fact is one job. Only the unanswered queue is its
   own destination.
 
+  **The knowledge base serves two audiences, not one.** `agentCanUse(item,
+  audience)` takes `'candidate' | 'internal'`: `cleared_for_candidates` passes
+  both, `recruiters_only` passes internal only, `restricted` passes neither. The
+  ladder always meant that; reading it as a boolean is what made agents working
+  *alongside* recruiters invisible in this model. The `agentUse` dial
+  (proactive / on_request / reference_only / escalate) is candidate-only by
+  construction, so an `escalate` item reaches an internal agent in full while a
+  candidate agent gets only the topic and the handoff. `compileAgentContext(company,
+  job, audience)` compiles per audience through that one gate — no second code
+  path.
+
+  **"What the agent knows" is a real surface** (`shared/agent-knowledge-panel.tsx`),
+  on the job drilldown, with a Candidate / Internal toggle: says proactively ·
+  answers if asked · policies · hands back to you · never says · withheld. Flip
+  the toggle and the withheld items move up into the list, which explains the
+  clearance ladder better than any badge. It replaced a collapsed disclosure that
+  was company-scoped, candidate-only, and reachable solely inside the Publish
+  dialog — so *"what will the agent say on this job?"* had no destination.
+
+  **Some answers are derived, never stored** (`derivedAnswers` / `withDerived`).
+  A job's reporting line, travel, location, typical week, role purpose, and
+  **pipeline stages** are already typed on the job and are word-for-word the
+  answers to six catalog questions. They synthesise at job scope marked
+  `derivedFrom`, and any answer a recruiter actually writes for that job beats
+  them. This is what stops the interview process being authored twice: the
+  company's prose and the stages the pipeline will really run could disagree, and
+  the candidate — not the recruiter — is who finds out.
+
+  **Publish says what agents still can't answer** per active job
+  (`jobAnswerGaps`), sensitive topics first. A warning, never a gate: a screen
+  with gaps is normal and escalation is a designed outcome, but silence was
+  worse than either.
+
+  **⚠️ The compiled bundle still doesn't reach a live agent.**
+  `interviewConfigFromContext()` (`src/lib/interview-agent-config.ts`) is the
+  seam — it turns a candidate bundle into the agent's company name, permitted
+  answers, handoff topics, prohibitions, and fallback — but nothing calls it yet,
+  because it needs a `Company` for the job being screened and company profiles are
+  still mock with no key shared with `job_orders`. Real screening calls read the
+  hand-written fixture in that file, where `companyName` defaults to the literal
+  "Stellaforce". Until that join exists, **none of this affects what a candidate
+  hears.**
+
   **Questions are global; answers are scoped.** The catalog
   (`src/lib/question-catalog.ts`) is the one thing shared across *every*
   customer — intent, phrasings, category, `sensitive` risk class, default agent
