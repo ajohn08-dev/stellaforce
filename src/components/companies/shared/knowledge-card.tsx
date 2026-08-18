@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { EditableTextarea } from "@/components/companies/shared/editable-field"
 import { TrustWarning } from "@/components/companies/shared/trust-warning"
 import { VisibilitySentence } from "@/components/companies/shared/visibility-sentence"
+import { draftKey } from "@/lib/company-draft-keys"
 import { useVisibilityDraft } from "@/components/companies/shared/use-visibility-draft"
 import type { KnowledgeItem } from "@/lib/mock-companies"
 
@@ -33,7 +34,7 @@ export function KnowledgeCard({
   today: Date
 }) {
   const visibility = useVisibilityDraft(
-    `knowledge-${item.id}`,
+    draftKey.knowledge(item.id),
     item.visibility,
     item.title
   )
@@ -58,7 +59,7 @@ export function KnowledgeCard({
       </div>
 
       <EditableTextarea
-        fieldKey={`knowledge-${item.id}`}
+        fieldKey={draftKey.knowledge(item.id)}
         value={item.body}
         placeholder={prompt ?? "Nothing written yet"}
         ariaLabel={item.title}

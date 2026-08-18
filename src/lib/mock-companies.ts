@@ -1411,8 +1411,7 @@ const LUMAGRID_CUSTOM_QUESTIONS: Question[] = [
 const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   {
     questionId: "q-company-size",
-    askedCount: 34,
-    lastAskedAt: "2026-08-15",
+    asks: [{ jobId: null, count: 34, lastAskedAt: "2026-08-15" }],
     askedClientAt: null,
     answers: [
       {
@@ -1440,8 +1439,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-culture",
-    askedCount: 28,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: null, count: 28, lastAskedAt: "2026-08-16" }],
     askedClientAt: null,
     answers: [
       {
@@ -1469,8 +1467,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-visa-sponsorship",
-    askedCount: 19,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: null, count: 19, lastAskedAt: "2026-08-16" }],
     askedClientAt: null,
     answers: [
       {
@@ -1501,8 +1498,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-comp-approach",
-    askedCount: 41,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: null, count: 41, lastAskedAt: "2026-08-16" }],
     askedClientAt: null,
     answers: [
       {
@@ -1532,8 +1528,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-remote",
-    askedCount: 52,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: null, count: 52, lastAskedAt: "2026-08-16" }],
     askedClientAt: null,
     answers: [
       {
@@ -1559,8 +1554,12 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-interview-process",
-    askedCount: 47,
-    lastAskedAt: "2026-08-16",
+    // Asked on the role, not in the abstract — which is what makes the per-role
+    // count meaningful and the company-wide one misleading.
+    asks: [
+      { jobId: "job-lg-01", count: 44, lastAskedAt: "2026-08-16" },
+      { jobId: null, count: 3, lastAskedAt: "2026-08-02" },
+    ],
     askedClientAt: null,
     answers: [
       {
@@ -1589,8 +1588,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-product",
-    askedCount: 30,
-    lastAskedAt: "2026-08-15",
+    asks: [{ jobId: null, count: 30, lastAskedAt: "2026-08-15" }],
     askedClientAt: null,
     answers: [
       {
@@ -1617,8 +1615,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-why-role-open",
-    askedCount: 22,
-    lastAskedAt: "2026-08-14",
+    asks: [{ jobId: null, count: 22, lastAskedAt: "2026-08-14" }],
     askedClientAt: null,
     answers: [
       {
@@ -1643,8 +1640,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-benefits",
-    askedCount: 38,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: null, count: 38, lastAskedAt: "2026-08-16" }],
     askedClientAt: null,
     answers: [
       {
@@ -1671,8 +1667,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-financial-stability",
-    askedCount: 11,
-    lastAskedAt: "2026-08-13",
+    asks: [{ jobId: null, count: 11, lastAskedAt: "2026-08-13" }],
     askedClientAt: null,
     answers: [
       {
@@ -1700,8 +1695,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-typical-week",
-    askedCount: 16,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: null, count: 16, lastAskedAt: "2026-08-16" }],
     askedClientAt: null,
     answers: [
       {
@@ -1749,8 +1743,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
     // exists for — the same question everywhere, a different true answer at
     // every scope.
     questionId: "q-reporting-line",
-    askedCount: 24,
-    lastAskedAt: "2026-08-15",
+    asks: [{ jobId: null, count: 24, lastAskedAt: "2026-08-15" }],
     askedClientAt: null,
     answers: [
       {
@@ -1809,8 +1802,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-travel",
-    askedCount: 20,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: null, count: 20, lastAskedAt: "2026-08-16" }],
     askedClientAt: null,
     answers: [
       {
@@ -1834,8 +1826,7 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-team-collaboration",
-    askedCount: 9,
-    lastAskedAt: "2026-08-12",
+    asks: [{ jobId: null, count: 9, lastAskedAt: "2026-08-12" }],
     askedClientAt: null,
     answers: [
       {
@@ -1857,29 +1848,25 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   },
   {
     questionId: "q-lg-central-territory",
-    askedCount: 6,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: "job-lg-01", count: 6, lastAskedAt: "2026-08-16" }],
     askedClientAt: null,
     answers: [],
   },
   {
     questionId: "q-new-h1b-petition",
-    askedCount: 4,
-    lastAskedAt: "2026-08-16",
+    asks: [{ jobId: null, count: 4, lastAskedAt: "2026-08-16" }],
     askedClientAt: "2026-08-12",
     answers: [],
   },
   {
     questionId: "q-quota-attainment",
-    askedCount: 3,
-    lastAskedAt: "2026-08-15",
+    asks: [{ jobId: null, count: 3, lastAskedAt: "2026-08-15" }],
     askedClientAt: null,
     answers: [],
   },
   {
     questionId: "q-wellness-benefit",
-    askedCount: 2,
-    lastAskedAt: "2026-08-14",
+    asks: [{ jobId: null, count: 2, lastAskedAt: "2026-08-14" }],
     askedClientAt: null,
     answers: [],
   },
@@ -2529,8 +2516,7 @@ const HARBORLINE: Company = {
   questions: [
   {
     questionId: "q-remote",
-    askedCount: 18,
-    lastAskedAt: "2026-01-28",
+    asks: [{ jobId: null, count: 18, lastAskedAt: "2026-01-28" }],
     askedClientAt: null,
     answers: [
       {
@@ -2556,8 +2542,7 @@ const HARBORLINE: Company = {
     },
     {
     questionId: "q-company-size",
-    askedCount: 12,
-    lastAskedAt: "2026-01-22",
+    asks: [{ jobId: null, count: 12, lastAskedAt: "2026-01-22" }],
     askedClientAt: null,
     answers: [
       {
@@ -2581,8 +2566,7 @@ const HARBORLINE: Company = {
     },
     {
     questionId: "q-interview-process",
-    askedCount: 15,
-    lastAskedAt: "2026-01-30",
+    asks: [{ jobId: null, count: 15, lastAskedAt: "2026-01-30" }],
     askedClientAt: null,
     answers: [
       {
@@ -2610,8 +2594,7 @@ const HARBORLINE: Company = {
     },
     {
     questionId: "q-culture",
-    askedCount: 9,
-    lastAskedAt: "2026-01-25",
+    asks: [{ jobId: null, count: 9, lastAskedAt: "2026-01-25" }],
     askedClientAt: null,
     answers: [
       {
@@ -2637,8 +2620,7 @@ const HARBORLINE: Company = {
     },
     {
     questionId: "q-hl-newark-req",
-    askedCount: 5,
-    lastAskedAt: "2026-02-08",
+    asks: [{ jobId: null, count: 5, lastAskedAt: "2026-02-08" }],
     askedClientAt: "2026-02-09",
     answers: [],
     },

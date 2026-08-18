@@ -3,6 +3,7 @@
 import { MessageCircleOff } from "lucide-react"
 
 import { EditableTextarea } from "@/components/companies/shared/editable-field"
+import { draftKey } from "@/lib/company-draft-keys"
 import { SectionShell } from "@/components/companies/workspace/section-shell"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import type { CompanyReadiness } from "@/lib/company-readiness"
@@ -69,7 +70,7 @@ export function FallbacksSection({
               <p className="text-xs text-muted-foreground">{fallback.when}</p>
 
               <EditableTextarea
-                fieldKey={`fallback-${fallback.kind}`}
+                fieldKey={draftKey.fallback(fallback.kind)}
                 value={fallback.text}
                 label={`Fallback — ${fallback.label}`}
                 ariaLabel={`What the agent says when: ${fallback.label}`}

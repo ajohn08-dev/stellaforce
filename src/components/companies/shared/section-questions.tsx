@@ -21,9 +21,12 @@ import { TrustWarning } from "@/components/companies/shared/trust-warning"
 import { VisibilitySentence } from "@/components/companies/shared/visibility-sentence"
 import { useVisibilityDraft } from "@/components/companies/shared/use-visibility-draft"
 import { formatDate } from "@/lib/constants"
+import { draftKey } from "@/lib/company-draft-keys"
 import {
   answerStack,
   appliesToJob,
+  askCount,
+  lastAsked,
   availableScopes,
   companyQuestions,
   effectiveProhibitions,
@@ -72,15 +75,15 @@ export function SectionQuestions({
     () =>
       [...entries].sort((a, b) => {
         const gap = Number(isUnanswered(b)) - Number(isUnanswered(a))
-        return gap !== 0 ? gap : b.askedCount - a.askedCount
+        return gap !== 0 ? gap : askCount(b) - askCount(a)
       }),
     [entries]
   )
   // Split, because they mean different things: a candidate asked and we had
   // nothing (act on it) versus the catalog offers it and nobody here has been
   // asked (write it when you have it).
-  const gapCount = ordered.filter((q) => isUnanswered(q) && q.askedCount > 0).length
-  const promptCount = ordered.filter((q) => isUnanswered(q) && q.askedCount === 0).length
+  const gapCount = ordered.filter((q) => isUnanswered(q) && askCount(q) > 0).length
+  const promptCount = ordered.filter((q) => isUnanswered(q) && askCount(q) === 0).length
 
   return (
     <section className="space-y-2">
@@ -156,7 +159,10 @@ export function QuestionRow({
   // candidate fell into. Rendering the two identically — amber border, "no
   // answer yet" — made a brand-new company look like it was failing candidates
   // it had never spoken to, and taught people to ignore the colour.
-  const neverAsked = entry.askedCount === 0
+  // Counted for *this row's* scope: on a job row, asks on that role; in a
+  // company section, asks anywhere.
+  const asks = askCount(entry, job ? job.id : undefined)
+  const neverAsked = asks === 0
   const [open, setOpen] = React.useState(unanswered && !neverAsked)
 
   // Scopes the recruiter has chosen to answer at during this session. UI-only:
@@ -172,7 +178,7 @@ export function QuestionRow({
 
   const waitScope = useFieldScope(`${catalog?.intent ?? entry.questionId} — waiting on the client`)
   const [askedClientAt, setAskedClientAt] = useDraftField(
-    `faq-${entry.questionId}-asked-client`,
+    draftKey.askedClient(entry.questionId),
     entry.askedClientAt ?? "",
     waitScope
   ) as readonly [string, (next: string) => void]
@@ -206,7 +212,7 @@ export function QuestionRow({
         )}
 
         <span className="shrink-0 text-xs text-muted-foreground">
-          {neverAsked ? "not asked here yet" : `asked ${entry.askedCount}×`}
+          {neverAsked ? "not asked here yet" : `asked ${asks}×`}
           {unanswered ? (
             neverAsked ? null : (
               <span
@@ -245,7 +251,7 @@ export function QuestionRow({
               askedClientAt={askedClientAt}
               onAskClient={setAskedClientAt}
               today={today}
-              lastAskedAt={entry.lastAskedAt}
+              lastAskedAt={lastAsked(entry, job ? job.id : undefined)}
             />
           ) : (
             <AnsweredDetail
@@ -443,7 +449,7 @@ function AnswerRow({
   depth: number
   wins: boolean
 }) {
-  const fieldKey = `faq-${entry.questionId}-${scope.kind}-${scope.refId ?? "all"}-answer`
+  const fieldKey = draftKey.answer(entry.questionId, scope.kind, scope.refId)
   const reach = jobsInScope(company, { kind: scope.kind, refId: scope.refId }).length
 
   return (
@@ -550,7 +556,11 @@ function AnsweredDetail({
   today: Date
 }) {
   const visibility = useVisibilityDraft(
-    `faq-${entry.questionId}`,
+    draftKey.answerVisibility(
+      entry.questionId,
+      winning?.scope.kind ?? "company",
+      winning?.scope.refId ?? null
+    ),
     winning?.answer.visibility ?? {
       clearance: "cleared_for_candidates",
       agentUse: catalog.defaultAgentUse,
@@ -576,18 +586,35 @@ function AnsweredDetail({
   return (
     <>
       <Field label="Candidates also ask it like this">
+        {/* The catalog's phrasings are read-only here on purpose: that row is
+            global, so editing it from one company would rewrite the question for
+            every other customer's agent. Anything added is company-scoped and
+            additive. */}
+        {catalog.variants.length > 0 && (
+          <p className="flex flex-wrap gap-1.5">
+            {catalog.variants.map((v) => (
+              <span
+                key={v}
+                title="Comes with the question — shared across every company"
+                className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+              >
+                {v}
+              </span>
+            ))}
+          </p>
+        )}
         <EditablePills
-          fieldKey={`faq-${entry.questionId}-variants`}
-          values={catalog.variants}
-          addLabel="Add phrasing"
-          ariaLabel="Question variants"
+          fieldKey={draftKey.extraVariants(entry.questionId)}
+          values={entry.extraVariants ?? []}
+          addLabel="Add a phrasing used here"
+          ariaLabel="Extra question phrasings for this company"
         />
       </Field>
 
       {winning?.answer.expandedAnswer && (
         <Field label="If they ask for more">
           <EditableTextarea
-            fieldKey={`faq-${entry.questionId}-expanded`}
+            fieldKey={draftKey.answer(entry.questionId, winning!.scope.kind, winning!.scope.refId, "expanded_answer")}
             value={winning.answer.expandedAnswer}
             ariaLabel="Expanded answer"
             rows={2}
@@ -733,7 +760,7 @@ export function JobAnswers({
                 : "No company answer either, so the agent hands this back to you."}
             </p>
             <EditableTextarea
-              fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
+              fieldKey={draftKey.answer(entry.questionId, "job", jobId)}
               value=""
               label={`${catalog!.intent} — ${job?.title ?? "this role"}`}
               ariaLabel={`Answer to ${catalog!.intent} for this role`}
@@ -770,7 +797,7 @@ export function JobAnswers({
                     this follows it — or write something different below.
                   </p>
                   <EditableTextarea
-                    fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
+                    fieldKey={draftKey.answer(entry.questionId, "job", jobId)}
                     value=""
                     label={`${catalog!.intent} — ${job?.title ?? "this role"}`}
                     ariaLabel={`Answer to ${catalog!.intent} for this role`}
@@ -780,7 +807,7 @@ export function JobAnswers({
                 </>
               ) : (
                 <EditableTextarea
-                  fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
+                  fieldKey={draftKey.answer(entry.questionId, "job", jobId)}
                   value={hit!.answer.body}
                   label={`${catalog!.intent} — ${job?.title ?? "this role"}`}
                   ariaLabel={`Answer to ${catalog!.intent} for this role`}
@@ -813,7 +840,7 @@ export function JobAnswers({
 
               {isOverriding ? (
                 <EditableTextarea
-                  fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
+                  fieldKey={draftKey.answer(entry.questionId, "job", jobId)}
                   value=""
                   label={`${catalog!.intent} — ${job?.title ?? "this role"}`}
                   ariaLabel={`Answer to ${catalog!.intent} for this role`}

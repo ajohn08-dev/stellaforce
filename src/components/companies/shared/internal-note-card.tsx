@@ -1,5 +1,6 @@
 "use client"
 
+import { draftKey } from "@/lib/company-draft-keys"
 import * as React from "react"
 import { ArrowRight, MoreHorizontal, Sparkles } from "lucide-react"
 
@@ -63,7 +64,7 @@ export function InternalNoteCard({ item }: { item: KnowledgeItem }) {
       </div>
 
       <EditableTextarea
-        fieldKey={`note-${item.id}`}
+        fieldKey={draftKey.knowledge(item.id)}
         value={item.body}
         ariaLabel={item.title}
       />

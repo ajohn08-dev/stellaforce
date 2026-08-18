@@ -1,5 +1,6 @@
 "use client"
 
+import { draftKey } from "@/lib/company-draft-keys"
 import * as React from "react"
 import { ChevronDown, Lock, Quote } from "lucide-react"
 
@@ -62,17 +63,17 @@ export function PolicyRow({
   const scope = useFieldScope(policy.label)
 
   const [clearance, setAudience] = useDraftField(
-    `policy-${policy.id}-clearance`,
+    draftKey.policyVisibility(policy.id) + "-clearance",
     policy.visibility.clearance,
     scope
   ) as readonly [Clearance, (v: Clearance) => void]
   const [agentUse, setAgentUse] = useDraftField(
-    `policy-${policy.id}-agent-use`,
+    draftKey.policyVisibility(policy.id) + "-agent-use",
     policy.visibility.agentUse ?? "",
     scope
   ) as readonly [string, (v: string) => void]
   const [immigrationValue, setImmigrationValue] = useDraftField(
-    `policy-${policy.id}-value`,
+    draftKey.policy(policy.id, "value"),
     policy.immigrationValue ?? "",
     scope
   ) as readonly [string, (v: string) => void]
@@ -103,7 +104,7 @@ export function PolicyRow({
               />
             ) : (
               <EditableText
-                fieldKey={`policy-${policy.id}-value`}
+                fieldKey={draftKey.policy(policy.id, "value")}
                 value={policy.value}
                 placeholder="Not yet entered"
                 ariaLabel={policy.label}
@@ -155,7 +156,7 @@ export function PolicyRow({
                 What a candidate hears
               </p>
               <EditableTextarea
-                fieldKey={`policy-${policy.id}-spoken`}
+                fieldKey={draftKey.policy(policy.id, "spoken")}
                 value={policy.candidateFacingText}
                 placeholder="Write the sentence the agent should say"
                 label={`${policy.label} wording`}

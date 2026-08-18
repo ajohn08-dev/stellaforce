@@ -62,6 +62,7 @@ create table question_catalog (
   variants        text[] not null default '{}',
   sensitive       boolean not null default false,
   answerable_at   answer_scope_kind not null default 'company',  -- 'company' | 'job'
+  archived_at     timestamptz,                                   -- retire, never delete (§ F.8)
   only_for_job_id uuid references job_orders on delete cascade,  -- bespoke, one role
   default_agent_use agent_use not null default 'on_request',
   prohibitions    text[] not null default '{}',                  -- locked; accumulate
@@ -82,11 +83,13 @@ create type answer_scope_kind as enum ('company', 'team', 'job');
 create table company_answers (
   id           uuid primary key default gen_random_uuid(),
   client_id    uuid not null references clients on delete cascade,
-  question_id  text not null references question_catalog on delete cascade,
+  -- restrict, not cascade: deleting a catalog row must never destroy every
+  -- customer's answers. Retire with `archived_at` instead (§ F.8).
+  question_id  text not null references question_catalog on delete restrict,
 
   -- Real foreign keys, not a generic (scope, scope_id) pair. There are exactly
   -- two possible parents, so both get a proper FK and the enum is derived.
-  team_id      uuid references company_teams on delete cascade,
+  team_id      uuid references company_teams on delete restrict,   -- § F.9
   job_id       uuid references job_orders    on delete cascade,
   scope        answer_scope_kind not null generated always as (
                  case when job_id  is not null then 'job'
@@ -133,8 +136,9 @@ rather than trusted.
 ```sql
 create table company_questions (
   client_id       uuid not null references clients on delete cascade,
-  question_id     text not null references question_catalog on delete cascade,
-  asked_client_at date,          -- waiting on the client, and since when
+  question_id     text not null references question_catalog on delete restrict,
+  asked_client_at date,             -- waiting on the client, and since when
+  extra_variants  text[] not null default '{}',  -- this company's phrasings (§ D.6)
   primary key (client_id, question_id)
 );
 ```
@@ -160,7 +164,9 @@ create index on question_asked_events (client_id, question_id, job_id);
 create table company_teams (
   id              uuid primary key default gen_random_uuid(),
   client_id       uuid not null references clients on delete cascade,
-  parent_team_id  uuid references company_teams on delete cascade,
+  -- restrict: deleting a parent must not silently take nested teams, their
+  -- answers, and the jobs' inherited context with it (§ F.9).
+  parent_team_id  uuid references company_teams on delete restrict,
   name            text not null,
   mission         text,
   description     text,                    -- candidate-facing
@@ -304,11 +310,33 @@ Options, with the trade honestly stated:
 | Row versioning | Each row has a draft twin | Doubles rows; every query needs the published filter; deletes get subtle |
 | Write-through + undo | Save immediately, version for revert | Simplest schema, **changes the product** — no Publish, no review-before-apply |
 
-**Recommendation: the staging table**, and accept the dispatcher. The dispatcher
-is one file with one exhaustive `switch`, and the alternative is either a
-doubling of every table or abandoning the review-before-publish UX that the whole
-workspace is built around. Guard the drift with a test that every `field_key`
-prefix the UI can emit resolves to a real column.
+**Decided: the staging table.** ✅ *The UI now supports it.*
+
+```sql
+create table company_draft_edits (
+  client_id  uuid not null references clients on delete cascade,
+  author_id  uuid not null references profiles on delete cascade,
+  field_key  text not null,          -- 'answer:q-reporting-line:job:job-lg-01:body'
+  value      jsonb not null,         -- text or text[]
+  section    text not null,          -- for the publish review's grouping
+  label      text not null,          -- for the publish review's wording
+  updated_at timestamptz not null default now(),
+  primary key (client_id, author_id, field_key)
+);
+```
+
+Publish reads this customer's rows, applies each through the dispatcher, writes
+one `company_knowledge_versions` row, and deletes them — one transaction.
+
+**The dispatcher is `src/lib/company-draft-keys.ts`.** Keys used to be
+interpolated at each call site (`` `faq-${id}-${scope}-${refId}-answer` ``),
+which made them **unparseable** — ids contain hyphens, so
+`faq-q-reporting-line-job-job-lg-01-answer` cannot be split back apart — and
+**uncheckable**, since two screens built the key for the same field
+independently and only happened to agree. Keys are now built by one module with
+`:` as the separator and parsed back to `{table, row, column}`.
+`npm run draft-key-check` asserts every key the workspace can emit resolves; an
+unknown key returns `null` rather than silently doing nothing.
 
 ### D.2 ⚠️ `asked_count` is company-wide but rendered per role — already a bug
 
@@ -321,10 +349,15 @@ different req.
 It also drives the "asked and unanswered" (amber) versus "never asked here"
 (muted) split, so the distinction is wrong per role too.
 
-**Fix:** `question_asked_events` (§ B.3), with counts derived per `(question,
-job)`. That also gets, free: which roles a question is hot on, whether the agent
-had an answer at the time, and a real "asked 6× on this role, 2 of them
-unanswered".
+**Fixed.** ✅ `CompanyQuestion.askedCount` is gone, replaced by
+`asks: {jobId, count, lastAskedAt}[]` — the aggregate
+`select job_id, count(*), max(asked_at) … group by job_id` returns. `askCount(q,
+jobId)` reads one role's number, `askCount(q)` the company's, and the inbox,
+section headings, and "never asked here" split each use the one that matches the
+row they're on. `jobId: null` means asked with no role in play.
+
+The DB stores raw `question_asked_events` (§ B.3); the app only ever reads the
+aggregate, which is why the type models the rollup rather than the events.
 
 ### D.3 Visibility duplicated across five tables
 
@@ -377,6 +410,22 @@ an `activity_event` when a derived answer's *input* changes, and show derived
 answers in the Publish review as "will change because the role changed". The
 alternative — materialising them on job save — reintroduces exactly the
 duplication the derivation removed.
+
+### D.6 Editing catalog variants was a cross-customer write — fixed
+
+`question_catalog.variants` is a **global** row. The UI bound it to an editable
+pill list, so one customer adding a phrasing would have rewritten the question
+for every other customer's agent.
+
+**Fixed.** ✅ Catalog phrasings render read-only, tagged *"comes with the
+question — shared across every company"*. Anything a recruiter adds goes to
+`company_questions.extra_variants`, which is additive and tenant-scoped. The
+intent-matching set an agent receives is the union.
+
+This is the general hazard of a shared catalog, and worth stating as a rule:
+**a company-scoped screen must never bind an editor to a global row.** The other
+global fields — `prohibitions`, `sensitive`, `answerable_at` — are already
+read-only in the UI.
 
 ---
 
@@ -529,15 +578,16 @@ reopens.
 split is what makes it multi-tenant, sibling isolation is structural rather than
 a filter someone must remember, and real FKs on answers keep the scope honest.
 
-**Three things need deciding before any migration is written:**
+**Resolved since the first pass**, with the UI changed to match:
 
-1. **How batched publish is stored** (§ D.1). Nothing else can be built until
-   this is chosen — every write path depends on it.
-2. **`asked_count` becomes an events table** (§ D.2). It is currently wrong on
-   screen, not merely imprecise.
-3. **`clients` versus a new `companies` table** (§ D.4).
+| | Was | Now |
+|---|---|---|
+| Batched publish (§ D.1) | Nowhere to put an unpublished edit | Staging table + a real dispatcher; keys parse, `npm run draft-key-check` proves it |
+| Ask counts (§ D.2) | One company-wide number rendered per role | `asks[]` per role; `askCount(q, jobId)` |
+| Catalog variants (§ D.6) | A company screen editing a global row | Catalog read-only; `extra_variants` per company |
+| Deletes (§ F.8, F.9) | `cascade` / `set null` — silent destruction | `restrict` + `archived_at` |
 
-**Two are hazards this audit found in the schema above**, and both are one word
-each: `on delete cascade` from `question_catalog` (F.8) and
-`on delete set null` / `cascade` around teams (F.9). Both would silently change
-or destroy knowledge with no version entry. Both become `restrict`.
+**One decision remains: `clients` versus a new `companies` table** (§ D.4). It
+doesn't block the UI — every table above says `client_id` either way — but it
+should be settled before the first migration, since it's the one choice a
+backfill can't undo cheaply.

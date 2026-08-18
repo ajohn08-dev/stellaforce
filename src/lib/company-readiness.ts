@@ -22,6 +22,7 @@ import {
 import {
   allAnswers,
   appliesToJob,
+  askCount,
   companyQuestions,
   isUnanswered,
   questionOf,
@@ -560,7 +561,7 @@ export function jobAnswerGaps(
       return {
         question: catalog?.intent ?? q.questionId,
         sensitive: catalog?.sensitive ?? false,
-        askedCount: q.askedCount,
+        askedCount: askCount(q, job?.id),
       }
     })
     .sort((a, b) => {
@@ -835,10 +836,10 @@ function buildQueues(company: Company, today: Date): IssueQueue[] {
       // A job-only question is missing *for a role*. Reporting it once, without
       // saying which, is how two of three roles stay uncovered.
       detail: job
-        ? `${job.title} · asked ${question.askedCount}×`
+        ? `${job.title} · asked ${askCount(question, job.id)}×`
         : question.askedClientAt
-          ? `Asked ${question.askedCount}× · waiting on the client since ${question.askedClientAt}`
-          : `Asked ${question.askedCount}×`,
+          ? `Asked ${askCount(question)}× · waiting on the client since ${question.askedClientAt}`
+          : `Asked ${askCount(question)}×`,
       section: catalog ? faqSection(catalog.category) : ("profile" as CompanySection),
     }
   })

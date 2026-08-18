@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { draftKey } from "@/lib/company-draft-keys"
 import { ArrowLeft, Plus, Users } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -177,7 +178,7 @@ function TeamBranch({ company, team }: { company: Company; team: Team }) {
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
           <ItemVisibility
-            idPrefix={`team-${team.id}`}
+            idPrefix={draftKey.team(team.id)}
             visibility={team.visibility}
             label={team.name}
             audienceNote={
@@ -217,7 +218,7 @@ function TeamDetail({ company, team }: { company: Company; team: Team }) {
           <h3 className="text-lg font-semibold">{team.name}</h3>
         </div>
         <ItemVisibility
-          idPrefix={`team-${team.id}`}
+          idPrefix={draftKey.team(team.id)}
           visibility={team.visibility}
           label={team.name}
         />

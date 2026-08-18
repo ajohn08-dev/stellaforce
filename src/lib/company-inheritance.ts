@@ -68,13 +68,50 @@ export type Answer = {
  * A catalog question as it stands at one company: how often candidates asked it
  * here, and the answers written for it at any scope.
  */
+/**
+ * How often candidates asked a question **and on which role**.
+ *
+ * A single company-wide `askedCount` was wrong the moment the inbox started
+ * emitting one row per role: a row reading "How long will the process take? —
+ * Senior Data Engineer · asked 6×" could be describing six asks that all
+ * happened on a different req.
+ *
+ * `jobId: null` means asked outside any role — a sourcing conversation before a
+ * req was in play. Mirrors `select job_id, count(*), max(asked_at) from
+ * question_asked_events group by job_id`; the app never needs raw events.
+ */
+export type QuestionAsks = {
+  jobId: string | null
+  count: number
+  lastAskedAt: string | null
+}
+
 export type CompanyQuestion = {
   questionId: string
-  askedCount: number
-  lastAskedAt: string | null
+  asks: QuestionAsks[]
+  /** Phrasings this company's candidates use, on top of the catalog's. */
+  extraVariants?: string[]
   /** Set when we're waiting on the client for the answer. See COMPANY.md § D.6. */
   askedClientAt: string | null
   answers: Answer[]
+}
+
+/**
+ * Times asked — for one role when `jobId` is given, across the company when it
+ * isn't. The two are genuinely different numbers and the UI needs both.
+ */
+export function askCount(question: CompanyQuestion, jobId?: string | null): number {
+  if (jobId === undefined) return question.asks.reduce((n, a) => n + a.count, 0)
+  return question.asks.find((a) => a.jobId === jobId)?.count ?? 0
+}
+
+export function lastAsked(
+  question: CompanyQuestion,
+  jobId?: string | null
+): string | null {
+  const rows =
+    jobId === undefined ? question.asks : question.asks.filter((a) => a.jobId === jobId)
+  return rows.map((a) => a.lastAskedAt).filter(Boolean).sort().at(-1) ?? null
 }
 
 /** A scope that applies to some context, with the words the UI shows for it. */
@@ -502,8 +539,7 @@ export function companyQuestions(company: Company): CompanyQuestion[] {
     (q) =>
       stored.get(q.id) ?? {
         questionId: q.id,
-        askedCount: 0,
-        lastAskedAt: null,
+        asks: [],
         askedClientAt: null,
         answers: [],
       }
@@ -573,8 +609,11 @@ export function unansweredItems(company: Company): UnansweredItem[] {
   }
 
   return items.sort((a, b) => {
-    if (b.question.askedCount !== a.question.askedCount)
-      return b.question.askedCount - a.question.askedCount
+    // Sorted by asks *on the row's own role*, so a question hot on one req
+    // doesn't float another req's row to the top.
+    const an = askCount(a.question, a.job ? a.job.id : undefined)
+    const bn = askCount(b.question, b.job ? b.job.id : undefined)
+    if (an !== bn) return bn - an
     const aq = questionOf(company, a.question)
     const bq = questionOf(company, b.question)
     return Number(bq?.sensitive ?? false) - Number(aq?.sensitive ?? false)
@@ -595,7 +634,7 @@ export function unansweredQuestions(company: Company): CompanyQuestion[] {
   return companyQuestions(company)
     .filter(isUnanswered)
     .sort((a, b) => {
-      if (b.askedCount !== a.askedCount) return b.askedCount - a.askedCount
+      if (askCount(b) !== askCount(a)) return askCount(b) - askCount(a)
       const aq = findQuestion(a.questionId, company.customQuestions)
       const bq = findQuestion(b.questionId, company.customQuestions)
       return Number(bq?.sensitive ?? false) - Number(aq?.sensitive ?? false)

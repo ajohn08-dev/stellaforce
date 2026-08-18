@@ -166,8 +166,7 @@ function writeJobAnswer(questionId: string, body: string) {
   else
     company.questions.push({
       questionId,
-      askedCount: 0,
-      lastAskedAt: null,
+      asks: [],
       askedClientAt: null,
       answers: [answer],
     })

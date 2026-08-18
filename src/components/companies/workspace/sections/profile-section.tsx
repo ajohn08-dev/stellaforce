@@ -1,5 +1,6 @@
 import { EyeOff } from "lucide-react"
 
+import { draftKey } from "@/lib/company-draft-keys"
 import {
   EditablePills,
   EditableSelect,
@@ -70,7 +71,7 @@ export function ProfileSection({
       <FieldCard title="Identity">
         <FieldRow label="Preferred name" hint="What the agent calls them">
           <EditableText
-            fieldKey="preferredName"
+            fieldKey={draftKey.company("preferredName")}
             value={company.preferredName}
             ariaLabel="Preferred name"
             className="font-medium"
@@ -78,21 +79,21 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Legal name">
           <EditableText
-            fieldKey="legalName"
+            fieldKey={draftKey.company("legalName")}
             value={company.legalName}
             ariaLabel="Legal name"
           />
         </FieldRow>
         <FieldRow label="Tagline">
           <EditableText
-            fieldKey="tagline"
+            fieldKey={draftKey.company("tagline")}
             value={company.tagline}
             ariaLabel="Tagline"
           />
         </FieldRow>
         <FieldRow label="Website">
           <EditableText
-            fieldKey="website"
+            fieldKey={draftKey.company("website")}
             value={company.website}
             placeholder="https://"
             ariaLabel="Website"
@@ -100,7 +101,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="LinkedIn">
           <EditableText
-            fieldKey="linkedinUrl"
+            fieldKey={draftKey.company("linkedinUrl")}
             value={company.linkedinUrl}
             placeholder="https://linkedin.com/company/…"
             ariaLabel="LinkedIn"
@@ -111,14 +112,14 @@ export function ProfileSection({
       <FieldCard title="Where they are">
         <FieldRow label="Headquarters">
           <EditableText
-            fieldKey="headquarters"
+            fieldKey={draftKey.company("headquarters")}
             value={company.headquarters}
             ariaLabel="Headquarters"
           />
         </FieldRow>
         <FieldRow label="Office locations">
           <EditablePills
-            fieldKey="officeLocations"
+            fieldKey={draftKey.company("officeLocations")}
             values={company.officeLocations}
             addLabel="Add location"
             ariaLabel="Office locations"
@@ -126,7 +127,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Countries of operation">
           <EditablePills
-            fieldKey="countries"
+            fieldKey={draftKey.company("countries")}
             values={company.countriesOfOperation}
             addLabel="Add country"
             ariaLabel="Countries of operation"
@@ -134,7 +135,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Operating model">
           <EditableSelect
-            fieldKey="operatingModel"
+            fieldKey={draftKey.company("operatingModel")}
             value={company.operatingModel}
             options={MODEL_OPTIONS}
             ariaLabel="Operating model"
@@ -145,21 +146,21 @@ export function ProfileSection({
       <FieldCard title="Shape of the business">
         <FieldRow label="Industry">
           <EditableText
-            fieldKey="industry"
+            fieldKey={draftKey.company("industry")}
             value={company.industry}
             ariaLabel="Industry"
           />
         </FieldRow>
         <FieldRow label="Sub-industry">
           <EditableText
-            fieldKey="subIndustry"
+            fieldKey={draftKey.company("subIndustry")}
             value={company.subIndustry}
             ariaLabel="Sub-industry"
           />
         </FieldRow>
         <FieldRow label="Stage">
           <EditableSelect
-            fieldKey="stage"
+            fieldKey={draftKey.company("stage")}
             value={company.stage}
             options={STAGE_OPTIONS}
             ariaLabel="Company stage"
@@ -167,7 +168,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Founded">
           <EditableText
-            fieldKey="foundedYear"
+            fieldKey={draftKey.company("foundedYear")}
             value={company.foundedYear?.toString()}
             placeholder="Year"
             ariaLabel="Founding year"
@@ -175,7 +176,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Employees">
           <EditableText
-            fieldKey="employeeRange"
+            fieldKey={draftKey.company("employeeRange")}
             value={company.employeeRange}
             placeholder="e.g. 150–200"
             ariaLabel="Employee range"
@@ -183,7 +184,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Products">
           <EditablePills
-            fieldKey="products"
+            fieldKey={draftKey.company("products")}
             values={company.productCategories}
             addLabel="Add product"
             ariaLabel="Product categories"
@@ -191,7 +192,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Customers">
           <EditablePills
-            fieldKey="customers"
+            fieldKey={draftKey.company("customers")}
             values={company.customerTypes}
             addLabel="Add customer type"
             ariaLabel="Customer types"
@@ -199,7 +200,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Verticals">
           <EditablePills
-            fieldKey="verticals"
+            fieldKey={draftKey.company("verticals")}
             values={company.verticals}
             addLabel="Add vertical"
             ariaLabel="Verticals"
@@ -226,14 +227,14 @@ export function ProfileSection({
       <FieldCard title="The account">
         <FieldRow label="Account owner">
           <EditableText
-            fieldKey="accountOwner"
+            fieldKey={draftKey.company("accountOwner")}
             value={company.accountOwner}
             ariaLabel="Account owner"
           />
         </FieldRow>
         <FieldRow label="Relationship health">
           <EditableSelect
-            fieldKey="relationshipHealth"
+            fieldKey={draftKey.company("relationshipHealth")}
             value={company.relationshipHealth}
             options={HEALTH_OPTIONS}
             ariaLabel="Relationship health"
@@ -241,7 +242,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Internal priority">
           <EditableSelect
-            fieldKey="internalPriority"
+            fieldKey={draftKey.company("internalPriority")}
             value={company.internalPriority}
             options={PRIORITY_OPTIONS}
             ariaLabel="Internal priority"
@@ -249,7 +250,7 @@ export function ProfileSection({
         </FieldRow>
         <FieldRow label="Responsiveness">
           <EditableText
-            fieldKey="responsivenessNotes"
+            fieldKey={draftKey.company("responsivenessNotes")}
             value={company.responsivenessNotes}
             ariaLabel="Responsiveness notes"
           />
@@ -259,7 +260,7 @@ export function ProfileSection({
           hint="Seeds defaults for new items"
         >
           <EditableSelect
-            fieldKey="disclosurePreset"
+            fieldKey={draftKey.company("disclosurePreset")}
             value={company.disclosurePreset}
             options={PRESET_OPTIONS}
             ariaLabel="Disclosure preset"
@@ -274,14 +275,14 @@ export function ProfileSection({
         <div className="divide-y divide-border">
           <FieldRow label="Contract status">
             <EditableText
-              fieldKey="contractStatus"
+              fieldKey={draftKey.company("contractStatus")}
               value={company.contractStatus}
               ariaLabel="Contract status"
             />
           </FieldRow>
           <FieldRow label="Search exclusivity">
             <EditableText
-              fieldKey="searchExclusivity"
+              fieldKey={draftKey.company("searchExclusivity")}
               value={company.searchExclusivity}
               ariaLabel="Search exclusivity"
             />
