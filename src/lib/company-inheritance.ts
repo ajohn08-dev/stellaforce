@@ -151,9 +151,24 @@ export function scopeChain(company: Company, ctx: ResolveContext = {}): Resolved
   return chain
 }
 
-/** Scopes a new answer could be written at, narrowest first. */
-export function availableScopes(company: Company, ctx: ResolveContext = {}): ResolvedScope[] {
-  if (ctx.jobId || ctx.teamId) return scopeChain(company, ctx)
+/**
+ * Scopes a new answer could be written at, narrowest first.
+ *
+ * `question` narrows the list: a job-only question (`answerableAt: "job"`) never
+ * offers a company or team scope, because there is no truthful answer at those
+ * levels and an empty box is an invitation to invent one.
+ */
+export function availableScopes(
+  company: Company,
+  ctx: ResolveContext = {},
+  question?: Question
+): ResolvedScope[] {
+  const jobOnly = question?.answerableAt === "job"
+
+  if (ctx.jobId || ctx.teamId) {
+    const chain = scopeChain(company, ctx)
+    return jobOnly ? chain.filter((s) => s.kind === "job") : chain
+  }
 
   // Standing in the company workspace with no job in hand: every team and every
   // active job is a legal target, so the "answer differently" menu can offer
@@ -167,13 +182,22 @@ export function availableScopes(company: Company, ctx: ResolveContext = {}): Res
         label: j.title,
         badge: `Only for ${j.title}`,
       })),
-    ...company.teams.map((t) => ({
-      kind: "team" as const,
-      refId: t.id,
-      label: t.name,
-      badge: `For everyone in ${t.name}`,
-    })),
-    { kind: "company", refId: null, label: "Everywhere", badge: "For every job here" },
+    ...(jobOnly
+      ? []
+      : [
+          ...company.teams.map((t) => ({
+            kind: "team" as const,
+            refId: t.id,
+            label: t.name,
+            badge: `For everyone in ${t.name}`,
+          })),
+          {
+            kind: "company" as const,
+            refId: null,
+            label: "Everywhere",
+            badge: "For every job here",
+          },
+        ]),
   ]
 }
 

@@ -314,6 +314,14 @@ spilled its contents upward. Each of those signals already had a better home:
 |---|---|---|
 | Readiness sentence (2 lines) | Said the same thing as the rail badge *and* the warning inside the section that would fix it — three times for one problem | Pill tooltip; the section warning |
 | "13 answered · 4 unanswered" | Duplicated the rail's Unanswered inbox | Rail |
+
+**Asked-and-unanswered is not the same as never-asked.** A catalog question
+nobody at this company has been asked is a *prompt*; a question a candidate asked
+and the agent couldn't answer is a *gap*. Rendering both in amber with "no answer
+yet" made a brand-new company look like it was failing candidates it had never
+spoken to — and taught people to ignore the colour. Never-asked rows read "not
+asked here yet" in muted text, stay collapsed, and are counted separately in the
+section heading.
 | "Profile complete 95%" | Says how far along you are without saying where to act | The list page, where comparing companies is the job |
 | "Cleared for candidates 92%" | Same | The list page |
 | "Last verified 12 Aug" | A company-wide roll-up of a per-item field | Activity log |
@@ -866,7 +874,16 @@ same question everywhere; only the answer differs.
 
 **`Question`** (`src/lib/question-catalog.ts`) — `id` · `scope` (`global` |
 `company`) · `intent` · `variants[]` · `category` · `sensitive` ·
-`defaultAgentUse` · `prohibitions[]`. **The one thing shared across every
+**`answerableAt`** (`company` | `job`) · `defaultAgentUse` · `prohibitions[]`.
+
+`answerableAt: "job"` marks a question with **no truthful company-wide answer** —
+*"How long will the process take?"* depends on the role's pipeline and how fast
+this client moves. The stack skips the company row entirely and opens one row per
+active role, so the UI stops asking for a sentence that would be a promise made
+on behalf of every role at once. (Eventually derivable from
+`job_workflow_sub_stages` + the job's resolved `sla_policies`; not derived yet,
+because the mock has stage names and no durations and inventing one is the exact
+false promise the flag prevents.) **The one thing shared across every
 customer.** Company-scoped entries exist for the genuinely bespoke (*"Is the
 Central territory greenfield?"*) and should stay rare — anything a second
 company would recognise belongs in the global catalog, where every customer gets

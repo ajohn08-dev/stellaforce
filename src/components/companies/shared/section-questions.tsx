@@ -75,7 +75,11 @@ export function SectionQuestions({
       }),
     [entries]
   )
-  const unansweredCount = ordered.filter(isUnanswered).length
+  // Split, because they mean different things: a candidate asked and we had
+  // nothing (act on it) versus the catalog offers it and nobody here has been
+  // asked (write it when you have it).
+  const gapCount = ordered.filter((q) => isUnanswered(q) && q.askedCount > 0).length
+  const promptCount = ordered.filter((q) => isUnanswered(q) && q.askedCount === 0).length
 
   return (
     <section className="space-y-2">
@@ -88,9 +92,14 @@ export function SectionQuestions({
               {entries.length}
             </span>
           )}
-          {unansweredCount > 0 && (
+          {gapCount > 0 && (
             <span className="text-xs font-normal text-amber-700 dark:text-amber-300">
-              {unansweredCount} unanswered
+              {gapCount} unanswered
+            </span>
+          )}
+          {promptCount > 0 && (
+            <span className="text-xs font-normal text-muted-foreground">
+              {promptCount} not asked yet
             </span>
           )}
         </h3>
@@ -138,7 +147,13 @@ export function QuestionRow({
 }) {
   const catalog = questionOf(company, entry)
   const unanswered = isUnanswered(entry)
-  const [open, setOpen] = React.useState(unanswered)
+
+  // A question nobody has asked here is a prompt from the catalog, not a gap a
+  // candidate fell into. Rendering the two identically — amber border, "no
+  // answer yet" — made a brand-new company look like it was failing candidates
+  // it had never spoken to, and taught people to ignore the colour.
+  const neverAsked = entry.askedCount === 0
+  const [open, setOpen] = React.useState(unanswered && !neverAsked)
 
   // Scopes the recruiter has chosen to answer at during this session. UI-only:
   // a real publish would create the answer row.
@@ -160,7 +175,7 @@ export function QuestionRow({
     <div
       className={cn(
         "rounded-lg border border-border",
-        unanswered && "border-amber-300 dark:border-amber-900"
+        unanswered && !neverAsked && "border-amber-300 dark:border-amber-900"
       )}
     >
       <button
@@ -183,14 +198,18 @@ export function QuestionRow({
         )}
 
         <span className="shrink-0 text-xs text-muted-foreground">
-          asked {entry.askedCount}×
+          {neverAsked ? "not asked here yet" : `asked ${entry.askedCount}×`}
           {unanswered ? (
-            <span className={cn("ml-1", !askedClientAt && "text-amber-700 dark:text-amber-300")}>
-              ·{" "}
-              {askedClientAt
-                ? `waiting on the client since ${formatDate(askedClientAt)}`
-                : "no answer yet"}
-            </span>
+            neverAsked ? null : (
+              <span
+                className={cn("ml-1", !askedClientAt && "text-amber-700 dark:text-amber-300")}
+              >
+                ·{" "}
+                {askedClientAt
+                  ? `waiting on the client since ${formatDate(askedClientAt)}`
+                  : "no answer yet"}
+              </span>
+            )
           ) : (
             stack.length > 1 && (
               <span className="ml-1">
@@ -267,30 +286,59 @@ function AnswerStack({
 
   // Anywhere that doesn't already have an answer, and isn't already open for
   // editing on this screen.
-  const open = availableScopes(company).filter(
+  const open = availableScopes(company, {}, catalog).filter(
     (s) =>
       !answeredScopes.has(`${s.kind}:${s.refId ?? ""}`) &&
       !pending.some((p) => p.kind === s.kind && p.refId === s.refId)
   )
 
+  // A question that can only be answered per role opens with one row per active
+  // role rather than an empty "Everywhere" box. Offering the company row asks
+  // for a sentence that would be a promise made on behalf of every role at once.
+  const jobOnly = catalog.answerableAt === "job"
+
   return (
     <div className="space-y-2">
-      {stack.length === 0 && pending.length === 0 && (
-        <AnswerRow
-          company={company}
-          entry={entry}
-          catalog={catalog}
-          scope={{
-            kind: "company",
-            refId: null,
-            label: "Everywhere",
-            badge: "From company",
-          }}
-          answer={null}
-          depth={0}
-          wins
-        />
+      {jobOnly && (
+        <p className="text-xs text-muted-foreground">
+          Answered per role — the honest answer depends on the pipeline and how
+          fast this client moves, so there&apos;s no company-wide one to write.
+        </p>
       )}
+
+      {stack.length === 0 &&
+        pending.length === 0 &&
+        (jobOnly ? (
+          open
+            .filter((s) => s.kind === "job")
+            .map((scope) => (
+              <AnswerRow
+                key={`${scope.kind}:${scope.refId}`}
+                company={company}
+                entry={entry}
+                catalog={catalog}
+                scope={scope}
+                answer={null}
+                depth={0}
+                wins={false}
+              />
+            ))
+        ) : (
+          <AnswerRow
+            company={company}
+            entry={entry}
+            catalog={catalog}
+            scope={{
+              kind: "company",
+              refId: null,
+              label: "Everywhere",
+              badge: "From company",
+            }}
+            answer={null}
+            depth={0}
+            wins
+          />
+        ))}
 
       {stack.map((row, i) => (
         <AnswerRow
@@ -320,7 +368,7 @@ function AnswerStack({
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <p className="text-xs text-muted-foreground">
-          The most specific answer wins.
+          {jobOnly ? "One answer per role." : "The most specific answer wins."}
         </p>
 
         {open.length > 0 && (

@@ -1390,6 +1390,7 @@ const LUMAGRID_CUSTOM_QUESTIONS: Question[] = [
     category: "why_role_open",
     variants: [],
     sensitive: false,
+    answerableAt: "company",
     defaultAgentUse: "on_request",
     prohibitions: [],
   },
@@ -2333,6 +2334,9 @@ const HARBORLINE_CUSTOM_QUESTIONS: Question[] = [
     category: "hiring_timeline",
     variants: [],
     sensitive: false,
+    // The Newark req question is about one specific role, so it can only be
+    // answered there.
+    answerableAt: "job",
     defaultAgentUse: "on_request",
     prohibitions: [],
   },

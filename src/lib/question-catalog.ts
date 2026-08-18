@@ -46,6 +46,20 @@ export type Question = {
    * can remove.
    */
   sensitive: boolean
+  /**
+   * The **narrowest scope at which this question can be answered truthfully.**
+   *
+   * Most questions have a company-wide answer — benefits, culture, what the
+   * product does. Some don't, and offering an "Everywhere" box for those invites
+   * an answer that is either useless ("it varies") or a promise that's wrong for
+   * most roles. *"How long will the process take?"* depends on the role's
+   * pipeline and how fast the client moves; there is no honest company-wide
+   * sentence.
+   *
+   * `"job"` means the stack skips the company row entirely and offers a row per
+   * active role instead — the UI stops asking for an answer that can't exist.
+   */
+  answerableAt: "company" | "job"
   /** Applied at every company unless a company answer overrides the posture. */
   defaultAgentUse: AgentUse
   /**
@@ -78,7 +92,8 @@ function q(
   id: string,
   intent: string,
   category: FaqCategory,
-  variants: string[]
+  variants: string[],
+  answerableAt: Question["answerableAt"] = "company"
 ): Question {
   return {
     id,
@@ -86,6 +101,7 @@ function q(
     category,
     variants,
     sensitive: false,
+    answerableAt,
     defaultAgentUse: "on_request",
     prohibitions: [],
   }
@@ -105,6 +121,7 @@ function sensitive(
     category,
     variants,
     sensitive: true,
+    answerableAt: "company",
     defaultAgentUse: "escalate",
     prohibitions,
   }
@@ -206,10 +223,23 @@ export const GLOBAL_QUESTIONS: Question[] = [
     "Who would I work with?",
     "Is there sales engineering support?",
   ]),
-  q("q-hiring-timeline", "How long will the process take?", "hiring_timeline", [
-    "When do you want someone to start?",
-    "Is the req still open?",
-  ]),
+  // Job-only. The answer is a function of the role's pipeline and how fast this
+  // client actually moves — five stages is not three, and a client who
+  // reschedules a third of first rounds is not one who doesn't. A company-wide
+  // sentence here would be a promise made on behalf of every role at once.
+  //
+  // ⚠️ Eventually derivable rather than typed: `job_workflow_sub_stages` plus
+  // the job's resolved `sla_policies` already describe stage count and expected
+  // turnaround. Not derived yet — the mock has stage names but no durations, and
+  // inventing one would be exactly the false promise this flag exists to
+  // prevent.
+  q(
+    "q-hiring-timeline",
+    "How long will the process take?",
+    "hiring_timeline",
+    ["When do you want someone to start?", "Is the req still open?"],
+    "job"
+  ),
 ]
 
 const BY_ID = new Map(GLOBAL_QUESTIONS.map((qq) => [qq.id, qq]))
