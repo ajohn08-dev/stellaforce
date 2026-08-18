@@ -390,6 +390,16 @@ migrating the full app layer to V3.2 is an ongoing pass.
   recruiter" (sets `agentUse: 'escalate'`, giving the agent defined behaviour on
   the topic rather than a hole).
 
+  **Readiness measures the candidate-facing bar**, and its labels say so —
+  *Ready for candidates* / *Ready — some topics escalate* / *Re-confirm before
+  candidates hear it* / *Not ready for candidates*. Not "screening": the same
+  knowledge feeds phone screens, video interviews, and chat, and modality is a
+  property of the job stage. Not "agents" either — every check is about what a
+  candidate may be told, and an internal agent is cleared for everything the
+  company has, so there's no internal bar that can fail. On the list page the
+  completeness bar and the status pill are **one** column: they can disagree
+  (89% written, still not ready) in a way that only makes sense read together.
+
   **Publish shows diffs, not field names.** The draft buffer always held the
   baseline and the new value and the change list threw one away, so the review
   could only name what changed — the wrong altitude for a candidate-facing claim,

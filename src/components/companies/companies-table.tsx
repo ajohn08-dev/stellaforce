@@ -112,32 +112,26 @@ const columns: ColumnDef<CompanyListItem>[] = [
     ),
   },
   {
-    accessorKey: "completeness",
-    // "Complete" invited the question "complete for what?". This is how much of
-    // the knowledge base has been written — the comparative measure, which is
-    // why it lives on the list rather than in the workspace header.
-    header: sortHeader("Knowledge"),
-    cell: ({ row }) => (
-      <div className="flex w-28 items-center gap-2">
-        <Progress value={row.original.completeness} className="flex-1" />
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {row.original.completeness}%
-        </span>
-      </div>
-    ),
-  },
-  {
     id: "readiness",
-    accessorFn: (row) => READINESS_RANK[row.readiness],
-    // Was "Agent status", which named something that doesn't exist: an agent
-    // attaches to a job stage, never to a company. What this column actually
-    // answers is whether a screening agent could run for this company's roles
-    // yet — so it says that, and each label states the consequence rather than
-    // the enum.
-    header: sortHeader("Screening readiness"),
+    // One health column, not two. "Knowledge 89%" and "Screening readiness" sat
+    // adjacent, both answering "is this account in good shape" — and they can
+    // disagree in a way that only makes sense together: 89% written and still
+    // not ready for candidates is a real state, and reading it across two
+    // columns made it look like a contradiction. The bar is the score; the pill
+    // is whether anything is broken.
+    accessorFn: (row) => READINESS_RANK[row.readiness] * 1000 + row.completeness,
+    header: sortHeader("Readiness"),
     cell: ({ row }) => (
-      <div className="max-w-sm space-y-1">
-        <ReadinessPill status={row.original.readiness} size="sm" />
+      <div className="max-w-md space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-24 items-center gap-2">
+            <Progress value={row.original.completeness} className="flex-1" />
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {row.original.completeness}%
+            </span>
+          </div>
+          <ReadinessPill status={row.original.readiness} size="sm" />
+        </div>
         <p className="text-xs text-muted-foreground">
           {row.original.readinessHeadline}
         </p>

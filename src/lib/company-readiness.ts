@@ -50,19 +50,29 @@ export type ReadinessStatus =
   | "blocked"
 
 /**
- * Labels say **what you can and can't do**, not the name of the enum.
+ * Labels say **what you can and can't do**, not the name of the enum. They used
+ * to read "Blocked", "Recruiter review required" — accurate to the state and
+ * meaningless on a screen. Blocked from what? Reviewed by whom?
  *
- * These used to read "Blocked", "Recruiter review required", "Ready with
- * caveats" — accurate to the internal state and meaningless on a screen. Blocked
- * from what? Reviewed by whom? The thing every one of them is actually about is
- * whether a screening agent can run for this company's roles, so each label says
- * that.
+ * They also used to say *screening*, which was too narrow: this knowledge feeds
+ * phone screens, video interviews, and chat alike, and the modality is a
+ * property of the job stage rather than of the knowledge. What every check here
+ * actually tests is whether the company is safe to put in front of a
+ * **candidate** — so the labels say that, in the same word the clearance ladder
+ * uses ("Cleared for candidates").
+ *
+ * **Why candidates and not agents generally.** Every check — a published
+ * description to introduce the company, a work model, benefits, a confirmed
+ * work-authorization policy, an escalation path — is about what a candidate may
+ * be told. An agent working alongside a recruiter is cleared for everything the
+ * company has (see `agentCanUse`), so there is no internal bar that can fail and
+ * nothing to report. The candidate bar is the only one with a state.
  */
 export const READINESS_LABELS: Record<ReadinessStatus, string> = {
-  ready: "Ready to screen",
+  ready: "Ready for candidates",
   ready_with_caveats: "Ready — some topics escalate",
-  review_required: "Re-confirm before screening",
-  blocked: "Can't screen yet",
+  review_required: "Re-confirm before candidates hear it",
+  blocked: "Not ready for candidates",
 }
 
 export const READINESS_SUMMARY: Record<ReadinessStatus, string> = {

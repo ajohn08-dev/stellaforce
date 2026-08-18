@@ -230,13 +230,29 @@ HQ read fine as a subline under the name; stage moved to the profile, where it's
 read once.
 
 **"Agent status" named something that doesn't exist.** An agent attaches to a job
-stage, never to a company. The column answers whether a screening agent could run
-for this company's roles yet, so it says **Screening readiness**, and every label
-states the consequence rather than the enum: *Ready to screen* · *Ready — some
-topics escalate* · *Re-confirm before screening* · *Can't screen yet*. The
-explanation sentence beneath wraps instead of clipping.
+stage, never to a company. Its replacement said *Screening readiness*, which was
+also wrong — too narrow. The same knowledge feeds phone screens, video
+interviews, and chat, and the modality is a property of the job stage, not of the
+knowledge.
 
-**"Complete" became "Knowledge"** — "complete for what?" was a fair question.
+The column is **Readiness**, and the labels say what the checks actually test —
+whether this company is safe to put in front of a **candidate**, in the same word
+the clearance ladder uses: *Ready for candidates* · *Ready — some topics
+escalate* · *Re-confirm before candidates hear it* · *Not ready for candidates*.
+The explanation sentence beneath wraps instead of clipping.
+
+**Why candidates and not agents generally.** Every check — a published
+description, a work model, benefits, a confirmed work-authorization policy, an
+escalation path — is about what a candidate may be told. An agent working
+alongside a recruiter is cleared for everything the company has, so there is no
+internal bar that can fail. The candidate bar is the only one with a state.
+
+**One health column, not two.** "Knowledge 89%" and the status pill sat adjacent,
+both answering *is this account in good shape*, and they can disagree in a way
+that only makes sense together — 89% written and still not ready for candidates
+is a real state that read as a contradiction across two columns. The bar is the
+score; the pill is whether anything is broken. Sorting is readiness first,
+completeness as the tiebreak.
 
 **Three colours, not four.** `ready_with_caveats` was sky blue with an eye icon,
 which read as a different *category* rather than a shade of ready. It's a ready
