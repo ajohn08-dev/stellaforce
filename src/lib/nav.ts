@@ -38,7 +38,7 @@ export const AGENTS_NAV_ITEMS: NavItem[] = [
 
 /** Bottom-pinned nav items, in display order (Settings always last). */
 export const BOTTOM_NAV_ITEMS: NavItem[] = [
-  { href: "/clients", label: "Clients", icon: Building2 },
+  { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/settings", label: "Settings", icon: Settings },

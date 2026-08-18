@@ -12,6 +12,9 @@ of n8n workflows (triggers, dependent app functions, runtime-DB consequences).
 content, and example copy for the recruiter mission-control, client-admin
 oversight-console, internal-admin operations-command-center, and
 client-recruiter delivery-workbench layouts.
+[COMPANY.md](COMPANY.md) — the `/companies` workspace: information architecture,
+screen-by-screen spec, component inventory, target data model, agent-context
+assembly rules, and UX copy for the company knowledge base.
 
 ## Stack
 - **Next.js (App Router) + TypeScript**, `src/` dir, `@/*` alias
@@ -170,7 +173,93 @@ migrating the full app layer to V3.2 is an ongoing pass.
   (`src/lib/job-pulse.ts`, all computed server-side) — followed by one tab per
   sub-stage of the job's snapshotted pipeline, each listing the applications
   parked there. A draft job renders the 5-step setup wizard instead.
-- `/clients` — list
+- `/companies` — the company knowledge base (formerly `/clients`, which now
+  redirects; the nav entry stays **bottom-pinned** with Integrations/Workflows,
+  since a company profile is edited occasionally, not daily). A list page —
+  **table by default**, `?view=grid` for cards — plus a per-company workspace at
+  `/companies/[id]`. Company knowledge is reusable across every job for that
+  company and is the grounding context candidate-facing screening agents are
+  compiled from.
+
+  The workspace sits in **one white card** (matching `/candidates/[id]`) and
+  navigates by a **left rail of four collapsible groups**, not tabs (`?section=`
+  drives it, so every section is deep-linkable). Only the group you're in is open
+  on load: **Unanswered questions** (an inbox, above the groups) → *About the
+  company* (Profile · What they do · Culture & working style · Why they're
+  hiring) → *Pay, benefits & policies* (Locations & work model · Benefits · Work
+  authorization · Compensation approach) → *Teams & hiring* (Departments & teams ·
+  Open jobs · Interview process) → *Internal notes* (Recruiter brief · Activity
+  log), the last group omitted entirely for profiles without the capability.
+  Section order and labels live in
+  `src/components/companies/workspace/company-sections.ts`.
+
+  **There is no FAQ library.** Candidate questions live inside the section that
+  answers them, routed by `faqSection()` — sponsorship questions under Work
+  authorization, size questions under Profile — because editing a fact and
+  editing the answer about that fact is one job. Only the unanswered queue is its
+  own destination.
+
+  **Activity is a projection of `activity_events`**, not a company-owned history,
+  and there is deliberately **no per-item history drawer and no per-item
+  provenance strip**. Both were answering rarely-asked questions with
+  always-present chrome. The `VisibilityBlock` still stores `source` /
+  `verifiedBy` / `lastVerifiedAt` / `nextReviewAt` / `owner` — readiness needs
+  them — but the only thing rendered on an item is `TrustWarning`, which is
+  silent unless the item is stale or an unconfirmed candidate-facing claim. Its
+  `needsAttention()` predicate is shared with the rail's attention dots so the
+  two can't disagree. Everything else is answered by filtering the one
+  append-only log.
+
+  **Every field is editable in place** (`shared/editable-field.tsx` — text,
+  textarea, select, and add/remove pills, all styled to look like plain text
+  until hovered). Edits are batched across the **whole company**, not per
+  section: the buffer lives in `companies/[id]/layout.tsx` (a `?section=` change
+  re-renders the page but preserves the layout, so unsaved edits survive moving
+  between sections), and **Publish in the header is the primary CTA** — the only
+  thing that applies them, showing a review list grouped by section first.
+  Version history is company-wide, since a publish is atomic across every
+  section; it is **UI-only** in this pass. Leaving the company with unpublished
+  edits warns first (`UnsavedChangesGuard` — `beforeunload` plus a capture-phase
+  click interceptor, since the App Router has no navigation guard); moving
+  between sections never warns, because the buffer survives it.
+
+  **Vocabulary matches between code and UI**: `Clearance` is
+  `cleared_for_candidates` / `recruiters_only` / `restricted`, rendered with
+  exactly those words. Don't reintroduce "audience" or "candidate-safe" — the
+  earlier mismatch is what let "Candidates can see this" survive in the UI while
+  the type said something else. Visibility reads as a
+  sentence with inline dropdowns — *"Cleared for candidates, and the agent
+  answers only if asked"* — not as a pair of jargon badges. The audience axis is
+  worded as a **clearance ladder** (Cleared for candidates / Recruiters only /
+  Restricted), not as "who can see this": candidates have no login and only ever
+  hear things from an agent.
+
+  Every knowledge item carries a two-axis visibility block — **clearance**
+  (`cleared_for_candidates` / `recruiters_only` / `restricted`) and **agent use** (`proactive` /
+  `on_request` / `reference_only` / `escalate`) — plus a separate publication
+  state. The agent gate is the single predicate `agentCanUse()` in
+  `src/lib/company-visibility.ts`; note it is deliberately distinct from
+  `isPublishedCleared()`, which the readiness *existence* checks use so
+  stale knowledge reports as "needs review" rather than as missing.
+
+  There is **no Readiness screen** and **no "Deploy agent" action** — both were
+  redundant. Readiness duplicated the header's completeness meter; deploy was
+  fiction, since agents attach to a job stage
+  (`job_workflow_sub_stages.agent_id`), never to a company, and publishing is
+  already what makes company knowledge available to every agent on that
+  company's jobs. Gap counts now ride on the rail (`gapCountsBySection()`),
+  items needing re-confirmation on rail dots (`attentionSections()`), the
+  specific problem inside the section it concerns, the readiness explanation in the
+  header pill's tooltip, and the compiled agent context as a collapsed
+  disclosure inside Publish. The header itself is **identity and actions only** —
+  completeness percentages live on the list page, where comparing companies is
+  the actual job. The real agent gate belongs on the job stage — see
+  the Missing link note under **Interview channels**.
+
+  Departments and teams are optional and created only when an active job needs
+  them (`createdBecauseJobId` records which). **UI only** — renders from
+  `src/lib/mock-companies.ts`, no tables or Server Actions yet. Full spec:
+  **[COMPANY.md](COMPANY.md)**.
 - `/settings` — signed-in user's email/role
 - `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)
 - `/interview-room/[agentId]` — browser interview room: a briefing/device-check
