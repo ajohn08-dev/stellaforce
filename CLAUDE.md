@@ -15,6 +15,12 @@ client-recruiter delivery-workbench layouts.
 [COMPANY.md](COMPANY.md) — the `/companies` workspace: information architecture,
 screen-by-screen spec, component inventory, target data model, agent-context
 assembly rules, and UX copy for the company knowledge base.
+[DB_COMPANY_KNOWLEDGE.md](DB_COMPANY_KNOWLEDGE.md) — the target schema for that
+knowledge base, audited against what the app already does: the contract, the
+tables, the three queries that carry the cascade, a scenario-by-scenario run, and
+five places the design is **not** clean. **No migrations exist for any of it.**
+Three decisions block the DB pass — how batched publish is stored, `asked_count`
+becoming an events table, and `clients` versus a new `companies` table.
 
 ## Stack
 - **Next.js (App Router) + TypeScript**, `src/` dir, `@/*` alias
