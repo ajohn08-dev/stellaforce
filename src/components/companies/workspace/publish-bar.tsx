@@ -1,7 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { Ban, Check, ChevronRight, History, RotateCcw, Sparkles } from "lucide-react"
+import {
+  Ban,
+  ChevronDown,
+  ChevronRight,
+  History,
+  RotateCcw,
+  Sparkles,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -15,12 +22,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet"
 import { useCompanyDraft } from "@/components/companies/company-draft-context"
 import { ALL_SECTIONS } from "@/components/companies/workspace/company-sections"
@@ -50,12 +62,15 @@ function sectionLabel(key: string): string {
 export function PublishButton({
   context,
   readiness,
+  versions,
 }: {
   context: CompiledAgentContext
   readiness: CompanyReadiness
+  versions: CompanyVersion[]
 }) {
   const draft = useCompanyDraft()
   const count = draft?.changes.length ?? 0
+  const [historyOpen, setHistoryOpen] = React.useState(false)
 
   const grouped = React.useMemo(() => {
     const map = new Map<string, string[]>()
@@ -65,12 +80,53 @@ export function PublishButton({
     return [...map.entries()]
   }, [draft?.changes])
 
+  /**
+   * Version history rides in the split button's menu rather than sitting beside
+   * it: it's a rarely-used companion to publishing (what did we publish before?)
+   * and a second top-level button was competing with the primary action.
+   *
+   * With nothing to publish, only the publish half goes disabled — the menu half
+   * stays live, since looking at what was published before is exactly what you
+   * do on a company with no pending edits.
+   */
+  const menu = (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              size="sm"
+              aria-label="More publish actions"
+              className="rounded-l-none border-l border-l-primary-foreground/25 px-1.5"
+            >
+              <ChevronDown className="size-3.5" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => setHistoryOpen(true)}>
+            <History className="size-4" />
+            Version history
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <CompanyVersionHistory
+        versions={versions}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+      />
+    </>
+  )
+
   if (count === 0) {
     return (
-      <Button size="sm" disabled className="gap-1.5">
-        <Check className="size-4" />
-        Publish
-      </Button>
+      <div className="flex items-center">
+        <Button size="sm" disabled className="rounded-r-none">
+          Publish
+        </Button>
+        {menu}
+      </div>
     )
   }
 
@@ -87,14 +143,16 @@ export function PublishButton({
       </Button>
 
       <Dialog>
-        <DialogTrigger
-          render={
-            <Button size="sm" className="gap-1.5">
-              <Check className="size-4" />
-              Publish {count} change{count === 1 ? "" : "s"}
-            </Button>
-          }
-        />
+        <div className="flex items-center">
+          <DialogTrigger
+            render={
+              <Button size="sm" className="rounded-r-none">
+                Publish {count} change{count === 1 ? "" : "s"}
+              </Button>
+            }
+          />
+          {menu}
+        </div>
         <DialogContent className="max-h-[80vh] w-full max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -128,12 +186,7 @@ export function PublishButton({
           <DialogFooter>
             <DialogClose render={<Button variant="ghost">Keep editing</Button>} />
             <DialogClose
-              render={
-                <Button className="gap-1.5" onClick={() => draft?.publishAll()}>
-                  <Check className="size-4" />
-                  Publish
-                </Button>
-              }
+              render={<Button onClick={() => draft?.publishAll()}>Publish</Button>}
             />
           </DialogFooter>
         </DialogContent>
@@ -148,18 +201,21 @@ export function PublishButton({
  * **UI only in this demo** — the list is mock and nothing restores. It's
  * company-wide by design: a publish is one atomic act across every section, so a
  * version is a snapshot of the company, not of a section or an item.
+ *
+ * Opened from the publish split button's menu, so it takes its open state from
+ * the caller rather than owning a trigger of its own.
  */
-export function CompanyVersionHistory({ versions }: { versions: CompanyVersion[] }) {
+function CompanyVersionHistory({
+  versions,
+  open,
+  onOpenChange,
+}: {
+  versions: CompanyVersion[]
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   return (
-    <Sheet>
-      <SheetTrigger
-        render={
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-            <History className="size-3.5" />
-            Version history
-          </Button>
-        }
-      />
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md">
         <SheetHeader>
           <SheetTitle>Version history</SheetTitle>

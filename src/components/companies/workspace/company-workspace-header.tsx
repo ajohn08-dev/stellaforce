@@ -6,10 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CompanyLogo } from "@/components/companies/company-logo"
 import { LinkedinIcon } from "@/components/icons/brand-icons"
 import { ReadinessPill } from "@/components/companies/shared/readiness-pill"
-import {
-  CompanyVersionHistory,
-  PublishButton,
-} from "@/components/companies/workspace/publish-bar"
+import { PublishButton } from "@/components/companies/workspace/publish-bar"
 import type { CompiledAgentContext } from "@/lib/company-agent-context"
 import { READINESS_SUMMARY, type CompanyReadiness } from "@/lib/company-readiness"
 import {
@@ -127,8 +124,6 @@ export function CompanyWorkspaceHeader({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <CompanyVersionHistory versions={company.versions} />
-
         <Button
           variant="outline"
           size="sm"
@@ -139,7 +134,11 @@ export function CompanyWorkspaceHeader({
           Create job
         </Button>
 
-        <PublishButton context={agentContext} readiness={readiness} />
+        <PublishButton
+          context={agentContext}
+          readiness={readiness}
+          versions={company.versions}
+        />
       </div>
     </div>
   )
