@@ -188,7 +188,7 @@ migrating the full app layer to V3.2 is an ongoing pass.
   company* (Profile · What they do · Culture & working style · Why they're
   hiring) → *Pay, benefits & policies* (Locations & work model · Benefits · Work
   authorization · Compensation approach) → *Teams & hiring* (Departments & teams ·
-  Open jobs · Interview process) → *Internal notes* (Recruiter brief · Activity
+  Jobs · Interview process) → *Internal notes* (Recruiter brief · Activity
   log), the last group omitted entirely for profiles without the capability.
   Section order and labels live in
   `src/components/companies/workspace/company-sections.ts`.
@@ -280,9 +280,26 @@ migrating the full app layer to V3.2 is an ongoing pass.
   the Missing link note under **Interview channels**.
 
   Departments and teams are optional and created only when an active job needs
-  them (`createdBecauseJobId` records which). **UI only** — renders from
-  `src/lib/mock-companies.ts`, no tables or Server Actions yet. Full spec:
-  **[COMPANY.md](COMPANY.md)**.
+  them (`createdBecauseJobId` records which); each team shows how many jobs still
+  use its context, so an orphaned one is visible.
+
+  **The Jobs section is coverage, not a directory.** `/jobs` is already the jobs
+  dashboard and owns that data; what a knowledge base can answer instead is
+  *which roles an agent still can't screen for, and why* — so each row carries
+  the job's open problems (`jobCoverage()`, derived from the same `JOB_CHECKS`
+  array as the readiness checks, so a row and a rail badge can't disagree) and
+  links out to `/jobs/[id]`, with "What it inherits" opening the inheritance
+  drilldown. **⚠️ The two job models aren't linked yet**: `/jobs` reads
+  `job_orders` joined to `clients`, this reads `CompanyJob[]` from
+  `mock-companies.ts`, and they share no key — so the link is real markup against
+  fixture ids that won't resolve until the DB pass, where `CompanyJob.id` becomes
+  `job_orders.job_id`. Two more things to reconcile there: there is no
+  `companies` table (the DB has `clients`), and `Company.stakeholders` describes
+  the same humans as the real `job_team_members` rows — the company should own
+  the *person* (bio, clearance, notes), the job the *assignment*.
+
+  **UI only** — renders from `src/lib/mock-companies.ts`, no tables or Server
+  Actions yet. Full spec: **[COMPANY.md](COMPANY.md)**.
 - `/settings` — signed-in user's email/role
 - `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)
 - `/interview-room/[agentId]` — browser interview room: a briefing/device-check

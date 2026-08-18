@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowLeft, ArrowRight, Briefcase, Plus } from "lucide-react"
+import { AlertTriangle, ArrowLeft, ArrowRight, ExternalLink, Plus } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,9 +11,15 @@ import {
   SectionEmpty,
   SectionShell,
 } from "@/components/companies/workspace/section-shell"
+import { JobStatusBadge } from "@/components/jobs/job-status-badge"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import { SectionQuestions } from "@/components/companies/shared/section-questions"
-import { faqSection, type CompanyReadiness } from "@/lib/company-readiness"
+import {
+  faqSection,
+  jobCoverage,
+  type CompanyReadiness,
+  type JobCoverage,
+} from "@/lib/company-readiness"
 import {
   allTeams,
   IMMIGRATION_VALUE_LABELS,
@@ -22,10 +28,19 @@ import {
 } from "@/lib/mock-companies"
 
 /**
- * The jobs attached to this company, and — on drilldown — exactly what each one
- * inherits from the company/department/team and what it overrides.
+ * The jobs this company's knowledge feeds — **what each one is still missing**,
+ * and, on drilldown, exactly what it inherits and what it overrides.
  *
- * This is where precedence becomes visible. An inherited value that a role has
+ * Deliberately not a directory. A title, a location, and "7 in pipeline" is a
+ * jobs dashboard, which `/jobs` already is and owns the data for; rendering it
+ * again here made the section a duplicate that would drift the moment both were
+ * real. What a knowledge base can answer that `/jobs` can't is *which roles an
+ * agent still can't screen for, and why* — so that's the row.
+ *
+ * The title links out to the job workspace. Two screens about the same job that
+ * didn't know about each other left the drilldown a dead end.
+ *
+ * On drilldown, precedence becomes visible: an inherited value a role has
  * replaced shows both, struck through, because an override with the original
  * hidden is indistinguishable from a plain edit.
  */
@@ -81,32 +96,9 @@ export function JobsSection({
         />
       ) : (
         <ul className="space-y-3">
-          {company.jobs.map((job) => (
-            <li key={job.id}>
-              <Link
-                href={`/companies/${company.id}?section=jobs&job=${job.id}`}
-                className="flex items-start gap-3 rounded-lg border border-border p-4 transition-colors hover:border-foreground/20 hover:bg-muted/40"
-              >
-                <Briefcase className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{job.title}</span>
-                    <Badge variant="outline">{job.status}</Badge>
-                    {job.overrides.length > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {job.overrides.length} override
-                        {job.overrides.length === 1 ? "" : "s"}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">{job.location}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {job.candidatesInPipeline} in pipeline
-                    {job.reportsTo ? ` · reports to ${job.reportsTo}` : ""}
-                  </p>
-                </div>
-                <ArrowRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              </Link>
+          {jobCoverage(company).map((coverage) => (
+            <li key={coverage.job.id}>
+              <JobRow company={company} coverage={coverage} />
             </li>
           ))}
         </ul>
@@ -118,6 +110,70 @@ export function JobsSection({
         emptyPrompt="Nothing recorded yet. Questions about what a typical day or week looks like belong here."
       />
     </SectionShell>
+  )
+}
+
+/**
+ * One job as a coverage row.
+ *
+ * Two destinations, deliberately: the **title** goes to the job workspace (the
+ * pipeline, the candidates — the things this domain doesn't own), and **"What
+ * it inherits"** goes to the drilldown here. A single card-wide link would have
+ * to pick one, and picking the drilldown is what made this a cul-de-sac.
+ */
+function JobRow({ company, coverage }: { company: Company; coverage: JobCoverage }) {
+  const { job, problems, active } = coverage
+  const team = job.teamId ? allTeams(company).find((t) => t.id === job.teamId) : null
+
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/jobs/${job.id}`}
+              className="inline-flex items-center gap-1 font-medium hover:underline"
+            >
+              {job.title}
+              <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
+            </Link>
+            <JobStatusBadge status={job.status} />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {[job.location, team?.name, job.reportsTo ? `Reports to ${job.reportsTo}` : null]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 text-muted-foreground"
+          render={
+            <Link href={`/companies/${company.id}?section=jobs&job=${job.id}`} />
+          }
+        >
+          What it inherits
+          <ArrowRight className="size-3.5" />
+        </Button>
+      </div>
+
+      {!active ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Nothing is screening for this job, so its context isn&apos;t graded.
+        </p>
+      ) : problems.length === 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Nothing missing — an agent has everything it needs for this role.
+        </p>
+      ) : (
+        <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          {problems.join(" · ")}
+        </p>
+      )}
+    </div>
   )
 }
 

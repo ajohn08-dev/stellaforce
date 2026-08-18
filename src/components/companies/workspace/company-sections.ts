@@ -115,8 +115,12 @@ export const SECTION_GROUPS: SectionGroup[] = [
       },
       {
         key: "jobs",
-        label: "Open jobs",
-        purpose: "What each job inherits from this company, and what it overrides.",
+        // "Open jobs" named a filter the list never applied — it showed every
+        // status, and the rail counted open + draft. The app says "Jobs"
+        // everywhere else; a third word for one thing helped nobody.
+        label: "Jobs",
+        purpose:
+          "Which jobs this company's knowledge feeds, what each one is still missing, and what it overrides.",
         clearance: "cleared_for_candidates",
         drillable: true,
       },

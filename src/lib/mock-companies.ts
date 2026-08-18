@@ -1,3 +1,4 @@
+import type { MockJobStatus } from "@/lib/mock-jobs"
 import type {
   AgentUse,
   Clearance,
@@ -465,8 +466,13 @@ export type CompanyJob = {
   first90DayOutcomes: string[]
   roleRisks: string | null
   overrides: InheritanceOverride[]
-  status: "draft" | "open" | "on_hold" | "closed"
-  candidatesInPipeline: number
+  /**
+   * The app's real job vocabulary (`JobStatus` + draft), not a private one. This
+   * said `on_hold` — which is an *application* status; the job enum says
+   * `paused` — and every mismatched enum here is one more thing to reconcile
+   * when `CompanyJob.id` becomes `job_orders.job_id`.
+   */
+  status: MockJobStatus
 }
 
 // ---------------------------------------------------------------------------
@@ -2018,7 +2024,6 @@ const LUMAGRID_JOBS: CompanyJob[] = [
       },
     ],
     status: "open",
-    candidatesInPipeline: 7,
   },
 ]
 
@@ -2291,7 +2296,29 @@ const VERITY: Company = {
       }),
     },
   ],
-  jobs: [],
+  // The req the intake call happened for, three days old and empty — the state
+  // the Jobs section's coverage row exists to show. Verity is already `blocked`
+  // on company-level checks, so this exercises the row without moving the
+  // fixture off the readiness state it was built to demonstrate.
+  jobs: [
+    {
+      id: "job-vh-01",
+      title: "Senior Data Engineer",
+      departmentId: null,
+      teamId: null,
+      location: "Boston, MA",
+      travel: null,
+      reportsTo: null,
+      rolePurpose: null,
+      compensation: null,
+      sponsorshipPolicy: null,
+      typicalWeek: null,
+      first90DayOutcomes: [],
+      roleRisks: null,
+      overrides: [],
+      status: "open",
+    },
+  ],
   activity: [
     {
       id: "act-vh-01",
@@ -2639,8 +2666,7 @@ const HARBORLINE: Company = {
       first90DayOutcomes: [],
       roleRisks: null,
       overrides: [],
-      status: "on_hold",
-      candidatesInPipeline: 2,
+      status: "paused",
     },
   ],
   activity: [

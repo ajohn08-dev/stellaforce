@@ -101,7 +101,7 @@ with content a recruiter is reading and editing.
                                    Culture & working style · Why they're hiring
 ▸ Pay, benefits & policies  4      Locations & work model · Benefits ·
                                    Work authorization · Compensation approach
-▸ Teams & hiring            3      Departments & teams › · Open jobs › ·
+▸ Teams & hiring            3      Departments & teams › · Jobs › ·
                                    Interview process
 ▸ Internal notes            2      Recruiter brief · Activity log
 ```
@@ -176,7 +176,7 @@ policy resolves to an escalation, never to a guess.
 | Unanswered questions | Inbox | A work queue, above the groups. Consulted when it has items. |
 | Unanswered questions | Secondary | A work queue; consulted when it has items. |
 | Departments & teams | Progressive | Empty by default and correct that way. |
-| Open jobs | Progressive | A view onto `/jobs`, scoped to this company. |
+| Jobs | Progressive | Coverage, not a directory: which roles an agent still can't screen for. |
 | Recruiter brief | Gated | Internal-only; omitted for profiles without the capability. |
 | Activity log | Progressive | Consulted during disputes and audits, not daily. |
 | Publish | Overlay | The primary action, not a destination. |
@@ -453,23 +453,55 @@ reading as a property of the system, not a setting someone chose.
 
 ---
 
-## B.8 Departments & teams · Open jobs · Interview process
+## B.8 Departments & teams · Jobs · Interview process
 
 **Departments & teams.** The one section whose **empty state is the correct state**:
 *"No departments yet — that's fine. Company-level knowledge covers most roles. Create
 a department when a job needs context this company profile can't provide."* Each
-department card names the job that caused it to exist and nests its teams;
+department card names the job that caused it to exist and nests its teams, each
+showing how many jobs still use its context — the inverse of "Created for X", and what
+makes an orphaned team visible instead of quietly accumulating;
 `?team=<id>` drills into one, showing mission, hiring manager with candidate-safe
 bio, day-in-the-life, working style, goals, and internal notes. A department with
 linked jobs can't be deleted — the dialog lists them and offers re-parenting to
 company level.
 
-**Open jobs.** The company's jobs; `?job=<id>` drills into one and shows what it
-**inherits** (company narrative, benefits, work authorization, FAQ; department
-mission; team context) and what it **overrides**. An override shows the inherited
-value struck through beside the new one, with a one-click revert — an override with
-the original hidden is indistinguishable from a plain edit. Precedence is spelled
-out under the inherited list.
+**Jobs.** Not "Open jobs" — that named a filter the list never applied (it showed
+every status while the rail counted open + draft), and the app says *Jobs*
+everywhere else.
+
+**The row is coverage, not a directory entry.** A title, a location, and "7 in
+pipeline" is a jobs-dashboard row; `/jobs` already is that dashboard and owns the
+data for it, so rendering it again here made this a duplicate that would drift the
+moment both were real. What a knowledge base can answer that `/jobs` can't is *which
+roles an agent still can't screen for, and why* — so each row carries the job's open
+problems (`jobCoverage()`, derived from the same `JOB_CHECKS` array the readiness
+checks use, so a row and a rail badge can't disagree): *No role purpose · No team
+linked · 1 override conflicts with a verified company value*. Paused, filled, and
+closed jobs aren't graded — nothing is screening for them — and say so.
+
+**Two destinations per row, deliberately.** The **title** links out to `/jobs/[id]`,
+the pipeline and candidates this domain doesn't own; **"What it inherits"** opens the
+drilldown here. One card-wide link had to pick one, and picking the drilldown is what
+left it a cul-de-sac: two screens about the same job that didn't know about each
+other.
+
+`?job=<id>` drills into what the job **inherits** (company narrative, benefits, work
+authorization, FAQ; department mission; team context) and what it **overrides**. An
+override shows the inherited value struck through beside the new one, with a one-click
+revert — an override with the original hidden is indistinguishable from a plain edit.
+Precedence is spelled out under the inherited list.
+
+**⚠️ The two job models are not linked yet.** `/jobs` reads `job_orders` joined to
+`clients`; this section reads `CompanyJob[]` from `mock-companies.ts`, with ids like
+`job-lg-01` and no key in common. So the `/jobs/[id]` link is real markup against
+fixture ids that won't resolve until the DB pass, where `CompanyJob.id` becomes
+`job_orders.job_id` and title/location/status/comp are **read** from it rather than
+stored a second time. What this domain legitimately owns is `overrides` and the role
+narrative (`rolePurpose`, `typicalWeek`, `first90DayOutcomes`) — what an agent needs
+and the job record doesn't hold. `CompanyJob.status` now uses the app's real job
+vocabulary (`MockJobStatus`); it previously said `on_hold`, which is an *application*
+status.
 
 **Interview process.** The stages and timeline an agent may describe, plus the
 internal notes on how reliably this client actually runs it. The standing prohibition

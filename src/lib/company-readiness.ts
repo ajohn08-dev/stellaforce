@@ -405,6 +405,8 @@ const JOB_CHECKS: {
   label: string
   get: (j: CompanyJob) => unknown
   missing: string
+  /** Row-sized phrase for the jobs list. Same source as the check, so they can't disagree. */
+  short: string
   fix: string
 }[] = [
   {
@@ -412,6 +414,7 @@ const JOB_CHECKS: {
     label: "Role compensation policy",
     get: (j) => j.compensation,
     missing: "has no compensation policy or approved fallback",
+    short: "No compensation policy",
     fix: "Add compensation",
   },
   {
@@ -419,6 +422,7 @@ const JOB_CHECKS: {
     label: "Role reporting line",
     get: (j) => j.reportsTo,
     missing: "has no reporting line",
+    short: "No reporting line",
     fix: "Add a reporting line",
   },
   {
@@ -426,6 +430,7 @@ const JOB_CHECKS: {
     label: "Why this role exists",
     get: (j) => j.rolePurpose,
     missing: "doesn't explain why the role exists",
+    short: "No role purpose",
     fix: "Add the role purpose",
   },
   {
@@ -433,14 +438,13 @@ const JOB_CHECKS: {
     label: "Travel and location requirements",
     get: (j) => j.travel ?? j.location,
     missing: "has no travel or location requirement",
+    short: "No travel or location",
     fix: "Add travel and location",
   },
 ]
 
 function jobLevelChecks(company: Company): ReadinessCheck[] {
-  const active = company.jobs.filter((j) => j.status === "open" || j.status === "draft")
-
-  return active.flatMap((job) =>
+  return company.jobs.filter(isActiveJob).flatMap((job) =>
     JOB_CHECKS.map((def): ReadinessCheck => {
       const value = def.get(job)
       const ok = Boolean(value)
@@ -460,6 +464,53 @@ function jobLevelChecks(company: Company): ReadinessCheck[] {
       }
     })
   )
+}
+
+/** A job is only worth grading while an agent could actually be running on it. */
+function isActiveJob(job: CompanyJob): boolean {
+  return job.status === "open" || job.status === "draft"
+}
+
+export type JobCoverage = {
+  job: CompanyJob
+  /** Row-sized problems, empty when the job is fully grounded. */
+  problems: string[]
+  /** False for closed and paused jobs — nothing is screening candidates on them. */
+  active: boolean
+}
+
+/**
+ * Per-job coverage for the Jobs section — *what is this role still missing
+ * before an agent can screen for it*.
+ *
+ * This is the section's actual job (see COMPANY.md § B.8). It used to render a
+ * directory — title, location, and "7 in pipeline" — which duplicated `/jobs`
+ * with data this domain doesn't own, while the two questions that belong to a
+ * knowledge base (what's missing, what's overridden) had no surface at all.
+ *
+ * Derived from the same `JOB_CHECKS` array that `jobLevelChecks()` renders as
+ * readiness checks, so a row and the rail badge can never disagree.
+ */
+export function jobCoverage(company: Company): JobCoverage[] {
+  return company.jobs.map((job) => {
+    if (!isActiveJob(job)) return { job, problems: [], active: false }
+
+    const problems = JOB_CHECKS.filter((def) => !def.get(job)).map((def) => def.short)
+
+    // Not a JOB_CHECK: a job without a team isn't missing a *field*, it's
+    // missing a level of the inheritance chain, so the fix is on the other
+    // section.
+    if (!job.teamId) problems.push("No team linked")
+
+    const conflicts = job.overrides.filter((o) => o.conflictsWithVerified).length
+    if (conflicts > 0) {
+      problems.push(
+        `${conflicts} override${conflicts === 1 ? "" : "s"} conflict${conflicts === 1 ? "s" : ""} with a verified company value`
+      )
+    }
+
+    return { job, problems, active: true }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -534,9 +585,12 @@ export function faqSection(category: FaqCategory): CompanySection {
     case "comp_philosophy":
       return "compensation"
     case "leadership":
-      return "teams"
+    // A typical week is a *team* fact — `Team.dayInTheLife` holds it — so the
+    // question about it belongs beside it. Routing it to Jobs split the fact
+    // and the answer across two sections, which is the exact thing this
+    // function exists to prevent.
     case "typical_day":
-      return "jobs"
+      return "teams"
     case "interview_process":
     case "hiring_timeline":
       return "interview-process"

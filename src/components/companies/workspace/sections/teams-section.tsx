@@ -156,20 +156,34 @@ function DepartmentCard({
           </p>
         ) : (
           <ul className="mt-2 space-y-1">
-            {department.teams.map((team) => (
-              <li key={team.id}>
-                <Link
-                  href={`/companies/${company.id}?section=teams&team=${team.id}`}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
-                >
-                  <Users className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="font-medium">{team.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {team.sizeRange ? `${team.sizeRange} people` : ""}
-                  </span>
-                </Link>
-              </li>
-            ))}
+            {department.teams.map((team) => {
+              // The inverse of the department's "Created for X" line. A team
+              // exists because a job needed context the company profile
+              // couldn't give — so the count of jobs still using it is what
+              // says whether it's still earning its place, and an orphaned team
+              // becomes visible instead of quietly accumulating.
+              const usedBy = company.jobs.filter((j) => j.teamId === team.id).length
+
+              return (
+                <li key={team.id}>
+                  <Link
+                    href={`/companies/${company.id}?section=teams&team=${team.id}`}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
+                  >
+                    <Users className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="font-medium">{team.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {team.sizeRange ? `${team.sizeRange} people` : ""}
+                    </span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                      {usedBy === 0
+                        ? "No jobs use this"
+                        : `${usedBy} job${usedBy === 1 ? "" : "s"} use${usedBy === 1 ? "s" : ""} this context`}
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
