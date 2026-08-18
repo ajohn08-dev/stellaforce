@@ -400,10 +400,26 @@ export function derivedAnswers(company: Company, job: CompanyJob): Answer[] {
     }
   }
 
+  // Phrased as sentences, not pasted as field values. `reportsTo` holds "VP of
+  // Channel Growth"; an agent that answers "Who would I report to?" with that
+  // bare fragment sounds like a form, and the recruiter has no way to tell from
+  // the field alone that it will be spoken aloud.
   return [
-    derive("q-reporting-line", job.reportsTo, "this role's reporting line"),
-    derive("q-travel", job.travel, "this role's travel requirement"),
-    derive("q-remote", job.location, "this role's location"),
+    derive(
+      "q-reporting-line",
+      job.reportsTo ? `You'd report to the ${job.reportsTo}.` : null,
+      "this role's reporting line"
+    ),
+    derive(
+      "q-travel",
+      job.travel ? `Travel runs about ${job.travel} for this role.` : null,
+      "this role's travel requirement"
+    ),
+    derive(
+      "q-remote",
+      job.location ? `For this role: ${job.location}.` : null,
+      "this role's location"
+    ),
     derive("q-typical-week", job.typicalWeek, "this role's typical week"),
     derive("q-why-role-open", job.rolePurpose, "why this role exists"),
     derive(
@@ -490,6 +506,11 @@ export function isUnanswered(question: CompanyQuestion): boolean {
   return !question.answers.some(isWritten)
 }
 
+/** True when a question applies to a given role at all. */
+export function appliesToJob(question: Question, job: CompanyJob): boolean {
+  return !question.onlyForJobId || question.onlyForJobId === job.id
+}
+
 /** Roles a question can still be unanswered *for*. Active jobs only — a closed req isn't work. */
 export function activeJobs(company: Company): CompanyJob[] {
   return company.jobs.filter((j) => j.status === "open" || j.status === "draft")
@@ -521,6 +542,7 @@ export function unansweredItems(company: Company): UnansweredItem[] {
 
     if (catalog?.answerableAt === "job") {
       for (const job of activeJobs(company)) {
+        if (!appliesToJob(catalog, job)) continue
         const withJobFields = withDerived(company, question, job)
         if (!resolveAnswer(company, withJobFields, { jobId: job.id })) {
           items.push({ question, job })

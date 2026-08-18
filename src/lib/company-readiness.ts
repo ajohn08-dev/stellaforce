@@ -21,6 +21,7 @@ import {
 } from "@/lib/mock-companies"
 import {
   allAnswers,
+  appliesToJob,
   companyQuestions,
   isUnanswered,
   questionOf,
@@ -510,6 +511,21 @@ export function jobCoverage(company: Company): JobCoverage[] {
       )
     }
 
+    // Unanswered questions are a coverage problem, not just a publish-time
+    // caveat: the agent escalates them. Without this the Jobs list read
+    // "nothing missing" for a role whose publish dialog listed three
+    // unanswered sensitive topics — two screens disagreeing about one job.
+    // Same source as the publish warning, so they can't drift.
+    const gaps = jobAnswerGaps(company, job)
+    const sensitiveGaps = gaps.filter((g) => g.sensitive).length
+    if (sensitiveGaps > 0) {
+      problems.push(
+        `${sensitiveGaps} sensitive question${sensitiveGaps === 1 ? "" : "s"} unanswered`
+      )
+    } else if (gaps.length > 0) {
+      problems.push(`${gaps.length} question${gaps.length === 1 ? "" : "s"} unanswered`)
+    }
+
     return { job, problems, active: true }
   })
 }
@@ -532,6 +548,10 @@ export function jobAnswerGaps(
   job: CompanyJob
 ): { question: string; sensitive: boolean }[] {
   return companyQuestions(company)
+    .filter((q) => {
+      const catalog = questionOf(company, q)
+      return catalog ? appliesToJob(catalog, job) : false
+    })
     .map((raw) => withDerived(company, raw, job))
     .filter((q) => !resolveAnswer(company, q, { jobId: job.id }, { publishedOnly: true }))
     .map((q) => {
@@ -706,7 +726,7 @@ export function questionsForJob(company: Company, job: CompanyJob): CompanyQuest
     .map((q) => withDerived(company, q, job))
     .filter((q) => {
       const catalog = questionOf(company, q)
-      if (!catalog) return false
+      if (!catalog || !appliesToJob(catalog, job)) return false
       if (catalog.answerableAt === "job") return true
       return q.answers.some((a) => a.scope.kind === "job" && a.scope.refId === job.id)
     })

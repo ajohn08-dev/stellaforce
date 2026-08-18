@@ -268,6 +268,15 @@ migrating the full app layer to V3.2 is an ongoing pass.
   the readiness check from a company-level "is there an interview answer" to a
   per-job `role_process` ("does this role have stages").
 
+  **`npm run knowledge-dryrun`** walks a job from wizard fields to a live
+  instance and back out through edits (`scripts/company-knowledge-dryrun.ts`),
+  calling the same functions the UI renders from. It's how the model gets
+  checked without a browser; it caught three real bugs on its first run —
+  derived answers being pasted field fragments rather than sentences, a
+  role-specific custom question leaking onto every role, and the Jobs list
+  saying "nothing missing" for a job whose publish dialog listed two unanswered
+  sensitive topics.
+
   **A new req arrives with its knowledge space already populated.** The catalog
   is projected onto the company and `withDerived` fills in what the job's own
   fields answer, so there is nothing to seed and nothing to assign — the gaps a

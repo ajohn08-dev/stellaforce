@@ -60,6 +60,16 @@ export type Question = {
    * active role instead — the UI stops asking for an answer that can't exist.
    */
   answerableAt: "company" | "job"
+  /**
+   * Set only on a company-scoped question that is about **one specific role** —
+   * *"Is the Central territory an existing book of business or greenfield?"*.
+   *
+   * Without it, a job-only custom question appears on every active role,
+   * including ones it makes no sense for. A candidate asked it about the Central
+   * AE; putting it on the Northeast AE's list is asking someone to answer a
+   * question nobody asked about a territory that isn't theirs.
+   */
+  onlyForJobId?: string
   /** Applied at every company unless a company answer overrides the posture. */
   defaultAgentUse: AgentUse
   /**

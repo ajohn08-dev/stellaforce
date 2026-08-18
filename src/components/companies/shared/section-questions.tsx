@@ -23,6 +23,7 @@ import { useVisibilityDraft } from "@/components/companies/shared/use-visibility
 import { formatDate } from "@/lib/constants"
 import {
   answerStack,
+  appliesToJob,
   availableScopes,
   companyQuestions,
   effectiveProhibitions,
@@ -708,7 +709,7 @@ export function JobAnswers({
         hit: resolveAnswer(company, entry, { jobId }),
       }
     })
-    .filter((r) => r.catalog)
+    .filter((r) => r.catalog && job && appliesToJob(r.catalog, job))
 
   const needs = rows.filter((r) => !r.hit)
   const own = rows.filter((r) => r.hit && r.hit.scope.kind === "job")

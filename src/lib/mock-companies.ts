@@ -1392,6 +1392,7 @@ const LUMAGRID_CUSTOM_QUESTIONS: Question[] = [
     sensitive: false,
     // About one specific territory on one specific req.
     answerableAt: "job",
+    onlyForJobId: "job-lg-01",
     defaultAgentUse: "on_request",
     prohibitions: [],
   },

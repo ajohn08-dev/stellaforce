@@ -9,7 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
-    "attach-fixture-audio": "tsx --env-file=.env.local scripts/attach-fixture-call-audio.ts"
+    "attach-fixture-audio": "tsx --env-file=.env.local scripts/attach-fixture-call-audio.ts",
+    "knowledge-dryrun": "tsx scripts/company-knowledge-dryrun.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
