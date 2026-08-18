@@ -144,10 +144,14 @@ export function PublishButton({
 
       <Dialog>
         <div className="flex items-center">
+          {/* The label stays "Publish" whatever the count. Going from disabled
+              to enabled already says there's something to publish, and a number
+              that changes on every keystroke draws the eye to the wrong place —
+              the count belongs in the review list, where you act on it. */}
           <DialogTrigger
             render={
               <Button size="sm" className="rounded-r-none">
-                Publish {count} change{count === 1 ? "" : "s"}
+                Publish
               </Button>
             }
           />
