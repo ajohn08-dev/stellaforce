@@ -326,6 +326,21 @@ export const FAQ_CATEGORY_ORDER: FaqCategory[] = Object.keys(
   FAQ_CATEGORY_LABELS
 ) as FaqCategory[]
 
+/**
+ * A question candidates ask — **answered or not**.
+ *
+ * There is no separate "knowledge gap" type any more. A question the agent
+ * couldn't answer isn't a different kind of object; it's this one with
+ * `approvedAnswer` still empty, sitting in the section that will answer it
+ * (routed by `faqSection`). That emptiness is the entire unanswered state — no
+ * status enum, no assignee, no separate inbox table — so answering is the same
+ * edit-and-publish as every other field in the workspace, and the question is
+ * already where it belongs rather than needing to be filed there afterwards.
+ *
+ * Unanswered entries carry `state: "draft"`, so every published-only sweep
+ * (agent context, staleness, unverified claims) skips them for free: a question
+ * with no answer asserts nothing.
+ */
 export type FaqEntry = {
   id: string
   level: KnowledgeLevel
@@ -333,6 +348,7 @@ export type FaqEntry = {
   category: FaqCategory
   questionIntent: string
   questionVariants: string[]
+  /** Empty means unanswered. See `isUnanswered` in `company-readiness.ts`. */
   approvedAnswer: string
   expandedAnswer: string | null
   escalationInstructions: string | null
@@ -342,8 +358,15 @@ export type FaqEntry = {
   relatedLinks: { label: string; url: string }[]
   visibility: VisibilityBlock
   askedCount: number
-  unansweredCount: number
   lastAskedAt: string | null
+  /**
+   * ISO date the client was asked for the answer, or null.
+   *
+   * This is the honest replacement for an assignee. The blocking fact about an
+   * unanswered question is almost never *which colleague owns it* — it's whether
+   * we're waiting on someone outside the tool, and since when.
+   */
+  askedClientAt: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -449,33 +472,6 @@ export type CompanyJob = {
 // ---------------------------------------------------------------------------
 // Gaps and activity
 // ---------------------------------------------------------------------------
-
-export type KnowledgeGapStatus =
-  | "open"
-  | "assigned"
-  | "drafted"
-  | "resolved"
-  | "wont_answer"
-
-export const KNOWLEDGE_GAP_STATUS_LABELS: Record<KnowledgeGapStatus, string> = {
-  open: "Open",
-  assigned: "Assigned",
-  drafted: "Draft written",
-  resolved: "Resolved",
-  wont_answer: "Won't answer",
-}
-
-export type KnowledgeGap = {
-  id: string
-  sourceQuestion: string
-  category: FaqCategory
-  occurrenceCount: number
-  firstAskedAt: string
-  lastAskedAt: string
-  assignedOwner: string | null
-  status: KnowledgeGapStatus
-  proposedLevel: KnowledgeLevel
-}
 
 export type ActivityEventType =
   | "created"
@@ -596,7 +592,6 @@ export type Company = {
   departments: Department[]
   stakeholders: Stakeholder[]
   jobs: CompanyJob[]
-  gaps: KnowledgeGap[]
   activity: ActivityEntry[]
   versions: CompanyVersion[]
 }
@@ -1411,7 +1406,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       nextReviewAt: "2027-01-31",
     }),
     askedCount: 34,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-15",
   },
   {
@@ -1445,7 +1440,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       nextReviewAt: "2027-01-31",
     }),
     askedCount: 28,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-16",
   },
   {
@@ -1483,7 +1478,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       isPresetDefault: false,
     }),
     askedCount: 19,
-    unansweredCount: 4,
+    askedClientAt: null,
     lastAskedAt: "2026-08-16",
   },
   {
@@ -1519,7 +1514,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       isPresetDefault: false,
     }),
     askedCount: 41,
-    unansweredCount: 2,
+    askedClientAt: null,
     lastAskedAt: "2026-08-16",
   },
   {
@@ -1551,7 +1546,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       nextReviewAt: "2027-01-31",
     }),
     askedCount: 52,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-16",
   },
   {
@@ -1586,7 +1581,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       nextReviewAt: "2026-11-02",
     }),
     askedCount: 47,
-    unansweredCount: 1,
+    askedClientAt: null,
     lastAskedAt: "2026-08-16",
   },
   {
@@ -1617,7 +1612,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       nextReviewAt: "2027-02-08",
     }),
     askedCount: 30,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-15",
   },
   {
@@ -1648,7 +1643,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       verifiedBy: "Anna John",
     }),
     askedCount: 22,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-14",
   },
   {
@@ -1675,7 +1670,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       nextReviewAt: "2027-07-15",
     }),
     askedCount: 38,
-    unansweredCount: 1,
+    askedClientAt: null,
     lastAskedAt: "2026-08-16",
   },
   {
@@ -1705,7 +1700,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       isPresetDefault: false,
     }),
     askedCount: 11,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-13",
   },
   {
@@ -1732,7 +1727,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       nextReviewAt: "2027-02-01",
     }),
     askedCount: 16,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-16",
   },
   {
@@ -1758,7 +1753,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       nextReviewAt: "2027-01-29",
     }),
     askedCount: 24,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-15",
   },
   {
@@ -1782,7 +1777,7 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       verifiedBy: "Anna John",
     }),
     askedCount: 20,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-16",
   },
   {
@@ -1806,8 +1801,97 @@ const LUMAGRID_FAQ: FaqEntry[] = [
       verifiedBy: "Anna John",
     }),
     askedCount: 9,
-    unansweredCount: 0,
+    askedClientAt: null,
     lastAskedAt: "2026-08-12",
+  },
+
+  // --- Asked by candidates, not yet answered -------------------------------
+  // Same type, same list, empty answer. They render at the top of the section
+  // that owns them and in the Unanswered inbox, which is a filter over exactly
+  // these rows rather than a second store.
+  {
+    id: "faq-lg-15",
+    level: "company",
+    levelRefId: null,
+    category: "why_role_open",
+    questionIntent: "Is the Central territory an existing book of business or greenfield?",
+    questionVariants: [],
+    approvedAnswer: "",
+    expandedAnswer: null,
+    escalationInstructions: null,
+    fallbackAnswer: UNKNOWN_FALLBACK,
+    prohibitedClaims: [],
+    relatedLinks: [],
+    visibility: vis("cleared_for_candidates", "on_request", "draft", {
+      source: "Asked in candidate screens",
+      verification: "unverified",
+    }),
+    askedCount: 6,
+    askedClientAt: null,
+    lastAskedAt: "2026-08-16",
+  },
+  {
+    id: "faq-lg-16",
+    level: "company",
+    levelRefId: null,
+    category: "work_authorization",
+    questionIntent: "Would you file a new H-1B petition, not just a transfer?",
+    questionVariants: [],
+    approvedAnswer: "",
+    expandedAnswer: null,
+    escalationInstructions: null,
+    fallbackAnswer: UNKNOWN_FALLBACK,
+    prohibitedClaims: [],
+    relatedLinks: [],
+    visibility: vis("cleared_for_candidates", "on_request", "draft", {
+      source: "Asked in candidate screens",
+      verification: "unverified",
+    }),
+    askedCount: 4,
+    askedClientAt: "2026-08-12",
+    lastAskedAt: "2026-08-16",
+  },
+  {
+    id: "faq-lg-17",
+    level: "company",
+    levelRefId: null,
+    category: "comp_philosophy",
+    questionIntent: "What's the quota, and what share of the team hit it last year?",
+    questionVariants: [],
+    approvedAnswer: "",
+    expandedAnswer: null,
+    escalationInstructions: null,
+    fallbackAnswer: UNKNOWN_FALLBACK,
+    prohibitedClaims: [],
+    relatedLinks: [],
+    visibility: vis("cleared_for_candidates", "on_request", "draft", {
+      source: "Asked in candidate screens",
+      verification: "unverified",
+    }),
+    askedCount: 3,
+    askedClientAt: null,
+    lastAskedAt: "2026-08-15",
+  },
+  {
+    id: "faq-lg-18",
+    level: "company",
+    levelRefId: null,
+    category: "benefits",
+    questionIntent: "Do you offer a wellness or mental-health benefit?",
+    questionVariants: [],
+    approvedAnswer: "",
+    expandedAnswer: null,
+    escalationInstructions: null,
+    fallbackAnswer: UNKNOWN_FALLBACK,
+    prohibitedClaims: [],
+    relatedLinks: [],
+    visibility: vis("cleared_for_candidates", "on_request", "draft", {
+      source: "Asked in candidate screens",
+      verification: "unverified",
+    }),
+    askedCount: 2,
+    askedClientAt: null,
+    lastAskedAt: "2026-08-14",
   },
 ]
 
@@ -1938,53 +2022,6 @@ const LUMAGRID_JOBS: CompanyJob[] = [
   },
 ]
 
-const LUMAGRID_GAPS: KnowledgeGap[] = [
-  {
-    id: "gap-lg-01",
-    sourceQuestion: "Is the Central territory an existing book of business or greenfield?",
-    category: "why_role_open",
-    occurrenceCount: 6,
-    firstAskedAt: "2026-08-06",
-    lastAskedAt: "2026-08-16",
-    assignedOwner: "Anna John",
-    status: "assigned",
-    proposedLevel: "job",
-  },
-  {
-    id: "gap-lg-02",
-    sourceQuestion: "Would you file a new H-1B petition, not just a transfer?",
-    category: "work_authorization",
-    occurrenceCount: 4,
-    firstAskedAt: "2026-08-08",
-    lastAskedAt: "2026-08-16",
-    assignedOwner: "Anna John",
-    status: "open",
-    proposedLevel: "company",
-  },
-  {
-    id: "gap-lg-03",
-    sourceQuestion: "What's the quota and what percentage of the team hit it last year?",
-    category: "comp_philosophy",
-    occurrenceCount: 3,
-    firstAskedAt: "2026-08-09",
-    lastAskedAt: "2026-08-15",
-    assignedOwner: null,
-    status: "open",
-    proposedLevel: "job",
-  },
-  {
-    id: "gap-lg-04",
-    sourceQuestion: "Do you offer a wellness or mental-health benefit?",
-    category: "benefits",
-    occurrenceCount: 2,
-    firstAskedAt: "2026-08-11",
-    lastAskedAt: "2026-08-14",
-    assignedOwner: null,
-    status: "open",
-    proposedLevel: "company",
-  },
-]
-
 const LUMAGRID_ACTIVITY: ActivityEntry[] = [
   {
     id: "act-lg-01",
@@ -2099,7 +2136,6 @@ const LUMAGRID: Company = {
   departments: LUMAGRID_DEPARTMENTS,
   stakeholders: LUMAGRID_STAKEHOLDERS,
   jobs: LUMAGRID_JOBS,
-  gaps: LUMAGRID_GAPS,
   activity: LUMAGRID_ACTIVITY,
   versions: [
     {
@@ -2256,7 +2292,6 @@ const VERITY: Company = {
     },
   ],
   jobs: [],
-  gaps: [],
   activity: [
     {
       id: "act-vh-01",
@@ -2464,7 +2499,7 @@ const HARBORLINE: Company = {
         nextReviewAt: "2026-05-02",
       }),
       askedCount: 18,
-      unansweredCount: 0,
+      askedClientAt: null,
       lastAskedAt: "2026-01-28",
     },
     {
@@ -2490,7 +2525,7 @@ const HARBORLINE: Company = {
         nextReviewAt: "2026-05-31",
       }),
       askedCount: 12,
-      unansweredCount: 0,
+      askedClientAt: null,
       lastAskedAt: "2026-01-22",
     },
     {
@@ -2520,7 +2555,7 @@ const HARBORLINE: Company = {
         nextReviewAt: "2026-05-02",
       }),
       askedCount: 15,
-      unansweredCount: 2,
+      askedClientAt: null,
       lastAskedAt: "2026-01-30",
     },
     {
@@ -2546,8 +2581,29 @@ const HARBORLINE: Company = {
         nextReviewAt: "2026-05-02",
       }),
       askedCount: 9,
-      unansweredCount: 0,
+      askedClientAt: null,
       lastAskedAt: "2026-01-25",
+    },
+    {
+      id: "faq-hl-05",
+      level: "company",
+      levelRefId: null,
+      category: "hiring_timeline",
+      questionIntent: "Is the Newark req still open after the hiring freeze?",
+      questionVariants: [],
+      approvedAnswer: "",
+      expandedAnswer: null,
+      escalationInstructions: null,
+      fallbackAnswer: UNKNOWN_FALLBACK,
+      prohibitedClaims: [],
+      relatedLinks: [],
+      visibility: vis("cleared_for_candidates", "on_request", "draft", {
+        source: "Asked in candidate screens",
+        verification: "unverified",
+      }),
+      askedCount: 5,
+      askedClientAt: "2026-02-09",
+      lastAskedAt: "2026-02-08",
     },
   ],
   departments: [],
@@ -2585,19 +2641,6 @@ const HARBORLINE: Company = {
       overrides: [],
       status: "on_hold",
       candidatesInPipeline: 2,
-    },
-  ],
-  gaps: [
-    {
-      id: "gap-hl-01",
-      sourceQuestion: "Is the Newark req still open after the hiring freeze?",
-      category: "hiring_timeline",
-      occurrenceCount: 5,
-      firstAskedAt: "2026-01-15",
-      lastAskedAt: "2026-02-08",
-      assignedOwner: "Anna John",
-      status: "open",
-      proposedLevel: "job",
     },
   ],
   activity: [

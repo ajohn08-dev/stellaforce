@@ -16,6 +16,7 @@ import {
   type CompanyJob,
   type KnowledgeItem,
   type FaqCategory,
+  type FaqEntry,
   type KnowledgeKind,
   type PolicyGroup,
 } from "@/lib/mock-companies"
@@ -542,6 +543,27 @@ export function faqSection(category: FaqCategory): CompanySection {
   }
 }
 
+/**
+ * The whole definition of "unanswered": a question candidates asked that nobody
+ * has written an answer to yet.
+ *
+ * Derived, never stored. An earlier pass kept a five-state enum
+ * (`open → assigned → drafted → resolved → wont_answer`) on a separate
+ * `KnowledgeGap` type, which meant the status and the answer could disagree —
+ * and nothing ever advanced the enum anyway. "Drafted" is what the edit buffer
+ * already means, and "resolved" is what a filled-in answer already means.
+ */
+export function isUnanswered(entry: FaqEntry): boolean {
+  return !entry.approvedAnswer.trim()
+}
+
+/** Unanswered questions, most-asked first — the inbox and the rail badge. */
+export function unansweredQuestions(company: Company): FaqEntry[] {
+  return company.faq
+    .filter(isUnanswered)
+    .sort((a, b) => b.askedCount - a.askedCount)
+}
+
 /** Which section owns each policy group. */
 export function policySection(group: PolicyGroup): CompanySection {
   switch (group) {
@@ -638,14 +660,17 @@ function buildQueues(company: Company, today: Date): IssueQueue[] {
       section: b.section,
     }))
 
-  const missingAnswers = company.gaps
-    .filter((g) => g.status !== "resolved" && g.status !== "wont_answer")
-    .map((g) => ({
-      id: g.id,
-      label: g.sourceQuestion,
-      detail: `Asked ${g.occurrenceCount}× · ${g.assignedOwner ? `assigned to ${g.assignedOwner}` : "unassigned"}`,
-      section: "faq" as CompanySection,
-    }))
+  // Routed to the section that will answer them. This used to be stamped
+  // `"faq"` — a section that no longer exists, hidden by an `as` cast, so every
+  // item in this queue linked nowhere.
+  const missingAnswers = unansweredQuestions(company).map((f) => ({
+    id: f.id,
+    label: f.questionIntent,
+    detail: f.askedClientAt
+      ? `Asked ${f.askedCount}× · waiting on the client since ${f.askedClientAt}`
+      : `Asked ${f.askedCount}×`,
+    section: faqSection(f.category),
+  }))
 
   const contextlessGroups = [
     ...company.departments
@@ -687,15 +712,6 @@ function buildQueues(company: Company, today: Date): IssueQueue[] {
         }))
     )
 
-  const escalatedUnresolved = company.gaps
-    .filter((g) => g.status === "open" && g.occurrenceCount >= 3)
-    .map((g) => ({
-      id: `esc-${g.id}`,
-      label: g.sourceQuestion,
-      detail: `Escalated ${g.occurrenceCount}× and still unanswered`,
-      section: "faq" as CompanySection,
-    }))
-
   return [
     {
       key: "stale",
@@ -711,7 +727,7 @@ function buildQueues(company: Company, today: Date): IssueQueue[] {
     },
     {
       key: "missing_answers",
-      label: "Missing FAQ answers",
+      label: "Questions candidates asked that nobody has answered",
       emptyLabel: "No unanswered candidate questions.",
       items: missingAnswers,
     },
@@ -732,12 +748,6 @@ function buildQueues(company: Company, today: Date): IssueQueue[] {
       label: "Job overrides that conflict with company data",
       emptyLabel: "No conflicting overrides.",
       items: conflictingOverrides,
-    },
-    {
-      key: "escalated",
-      label: "Escalated questions not yet resolved",
-      emptyLabel: "No outstanding escalations.",
-      items: escalatedUnresolved,
     },
   ]
 }
@@ -765,7 +775,12 @@ function computeCompleteness(company: Company) {
   ]
   const identityFilled = identityFields.filter(Boolean).length
 
-  const overallDone = narrativeFilled + policiesFilled + identityFilled + company.faq.length
+  // Only answered questions count as done. An unanswered one still raises the
+  // denominator below, so a company that keeps collecting questions without
+  // answering them reports as *less* complete, which is the truth.
+  const faqAnswered = company.faq.filter((f) => !isUnanswered(f)).length
+
+  const overallDone = narrativeFilled + policiesFilled + identityFilled + faqAnswered
   const overallTotal =
     narrative.length +
     Math.max(company.policies.length, 12) +
@@ -923,10 +938,15 @@ export function gapCountsBySection(
     bump(check.fixSection, check.status === "fail")
   }
 
-  // Unanswered candidate questions are their own section, and they're a count
-  // of real questions rather than of failed checks.
+  // Unanswered candidate questions count twice on purpose: once on the section
+  // that will answer them — that's the whole reason they're routed there — and
+  // once as the inbox total, for the recruiter who doesn't yet know which
+  // section owns the answer. They're counts of real questions rather than of
+  // failed checks, and never blocking: an unanswered question means the agent
+  // escalates, which is a designed outcome rather than a broken one.
   const unanswered = readiness.queues.find((q) => q.key === "missing_answers")
   if (unanswered && unanswered.items.length > 0) {
+    for (const item of unanswered.items) bump(item.section, false)
     out.unanswered = { count: unanswered.items.length, blocking: false }
   }
 

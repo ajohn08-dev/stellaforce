@@ -1,133 +1,79 @@
-"use client"
-
-import * as React from "react"
-import { MessageCircleQuestion, UserPlus } from "lucide-react"
-
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import {
   SectionEmpty,
   SectionShell,
 } from "@/components/companies/workspace/section-shell"
-import { formatDate } from "@/lib/constants"
+import { FieldScopeProvider } from "@/components/companies/shared/field-scope"
+import { QuestionRow } from "@/components/companies/shared/section-questions"
+import { ALL_SECTIONS } from "@/components/companies/workspace/company-sections"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
-import type { CompanyReadiness } from "@/lib/company-readiness"
 import {
-  KNOWLEDGE_GAP_STATUS_LABELS,
-  type Company,
-  type KnowledgeGap,
-  type KnowledgeLevel,
-} from "@/lib/mock-companies"
-
-const LEVEL_LABELS: Record<KnowledgeLevel, string> = {
-  company: "Company",
-  department: "Department",
-  team: "Team",
-  job: "This role",
-}
-
-const LEVEL_CONSEQUENCE: Record<KnowledgeLevel, string> = {
-  company: "Applies to every job at this company.",
-  department: "Applies to every job in that department.",
-  team: "Applies to every job on that team.",
-  job: "Applies to this role only.",
-}
+  faqSection,
+  unansweredQuestions,
+  type CompanyReadiness,
+} from "@/lib/company-readiness"
+import type { Company } from "@/lib/mock-companies"
 
 /**
- * Questions candidates asked that approved knowledge couldn't answer — the
- * knowledge base's own to-do list, written by candidates rather than guessed at.
+ * Questions candidates asked that approved knowledge couldn't answer.
  *
- * Choosing a level is the consequential decision here, so each option states
- * what it implies. Getting it wrong doesn't just misfile the answer; it decides
- * how many future jobs inherit it.
+ * **This is a filter, not a stage.** Every row here already lives in the section
+ * that will answer it — sponsorship under Work authorization, quota under
+ * Compensation — routed by `faqSection()` the moment a candidate asks. Nothing
+ * gets filed anywhere when it's answered; the row simply stops matching the
+ * filter. That's why the rows are literally the same component bound to the same
+ * draft keys: answering here and answering in the section are one edit.
+ *
+ * The inbox earns its place in the rail because "what is my agent failing on?"
+ * is a question you ask *without knowing which section owns the answer*. So each
+ * row names the section it lands in, and its edits are scoped to that section —
+ * a change made here shows up in the publish review under "Work authorization",
+ * not under "Unanswered questions".
+ *
+ * What used to be here — a level picker, an assignee, and a five-state status
+ * badge — is gone. None of it survived asking what a recruiter is actually doing
+ * on this screen: writing an answer, or noting that they've asked the client for
+ * one.
  */
 export function UnansweredSection({
   company,
   section,
   readiness,
+  today,
 }: {
   company: Company
   section: SectionDef
   readiness: CompanyReadiness
+  today: Date
 }) {
-  const open = company.gaps
-    .filter((g) => g.status !== "resolved" && g.status !== "wont_answer")
-    .sort((a, b) => b.occurrenceCount - a.occurrenceCount)
+  const open = unansweredQuestions(company)
 
   return (
     <SectionShell section={section} readiness={readiness}>
       {open.length === 0 ? (
         <SectionEmpty
           title="No unanswered questions"
-          prompt="Anything a candidate asks that approved knowledge can't cover will appear here, ranked by how often it comes up."
+          prompt="Anything a candidate asks that approved knowledge can't cover appears here, most-asked first, alongside the section that will answer it."
         />
       ) : (
-        <ul className="space-y-3">
-          {open.map((gap) => (
-            <GapCard key={gap.id} gap={gap} />
-          ))}
-        </ul>
+        <div className="space-y-2">
+          {open.map((entry) => {
+            const target = faqSection(entry.category)
+            return (
+              <FieldScopeProvider key={entry.id} section={target}>
+                <QuestionRow
+                  entry={entry}
+                  today={today}
+                  sectionLabel={sectionLabel(target)}
+                />
+              </FieldScopeProvider>
+            )
+          })}
+        </div>
       )}
     </SectionShell>
   )
 }
 
-function GapCard({ gap }: { gap: KnowledgeGap }) {
-  const [level, setLevel] = React.useState<KnowledgeLevel>(gap.proposedLevel)
-
-  return (
-    <li className="space-y-3 rounded-lg border border-border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{gap.sourceQuestion}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Asked {gap.occurrenceCount}× · first {formatDate(gap.firstAskedAt)} · last{" "}
-              {formatDate(gap.lastAskedAt)}
-            </p>
-          </div>
-        </div>
-        <Badge variant="outline">{KNOWLEDGE_GAP_STATUS_LABELS[gap.status]}</Badge>
-      </div>
-
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground">
-          Where should this answer live?
-        </p>
-        <div className="flex flex-wrap gap-1">
-          {(Object.keys(LEVEL_LABELS) as KnowledgeLevel[]).map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => setLevel(l)}
-              className={cn(
-                "rounded-md border px-2 py-1 text-xs transition-colors",
-                level === l
-                  ? "border-primary bg-primary/10 font-medium text-primary"
-                  : "border-border text-muted-foreground hover:bg-muted"
-              )}
-            >
-              {LEVEL_LABELS[l]}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-muted-foreground">{LEVEL_CONSEQUENCE[level]}</p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <Button size="sm" variant="outline" className="gap-1.5">
-          Draft an answer
-        </Button>
-        <Button size="sm" variant="ghost" className="gap-1.5">
-          <UserPlus className="size-3.5" />
-          {gap.assignedOwner ? `Assigned to ${gap.assignedOwner}` : "Assign an owner"}
-        </Button>
-        <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground">
-          Won&apos;t answer
-        </Button>
-      </div>
-    </li>
-  )
+function sectionLabel(key: string): string {
+  return ALL_SECTIONS.find((s) => s.key === key)?.label ?? key
 }

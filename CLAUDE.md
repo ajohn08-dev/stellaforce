@@ -199,6 +199,29 @@ migrating the full app layer to V3.2 is an ongoing pass.
   editing the answer about that fact is one job. Only the unanswered queue is its
   own destination.
 
+  **There is also no separate "knowledge gap" type.** An unanswered question is
+  an `FaqEntry` with an empty `approvedAnswer` and `visibility.state = 'draft'`
+  — same type, same list, already sitting in the section `faqSection()` routes
+  it to. `isUnanswered()` / `unansweredQuestions()`
+  (`src/lib/company-readiness.ts`) are the entire test, derived and never
+  stored, so nothing has to be *filed* into a section when it's answered: the
+  row was there all along and simply stops matching the filter. Draft state also
+  means every published-only sweep (agent context, staleness, unverified claims)
+  skips it for free — a question with no answer asserts nothing. **Unanswered
+  questions** is therefore a *filter over `company.faq`*, not a store: it renders
+  the same `QuestionRow` as the section does, bound to the same draft keys, so
+  answering it in either place is one edit (and each inbox row is scoped to its
+  owning section, so the publish review lists it under Work authorization rather
+  than under the inbox). The gone-for-good fields are `status` (a five-state
+  enum nothing advanced), `assignedOwner` (assignment with no queue,
+  notification, or "mine" filter — the assignee was always the account owner in
+  the header), and `proposedLevel` (asked before the answer was written; the
+  level is inferred from where you answer it). What replaces ownership is
+  `askedClientAt` — *we're blocked on someone outside the tool, and since when*.
+  The two non-answer exits are "Ask the client" (sets that date) and "Hand to a
+  recruiter" (sets `agentUse: 'escalate'`, giving the agent defined behaviour on
+  the topic rather than a hole).
+
   **Activity is a projection of `activity_events`**, not a company-owned history,
   and there is deliberately **no per-item history drawer and no per-item
   provenance strip**. Both were answering rarely-asked questions with

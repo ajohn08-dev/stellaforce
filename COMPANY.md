@@ -643,7 +643,7 @@ No new dependencies.
 | `knowledge-card` | Candidate-safe content block with inline editing. | Empty · draft · published · stale · read-only |
 | `internal-note-card` | Internal-only note. | Default · promotable · read-only |
 | `restricted-panel` | Collapsed container showing reason, not content. | Collapsed · expanded (logged) · count-stub · hidden |
-| `section-questions` | "What candidates ask" — the questions belonging to one section, collapsible and editable in place. | Empty · collapsed · expanded |
+| `section-questions` | "What candidates ask" — the questions belonging to one section, answered and unanswered, collapsible and editable in place. Exports `QuestionRow`, which the Unanswered inbox renders too. | Empty · collapsed · expanded · unanswered · waiting on client · handed off |
 | `section-shell` | The frame every section renders in: title, purpose, visibility sentence, readiness warnings pointing here, and the publish bar. | With warnings · clean · dirty |
 | `field-card` | A titled group of `FieldRow`s. | With title · bare |
 | `company-workspace-nav` | The rail: four collapsible groups plus the Unanswered inbox, with gap badges, stale dots, and rolled-up counts on collapsed groups. | Desktop rail · mobile drawer · group open/closed · internal group hidden |
@@ -651,7 +651,6 @@ No new dependencies.
 | `inheritance-badge` | "Inherited from Company / Department / Team". | One per level |
 | `override-badge` | "Overridden at role level" + inherited value + revert. | Override · conflicting override |
 | `promote-to-draft-button` | Internal note → candidate-safe draft composer. | Default · disabled (restricted note) |
-| `missing-knowledge-task` | A gap rendered as assignable work. | Unassigned · assigned · drafted · resolved |
 | `department-team-picker` | Select / create / skip, used in the job flow and the Teams section. | Empty · populated · creating |
 | `create-department-dialog` / `create-team-dialog` | Create-on-demand, minimal required fields. | Default · from-job-flow |
 | `readiness-pill` | The four-value status chip; explanation rides in a tooltip. | Ready · caveats · review · blocked |
@@ -725,7 +724,7 @@ agentCanUse(v) =
 | `createdAt`, `updatedAt` | |
 
 **Relationships.** `hasMany` Department, Job, CompanyKnowledgeItem, FAQEntry, Policy,
-Stakeholder, KnowledgeGap.
+Stakeholder.
 
 **Visibility.** Field-group level: the identity/narrative groups carry candidate-safe
 defaults, the account group is always internal, and `contractStatus` /
@@ -810,7 +809,15 @@ legal review. Do not promise sponsorship."*
 `id` · `companyId` · `level` + `levelRefId` · `category` · `questionIntent` ·
 `questionVariants[]` · `approvedAnswer` · `expandedAnswer` · `escalationInstructions` ·
 `fallbackAnswer` · `prohibitedClaims[]` · `relatedLinks[]` · `visibility` ·
-`askedCount` · `unansweredCount` · `lastAskedAt`.
+`askedCount` · `lastAskedAt` · `askedClientAt`.
+
+**This type covers unanswered questions too** — there is no second type for them
+(see D.10). An unanswered question is an entry with an empty `approvedAnswer`
+and `visibility.state = "draft"`, so every published-only sweep (agent context,
+staleness, unverified claims) skips it for free: a question with no answer
+asserts nothing. `isUnanswered()` in `src/lib/company-readiness.ts` is the whole
+test, derived and never stored. `askedClientAt` is the one state worth keeping —
+we're blocked on someone outside the tool, and since when.
 
 **LumaGrid, sponsorship.** `questionIntent: "Do you sponsor visas?"`,
 `questionVariants: ["Can you sponsor H-1B?", "Do you do green card sponsorship?",
@@ -866,14 +873,31 @@ strip under every card was answering a question nobody asks constantly. It now
 surfaces only as a **warning when something is wrong** (`trust-warning`), with the
 detail available in the activity log.
 
-## D.10 KnowledgeGap
+## D.10 KnowledgeGap — **removed; merged into FAQEntry (D.6)**
 
-`id` · `companyId` · `level` · `sourceQuestion` · `occurrenceCount` · `firstAskedAt` ·
-`lastAskedAt` · `assignedOwnerId` · `status` (`open` · `assigned` · `drafted` ·
-`resolved` · `wont_answer`) · `resolvedByFaqEntryId` · `proposedLevel`.
+There is no gap type. A question the agent couldn't answer is not a different
+kind of object from one it could — it's an `FaqEntry` whose `approvedAnswer` is
+still empty, already sitting in the section that will answer it (routed by
+`faqSection()`), from the moment a candidate asks.
 
-**LumaGrid.** *"Is the Central territory an existing book or greenfield?"* — asked 6
-times, `status: assigned`, `proposedLevel: "job"`.
+What the merge deleted, and why:
+
+| Dropped | Why |
+|---|---|
+| `status` (`open`·`assigned`·`drafted`·`resolved`·`wont_answer`) | Nothing ever advanced it, and it could disagree with the answer field. "Drafted" is what the edit buffer already means; "resolved" is what a filled answer already means. |
+| `assignedOwnerId` | Assignment needs a team queue, a notification, and a "mine" filter. There are none. The assignee was always the account owner (already in the header) or the client — and the client isn't an assignee, they're a **wait**, now `askedClientAt`. |
+| `proposedLevel` | Asked the consequential question before the answer was written, offering three levels that don't apply in a company workspace. The level is inferred from *where* it gets answered. |
+| `sourceQuestion` / `occurrenceCount` / `firstAskedAt` | Already `questionIntent` / `askedCount` / `lastAskedAt` on the entry. |
+| `resolvedByFaqEntryId` | The gap **is** the entry. Nothing to link. |
+
+Consequences: nothing "moves back" to a section on resolution (it was never
+anywhere else); the Unanswered inbox is a **filter over `company.faq`**, not a
+store; and answering from the inbox or from the section is literally the same
+edit, because both render the same `QuestionRow` bound to the same draft keys.
+
+**LumaGrid.** *"Is the Central territory an existing book or greenfield?"* —
+`faq-lg-15`, `approvedAnswer: ""`, `askedCount: 6`, `category: "why_role_open"`,
+so it renders under **Why they're hiring** and in the inbox.
 
 ## D.11 AgentReadinessCheck
 
@@ -959,9 +983,11 @@ When a critical question has unknown or unverified information, the agent escala
 > "I don't have a confirmed answer for this role. I can flag this for the recruiting
 > team to verify."
 
-It then records a KnowledgeGap, which surfaces in the Missing answers panel with its
-occurrence count. Candidate questions are the primary discovery mechanism for what the
-profile is missing — the gap queue is a feature of the loop, not an error log.
+It then records an **unanswered `FaqEntry`** — same type as an answered one, empty
+`approvedAnswer` — in the section its category routes to, where it surfaces both in
+place and in the Unanswered inbox with its `askedCount`. Candidate questions are the
+primary discovery mechanism for what the profile is missing; unanswered questions are a
+feature of the loop, not an error log.
 
 ## E.4 Recruiter visibility
 
