@@ -975,6 +975,27 @@ The company Activity section is a filtered view over it. There is no
 `VerificationRecord` table, no `history[]` column, and no per-item counter — see
 § B.11 for why.
 
+**The section-wide visibility control is real.** "Everything here is…" writes
+every item in the section into the company draft buffer under the same
+`<prefix>-clearance` / `<prefix>-agent-use` keys the per-item sentences bind to,
+so a bulk change shows on each item, counts toward Publish, and reverts with
+Discard. It was read-only for a while, honestly so: an earlier version held its
+own state, changed the sentence, touched no item, and registered no pending
+change — the most powerful-looking control on the page, doing nothing.
+
+**Items a human deliberately set are left alone by default** (`isPresetDefault:
+false`). That's the whole difficulty of a bulk control: someone moved the
+sponsorship answer to Recruiters-only on purpose, and a section-wide "cleared
+for candidates" that silently undid it would be the most dangerous click in the
+product. They're reported — "3 items kept their own setting" — and including
+them is a second, explicit click. When items don't share one clearance the
+sentence reads *"Set everything here to…"* rather than claiming a uniformity
+that isn't there.
+
+Teams gained an editable per-item sentence for the same reason: a bulk change
+writes `team-<id>-clearance`, and a read-only badge that can't move while the
+thing it describes does is worse than no badge.
+
 **Provenance stays in the data but is not rendered as metadata.** The
 `VisibilityBlock` still carries `source`, `verifiedBy`, `lastVerifiedAt`,
 `nextReviewAt`, and `owner` — the readiness engine needs every one of them to compute

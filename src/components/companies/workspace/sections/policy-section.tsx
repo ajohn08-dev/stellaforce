@@ -55,7 +55,7 @@ export function PolicySection({
     <SectionShell
       section={section}
       readiness={readiness}
-      bulkItems={visible}
+      bulkItems={visible.map((p) => ({ key: `policy-${p.id}`, label: p.label, visibility: p.visibility }))}
       actions={
         <Button variant="outline" size="sm" className="gap-1.5">
           <Plus className="size-3.5" />

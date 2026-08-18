@@ -42,7 +42,7 @@ export function NarrativeSection({
   const questions = questionsForSection(company, section.key)
 
   return (
-    <SectionShell section={section} readiness={readiness} bulkItems={items}>
+    <SectionShell section={section} readiness={readiness} bulkItems={items.map((k) => ({ key: `knowledge-${k.id}`, label: k.title, visibility: k.visibility }))}>
       {items.length === 0 ? (
         <SectionEmpty
           title="Nothing here yet"

@@ -3,10 +3,12 @@ import { AlertOctagon, AlertTriangle, ArrowRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { FieldScopeProvider } from "@/components/companies/shared/field-scope"
-import { SectionVisibilityBar } from "@/components/companies/workspace/section-visibility-bar"
+import {
+  SectionVisibilityBar,
+  type BulkVisibilityItem,
+} from "@/components/companies/workspace/section-visibility-bar"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import type { CompanyReadiness } from "@/lib/company-readiness"
-import { summarizeSection, type VisibilityBearing } from "@/lib/company-visibility"
 
 /**
  * The frame every section renders inside: title, what belongs here, the
@@ -30,18 +32,18 @@ export function SectionShell({
 }: {
   section: SectionDef
   readiness: CompanyReadiness
-  /** Items the section-wide visibility sentence applies to. */
-  bulkItems?: VisibilityBearing[]
+  /**
+   * Items the section-wide visibility control writes to. Each carries the draft
+   * key prefix its own editor binds to, so a bulk change lands where the item
+   * will show it.
+   */
+  bulkItems?: BulkVisibilityItem[]
   actions?: React.ReactNode
   children: React.ReactNode
 }) {
   const warnings = readiness.checks.filter(
     (c) => c.fixSection === section.key && (c.status === "fail" || c.status === "caveat")
   )
-
-  const summary = bulkItems?.length ? summarizeSection(bulkItems) : null
-  const dominantAgentUse =
-    bulkItems?.find((i) => i.visibility.agentUse)?.visibility.agentUse ?? null
 
   return (
     <FieldScopeProvider section={section.key}>
@@ -55,12 +57,8 @@ export function SectionShell({
             {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
           </div>
 
-          {summary && (
-            <SectionVisibilityBar
-              clearance={summary.uniformClearance ?? section.clearance}
-              agentUse={dominantAgentUse}
-              overrideCount={summary.overrideCount}
-            />
+          {bulkItems && bulkItems.length > 0 && (
+            <SectionVisibilityBar items={bulkItems} />
           )}
         </header>
 

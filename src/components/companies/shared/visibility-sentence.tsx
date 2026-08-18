@@ -199,12 +199,15 @@ export function SectionVisibilitySentence({
   clearance,
   agentUse,
   overrideCount,
+  mixed = false,
   onChange,
   className,
 }: {
   clearance: Clearance
   agentUse: AgentUse | null
   overrideCount: number
+  /** True when items here don't share one clearance — "Everything here is" would lie. */
+  mixed?: boolean
   onChange?: (next: { clearance: Clearance; agentUse: AgentUse | null }) => void
   className?: string
 }) {
@@ -216,7 +219,9 @@ export function SectionVisibilitySentence({
       )}
     >
       <Eye className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="text-xs text-muted-foreground">Everything here is</span>
+      <span className="text-xs text-muted-foreground">
+        {mixed ? "Set everything here to" : "Everything here is"}
+      </span>
       <VisibilitySentence
         clearance={clearance}
         agentUse={agentUse}

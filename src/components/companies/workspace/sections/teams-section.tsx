@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ClearanceBadge } from "@/components/companies/shared/clearance-badge"
+import { ItemVisibility } from "@/components/companies/shared/item-visibility"
 import {
   SectionEmpty,
   SectionShell,
@@ -65,7 +66,7 @@ export function TeamsSection({
     <SectionShell
       section={section}
       readiness={readiness}
-      bulkItems={company.teams}
+      bulkItems={company.teams.map((t) => ({ key: `team-${t.id}`, label: t.name, visibility: t.visibility }))}
       actions={
         <Button variant="outline" size="sm" className="gap-1.5">
           <Plus className="size-3.5" />
@@ -132,9 +133,13 @@ function TeamBranch({ company, team }: { company: Company; team: Team }) {
               >
                 {team.name}
               </Link>
-              <ClearanceBadge clearance={team.visibility.clearance} />
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{team.mission}</p>
+            <ItemVisibility
+              idPrefix={`team-${team.id}`}
+              visibility={team.visibility}
+              label={team.name}
+            />
           </div>
 
           <span className="shrink-0 text-xs text-muted-foreground">
@@ -192,8 +197,12 @@ function TeamDetail({ company, team }: { company: Company; team: Team }) {
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-lg font-semibold">{team.name}</h3>
-          <ClearanceBadge clearance={team.visibility.clearance} />
         </div>
+        <ItemVisibility
+          idPrefix={`team-${team.id}`}
+          visibility={team.visibility}
+          label={team.name}
+        />
         {ancestors.length > 0 && (
           <p className="text-sm text-muted-foreground">
             In {ancestors.map((a) => a.name).join(" › ")}

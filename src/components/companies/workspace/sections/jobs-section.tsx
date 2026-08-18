@@ -54,13 +54,11 @@ export function JobsSection({
   company,
   section,
   readiness,
-  today,
   jobId,
 }: {
   company: Company
   section: SectionDef
   readiness: CompanyReadiness
-  today: Date
   jobId?: string
 }) {
   const job = jobId ? company.jobs.find((j) => j.id === jobId) : null

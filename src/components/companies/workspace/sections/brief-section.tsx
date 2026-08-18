@@ -40,7 +40,7 @@ export function BriefSection({
     <SectionShell
       section={section}
       readiness={readiness}
-      bulkItems={internal}
+      bulkItems={internal.map((k) => ({ key: `knowledge-${k.id}`, label: k.title, visibility: k.visibility }))}
       actions={
         <Button variant="outline" size="sm" className="gap-1.5">
           <Plus className="size-3.5" />
