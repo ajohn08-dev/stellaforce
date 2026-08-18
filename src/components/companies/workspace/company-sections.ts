@@ -127,7 +127,12 @@ export const SECTION_GROUPS: SectionGroup[] = [
       {
         key: "interview-process",
         label: "Interview process",
-        purpose: "The stages and timeline an agent may describe — never a commitment.",
+        // The stages belong to the job, which snapshots its own pipeline at
+        // publish. What's company-level is the fallback for a conversation with
+        // no role in play — so the purpose line says that rather than promising
+        // a single process this company doesn't have.
+        purpose:
+          "Each role runs its own pipeline. This is what a candidate hears when no role is in play — and never a commitment.",
         clearance: "cleared_for_candidates",
       },
     ],

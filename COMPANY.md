@@ -473,6 +473,20 @@ bio, day-in-the-life, working style, goals, and internal notes. A department wit
 linked jobs can't be deleted — the dialog lists them and offers re-parenting to
 company level.
 
+**Interview process.** The process is a property of the **job**, not the
+company: each job snapshots its own pipeline at publish, so "the interview
+process" is a different set of stages for every role. A company section inviting
+prose about it invites a sentence that is wrong for half the roles — and the
+candidate, not the recruiter, is who finds that out.
+
+So the section leads with **the real pipelines, role by role** (read-only — a
+pipeline has exactly one owner, and it isn't here), and keeps for itself only
+what holds across every hire: the fallback a candidate hears when no role is in
+play, the standing prohibition against promising an interview / offer / date, and
+the internal note on how reliably this client runs whatever it agreed to. A role
+with no stages yet says so in amber, because that's the case where the fallback
+gets used and may be wrong.
+
 **Jobs.** Not "Open jobs" — that named a filter the list never applied (it showed
 every status while the rail counted open + draft), and the app says *Jobs*
 everywhere else.
