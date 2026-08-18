@@ -1,6 +1,7 @@
 import type { MockJobStatus } from "@/lib/mock-jobs"
 import { COMPANY_SCOPE, type CompanyQuestion, type ScopeKind } from "@/lib/company-inheritance"
 import type { Question } from "@/lib/question-catalog"
+import { GLOBAL_FALLBACKS, type CompanyFallbacks } from "@/lib/fallbacks"
 import type {
   AgentUse,
   Clearance,
@@ -24,9 +25,13 @@ import type {
  *   - Harborline Freight — populated but expired → "Recruiter review required"
  */
 
-/** The fixed string a candidate hears when knowledge is missing. Never editable. */
-export const UNKNOWN_FALLBACK =
-  "I don't have a confirmed answer for this role. I can flag this for the recruiting team to verify."
+/**
+ * Superseded by `src/lib/fallbacks.ts`, which has four of these rather than one
+ * — a single sentence answered "we don't know" even when we knew perfectly well
+ * and wouldn't say. Kept because fixtures still reference it as an answer-level
+ * fallback string; the agent reads the resolved set instead.
+ */
+export const UNKNOWN_FALLBACK = GLOBAL_FALLBACKS.unknown.text
 
 /** Constraints the agent carries on every deployment, regardless of configuration. */
 export const STANDING_PROHIBITIONS: string[] = [
@@ -590,6 +595,11 @@ export type Company = {
   customQuestions: Question[]
   /** Flat list; nesting is `parentTeamId`. Was `departments` with `teams` inside. */
   teams: Team[]
+  /**
+   * This company's wording for what the agent says when it can't answer.
+   * Absent keys fall back to `GLOBAL_FALLBACKS` — see `src/lib/fallbacks.ts`.
+   */
+  fallbacks?: CompanyFallbacks
   stakeholders: Stakeholder[]
   jobs: CompanyJob[]
   activity: ActivityEntry[]
@@ -2130,6 +2140,12 @@ const LUMAGRID: Company = {
   questions: LUMAGRID_QUESTIONS,
   customQuestions: LUMAGRID_CUSTOM_QUESTIONS,
   teams: LUMAGRID_TEAMS,
+  fallbacks: {
+    withheld:
+      "I'd rather Anna walk you through that than give you half an answer — she owns this search and knows the detail. I'll let her know you asked.",
+    reassure:
+      "Completely fair to be weighing that up. Where things stand: the team is moving quickly on this one, and I'll make sure you hear back either way rather than being left wondering.",
+  },
   stakeholders: LUMAGRID_STAKEHOLDERS,
   jobs: LUMAGRID_JOBS,
   activity: LUMAGRID_ACTIVITY,

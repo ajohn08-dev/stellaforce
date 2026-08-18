@@ -268,6 +268,24 @@ migrating the full app layer to V3.2 is an ongoing pass.
   the readiness check from a company-level "is there an interview answer" to a
   per-job `role_process` ("does this role have stages").
 
+  **Fallbacks are first-class, and there are four of them**
+  (`src/lib/fallbacks.ts`, rail section *When the agent can't answer*). One
+  sentence used to cover every case — *"I don't have a confirmed answer"* — which
+  is a lie when we know the band and won't quote it, and cold when the candidate
+  isn't asking a question at all. The four are keyed on **why** the agent can't
+  answer: `unknown` (nobody confirmed it — don't guess, promise a follow-up),
+  `withheld` (we know, it isn't the agent's to share — decline warmly, hand to a
+  person), `out_of_scope` (not discussed at all — decline and offer what we *can*
+  help with), `reassure` (not a question, a worry — acknowledge and give the next
+  step). They cascade `global → company` and **no further**: a company may reword
+  them, a team or role may not, because an agent that declines differently on two
+  roles at the same company reads as two different companies. Deliberately **not
+  per section or per question** — that's a hundred sentences nobody maintains and
+  an agent whose voice changes with the subject. `withheld` is the counterpart to
+  the prohibitions: "never confirm a figure" without a sentence to say instead
+  leaves the agent improvising at exactly the moment it must not, so
+  `interviewConfigFromContext` emits the prohibitions and the fallbacks together.
+
   **A candidate only ever hears about the teams their own role sits under.**
   `compileAgentContext` walks `teamPath(job.teamId)`, so a sibling team the
   candidate isn't applying to never enters the bundle — for either audience. The

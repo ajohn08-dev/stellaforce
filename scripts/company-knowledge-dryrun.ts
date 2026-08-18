@@ -254,3 +254,11 @@ if (leaks > 0) {
   console.error("\n  FAILED: a team the candidate isn't applying to reached the agent.")
   process.exit(1)
 }
+
+// ── STEP 9 — what it says when it can't answer ─────────────────────────────
+rule("STEP 9 — Fallbacks, by reason")
+for (const f of compileAgentContext(company, NEW_JOB, "candidate").fallbacks) {
+  console.log(`  ${f.label}`)
+  console.log(`      when: ${f.when}`)
+  console.log(`      says: "${f.text.slice(0, 96)}${f.text.length > 96 ? "…" : ""}"`)
+}

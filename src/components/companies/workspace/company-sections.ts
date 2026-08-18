@@ -162,8 +162,23 @@ export const INBOX_SECTION: SectionDef = {
   clearance: "cleared_for_candidates",
 }
 
+/**
+ * The second standalone item. Like the inbox it's agent behaviour rather than a
+ * company fact, so it sits above the topical groups instead of inside one — and
+ * next to the inbox specifically, because these are the sentences the agent uses
+ * for everything in that queue.
+ */
+export const FALLBACKS_SECTION: SectionDef = {
+  key: "fallbacks",
+  label: "When the agent can't answer",
+  purpose:
+    "Four sentences, company-wide: we haven't confirmed it, it isn't ours to share, we don't discuss it, or you're worried rather than asking.",
+  clearance: "cleared_for_candidates",
+}
+
 export const ALL_SECTIONS: SectionDef[] = [
   INBOX_SECTION,
+  FALLBACKS_SECTION,
   ...SECTION_GROUPS.flatMap((g) => g.sections),
 ]
 

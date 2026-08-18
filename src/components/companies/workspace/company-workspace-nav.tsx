@@ -2,7 +2,14 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ChevronDown, ChevronRight, EyeOff, Menu, MessageCircleQuestion } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  EyeOff,
+  Menu,
+  MessageCircleOff,
+  MessageCircleQuestion,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -14,6 +21,7 @@ import {
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import {
+  FALLBACKS_SECTION,
   groupKeyForSection,
   INBOX_SECTION,
   SECTION_GROUPS,
@@ -94,6 +102,13 @@ function NavBody({ companyId, active, gaps, attention, counts, canViewInternal }
         active={active === INBOX_SECTION.key}
         gap={gaps[INBOX_SECTION.key]}
         icon={<MessageCircleQuestion className="size-3.5 shrink-0" />}
+      />
+
+      <NavItem
+        companyId={companyId}
+        section={FALLBACKS_SECTION}
+        active={active === FALLBACKS_SECTION.key}
+        icon={<MessageCircleOff className="size-3.5 shrink-0" />}
       />
 
       <div className="pt-1">

@@ -104,6 +104,7 @@ export type CompanySection =
   // Candidate questions — there is no FAQ destination; questions live inside
   // the section that answers them (see `faqSection`). This is the inbox only.
   | "unanswered"
+  | "fallbacks"
   // Internal only
   | "brief"
   | "activity"

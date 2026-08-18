@@ -96,6 +96,7 @@ with content a recruiter is reading and editing.
 
 ```
   Unanswered questions      4      ← inbox, not reference material
+  When the agent can't answer      ← four fallbacks, company-wide
 
 ▸ About the company         4      Profile · What they do ·
                                    Culture & working style · Why join

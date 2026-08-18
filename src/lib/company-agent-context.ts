@@ -4,11 +4,11 @@ import {
   type AgentAudience,
   type VisibilityBearing,
 } from "@/lib/company-visibility"
+import { resolveFallbacks, type FallbackDef } from "@/lib/fallbacks"
 import {
   allTeams,
   narrativeItems,
   STANDING_PROHIBITIONS,
-  UNKNOWN_FALLBACK,
   type Company,
   type CompanyJob,
   type KnowledgeLevel,
@@ -75,7 +75,12 @@ export type CompiledAgentContext = {
   answers: ContextAnswer[]
   policies: { id: string; label: string; text: string }[]
   escalations: ContextEscalation[]
-  fallback: string
+  /**
+   * What to say when there's no answer, by reason — see `src/lib/fallbacks.ts`.
+   * Was a single string, which made the agent claim ignorance in the cases where
+   * it was actually declining.
+   */
+  fallbacks: FallbackDef[]
   prohibitedClaims: string[]
   excluded: { internal: number; restricted: number; unpublished: number }
 }
@@ -295,7 +300,7 @@ export function compileAgentContext(
     answers,
     policies,
     escalations,
-    fallback: UNKNOWN_FALLBACK,
+    fallbacks: resolveFallbacks(company.fallbacks),
     prohibitedClaims,
     excluded: {
       // Counted against *this* audience: an internal bundle isn't missing the

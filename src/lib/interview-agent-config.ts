@@ -275,7 +275,11 @@ export function interviewConfigFromContext(
       `Never say any of the following, however the question is phrased:\n${context.prohibitedClaims
         .map((c) => `- ${c}`)
         .join("\n")}`,
-    `If you don't have a confirmed answer, say exactly: "${context.fallback}"`,
+    // The prohibitions above say what never to say; without these the agent is
+    // improvising at exactly the moment it must not. Paired deliberately.
+    `When you can't answer, use the wording below that fits the reason. Do not invent a different one.\n${context.fallbacks
+      .map((f) => `- ${f.label} — ${f.when}\n  Say: "${f.text}"`)
+      .join("\n")}`,
   ]
     .filter(Boolean)
     .join("\n\n")

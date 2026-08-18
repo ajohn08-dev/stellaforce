@@ -183,9 +183,25 @@ export function AgentKnowledgePanel({
         )}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        When it has no answer, the agent says: “{context.fallback}”
-      </p>
+      {/* The counterpart to "Never says". A prohibition without a replacement
+          sentence leaves the agent improvising at the worst possible moment, so
+          the two belong on the same screen. */}
+      <details className="rounded-lg border border-border">
+        <summary className="cursor-pointer p-3 text-sm">
+          When it can&apos;t answer
+          <span className="ml-2 text-xs text-muted-foreground">
+            {context.fallbacks.length} ways, by reason
+          </span>
+        </summary>
+        <ul className="space-y-2 border-t border-border p-3">
+          {context.fallbacks.map((f) => (
+            <li key={f.kind}>
+              <p className="text-xs font-medium text-muted-foreground">{f.label}</p>
+              <p className="text-sm">“{f.text}”</p>
+            </li>
+          ))}
+        </ul>
+      </details>
     </section>
   )
 }

@@ -5,6 +5,7 @@ import { NarrativeSection } from "@/components/companies/workspace/sections/narr
 import { PolicySection } from "@/components/companies/workspace/sections/policy-section"
 import { ProfileSection } from "@/components/companies/workspace/sections/profile-section"
 import { TeamsSection } from "@/components/companies/workspace/sections/teams-section"
+import { FallbacksSection } from "@/components/companies/workspace/sections/fallbacks-section"
 import { UnansweredSection } from "@/components/companies/workspace/sections/unanswered-section"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import type { CompanyReadiness } from "@/lib/company-readiness"
@@ -88,6 +89,9 @@ export function SectionRouter({
 
     case "jobs":
       return <JobsSection {...common} jobId={drill.job} />
+
+    case "fallbacks":
+      return <FallbacksSection {...common} />
 
     case "unanswered":
       return <UnansweredSection {...common} />
