@@ -997,6 +997,14 @@ Teams gained an editable per-item sentence for the same reason: a bulk change
 writes `team-<id>-clearance`, and a read-only badge that can't move while the
 thing it describes does is worse than no badge.
 
+**Publish is a review, and now behaves like one.** Each pending change shows
+what the field said and what it will say, word-diffed. It listed field names
+before, which cannot be reviewed: *"Sponsorship policy"* is the same label
+whether a comma moved or "may be considered" became "will be provided". Inline
+when most of the text survived, *was* / *now* blocks below 30% similarity.
+Deletions are struck through and muted rather than red — see the vocabulary
+below; a diff is data, not an alarm.
+
 ## The four kinds of message, and only four
 
 Before this there were five visual treatments for "here is some information", and

@@ -390,6 +390,18 @@ migrating the full app layer to V3.2 is an ongoing pass.
   recruiter" (sets `agentUse: 'escalate'`, giving the agent defined behaviour on
   the topic rather than a hole).
 
+  **Publish shows diffs, not field names.** The draft buffer always held the
+  baseline and the new value and the change list threw one away, so the review
+  could only name what changed — the wrong altitude for a candidate-facing claim,
+  since the most consequential edits here are one word inside a paragraph
+  ("may be considered" → "will be provided" is a different legal position and an
+  identical field name). `src/lib/text-diff.ts` does word-level LCS;
+  `workspace/publish-diff.tsx` renders it inline when most of the text survived
+  and as *was* / *now* blocks below 30% similarity, where interleaving shreds the
+  two texts together. **Deletions are struck through and muted, not red** — the
+  page spends red only on "something is wrong right now" (see the message
+  vocabulary below), and a diff is data, not an alarm. `npm run diff-check`.
+
   **Preview** (header, between Create job and Publish —
   `workspace/knowledge-preview.tsx`, logic in `src/lib/company-preview.ts`) is
   the only place the agent's behaviour can be *observed* rather than described.

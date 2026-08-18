@@ -26,12 +26,23 @@ import * as React from "react"
 export type DraftValue = string | string[]
 
 export type PendingChange = {
-  /** Stable per field, e.g. `policy-pol-lg-10-value`. */
+  /** Stable per field, e.g. `policy:pol-lg-10:value`. See `company-draft-keys.ts`. */
   key: string
   /** Section key the field lives in, so changes can be grouped for review. */
   section: string
   /** Human label for the review list, e.g. "Health benefits". */
   label: string
+  /**
+   * What it said before, and what it says now.
+   *
+   * The buffer always held both and the change list discarded them, so Publish
+   * could only name the fields that changed. That's the wrong altitude for
+   * reviewing a candidate-facing claim: the most consequential edits here are
+   * one word inside a paragraph — "may be considered" becoming "will be
+   * provided" is a different legal position and an identical field name.
+   */
+  baseline: DraftValue
+  value: DraftValue
 }
 
 type Entry = PendingChange & { value: DraftValue; baseline: DraftValue }
@@ -142,7 +153,13 @@ export function CompanyDraftProvider({ children }: { children: React.ReactNode }
     () =>
       Object.values(entries)
         .filter((e) => !same(e.value, e.baseline))
-        .map(({ key, section, label }) => ({ key, section, label })),
+        .map(({ key, section, label, baseline, value }) => ({
+          key,
+          section,
+          label,
+          baseline,
+          value,
+        })),
     [entries]
   )
 

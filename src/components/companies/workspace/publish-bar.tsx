@@ -34,7 +34,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { useCompanyDraft } from "@/components/companies/company-draft-context"
+import {
+  useCompanyDraft,
+  type PendingChange,
+} from "@/components/companies/company-draft-context"
+import { PublishDiff } from "@/components/companies/workspace/publish-diff"
 import { ALL_SECTIONS } from "@/components/companies/workspace/company-sections"
 import { formatTimestamp } from "@/components/companies/shared/activity-row"
 import { cn } from "@/lib/utils"
@@ -76,10 +80,12 @@ export function PublishButton({
   const count = draft?.changes.length ?? 0
   const [historyOpen, setHistoryOpen] = React.useState(false)
 
+  // Grouped by section, carrying the whole change so the review can show what
+  // each field said before and what it will say.
   const grouped = React.useMemo(() => {
-    const map = new Map<string, string[]>()
+    const map = new Map<string, PendingChange[]>()
     for (const c of draft?.changes ?? []) {
-      map.set(c.section, [...(map.get(c.section) ?? []), c.label])
+      map.set(c.section, [...(map.get(c.section) ?? []), c])
     }
     return [...map.entries()]
   }, [draft?.changes])
@@ -161,7 +167,7 @@ export function PublishButton({
           />
           {menu}
         </div>
-        <DialogContent className="max-h-[80vh] w-full max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[85vh] w-full max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Publish {count} change{count === 1 ? "" : "s"}
@@ -172,16 +178,20 @@ export function PublishButton({
             </DialogDescription>
           </DialogHeader>
 
-          <ul className="space-y-3">
-            {grouped.map(([section, labels]) => (
+          <ul className="space-y-4">
+            {grouped.map(([section, changes]) => (
               <li key={section}>
                 <p className="text-xs font-medium text-muted-foreground">
                   {sectionLabel(section)}
                 </p>
-                <ul className="mt-1 space-y-1">
-                  {labels.map((label) => (
-                    <li key={label} className="text-sm">
-                      {label}
+                <ul className="mt-1.5 space-y-2">
+                  {changes.map((change) => (
+                    <li
+                      key={change.key}
+                      className="space-y-1 rounded-lg border border-border p-3"
+                    >
+                      <p className="text-xs font-medium">{change.label}</p>
+                      <PublishDiff change={change} />
                     </li>
                   ))}
                 </ul>
