@@ -1862,7 +1862,27 @@ const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
     questionId: "q-quota-attainment",
     asks: [{ jobId: null, count: 3, lastAskedAt: "2026-08-15" }],
     askedClientAt: null,
-    answers: [],
+    // Recruiters-only: we know the number, and a candidate never hears it from
+    // an agent. The one fixture that makes the audience toggle observable — a
+    // candidate gets the withheld fallback, an internal agent gets the figure.
+    answers: [
+      {
+        id: "ans-lumagrid-quota",
+        scope: COMPANY_SCOPE,
+        body:
+          "Quota for a regional channel role is $1.4M in partner-sourced pipeline, and 6 of 9 on the team hit it last year. Marcus is candid about the two who didn't — both inherited cold territories.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [],
+        visibility: vis("recruiters_only", null, "published", {
+          source: "Marcus Ellery, 12 Aug 2026",
+          verification: "verified",
+          lastVerifiedAt: "2026-08-12",
+          verifiedBy: "Anna John",
+          isPresetDefault: false,
+        }),
+      },
+    ],
   },
   {
     questionId: "q-wellness-benefit",

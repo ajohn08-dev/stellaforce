@@ -11,7 +11,8 @@
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
     "attach-fixture-audio": "tsx --env-file=.env.local scripts/attach-fixture-call-audio.ts",
     "knowledge-dryrun": "tsx scripts/company-knowledge-dryrun.ts",
-    "draft-key-check": "tsx scripts/company-draft-key-check.ts"
+    "draft-key-check": "tsx scripts/company-draft-key-check.ts",
+    "preview-check": "tsx scripts/company-preview-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

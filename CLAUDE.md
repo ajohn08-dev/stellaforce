@@ -390,6 +390,20 @@ migrating the full app layer to V3.2 is an ongoing pass.
   recruiter" (sets `agentUse: 'escalate'`, giving the agent defined behaviour on
   the topic rather than a hole).
 
+  **Preview** (header, between Create job and Publish —
+  `workspace/knowledge-preview.tsx`, logic in `src/lib/company-preview.ts`) is
+  the only place the agent's behaviour can be *observed* rather than described.
+  Ask what a candidate would ask, pick a role and an audience, and see the
+  answer, which scope produced it, and — when there isn't one — which of the four
+  fallbacks fires and why. **Published-only, deliberately**: `publishedOnly:
+  true` and nothing reads the draft buffer, because the question people have
+  mid-edit is *"what are candidates being told right now?"*, not *"what will they
+  hear after I publish?"* — and those diverge exactly when you're least sure. A
+  banner names how many changes are excluded. Intent matching is a keyword stub
+  and says so on screen; everything after the match is the real resolver, so the
+  cascade, the audience gate and the fallbacks are genuinely exercised.
+  `npm run preview-check` runs it headless.
+
   **Four kinds of message, and only four** (`shared/section-note.tsx`), separated
   by what the reader can do: `rule` (always true, can't be switched off — quiet,
   no colour), `attention` (needs you, nothing broken — amber), `blocking` (an

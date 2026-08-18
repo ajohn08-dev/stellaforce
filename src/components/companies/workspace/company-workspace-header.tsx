@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CompanyLogo } from "@/components/companies/company-logo"
 import { LinkedinIcon } from "@/components/icons/brand-icons"
 import { ReadinessPill } from "@/components/companies/shared/readiness-pill"
+import { KnowledgePreview } from "@/components/companies/workspace/knowledge-preview"
 import { PublishButton } from "@/components/companies/workspace/publish-bar"
 import type { CompiledAgentContext } from "@/lib/company-agent-context"
 import { READINESS_SUMMARY, type CompanyReadiness } from "@/lib/company-readiness"
@@ -133,6 +134,10 @@ export function CompanyWorkspaceHeader({
           <Plus className="size-4" />
           Create job
         </Button>
+
+        {/* Between Create job and Publish: the only place the agent's behaviour
+            can be observed rather than described. */}
+        <KnowledgePreview company={company} />
 
         <PublishButton
           company={company}
