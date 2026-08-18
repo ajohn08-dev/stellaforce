@@ -1,9 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { Ban, ChevronRight, MessageCircleQuestion, Plus, ShieldAlert } from "lucide-react"
+import { Ban, ChevronRight, Lock, MessageCircleQuestion, Plus, ShieldAlert } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useDraftField } from "@/components/companies/company-draft-context"
 import {
@@ -15,8 +21,24 @@ import { TrustWarning } from "@/components/companies/shared/trust-warning"
 import { VisibilitySentence } from "@/components/companies/shared/visibility-sentence"
 import { useVisibilityDraft } from "@/components/companies/shared/use-visibility-draft"
 import { formatDate } from "@/lib/constants"
-import { isUnanswered } from "@/lib/company-readiness"
-import { FAQ_CATEGORY_LABELS, type FaqEntry } from "@/lib/mock-companies"
+import {
+  answerStack,
+  availableScopes,
+  companyQuestions,
+  effectiveProhibitions,
+  isUnanswered,
+  jobsInScope,
+  questionOf,
+  resolveAnswer,
+  stackDepth,
+  type Answer,
+  type AnswerScope,
+  type CompanyQuestion,
+  type ResolvedAnswer,
+  type ResolvedScope,
+} from "@/lib/company-inheritance"
+import { FAQ_CATEGORY_LABELS, type Company } from "@/lib/mock-companies"
+import type { Question } from "@/lib/question-catalog"
 
 /**
  * "What candidates ask" — the questions belonging to *this* section, folded in
@@ -27,22 +49,23 @@ import { FAQ_CATEGORY_LABELS, type FaqEntry } from "@/lib/mock-companies"
  * destinations meant a recruiter updated one and forgot the other, which is how
  * an agent ends up confidently stating last year's policy.
  *
- * Unanswered questions are **the same rows with an empty answer**, sorted to the
- * top and opened on arrival. They are not filed here after the fact by anyone —
- * `faqSection()` routes them the moment a candidate asks, so the question is
- * already sitting next to the facts that answer it.
+ * The **question** is global and the **answers** are scoped — see
+ * `src/lib/company-inheritance.ts`. On screen that shows up as an indented
+ * stack: the company answer, then any team or role that answers differently,
+ * with the narrowest one marked as the winner. Indentation carries the
+ * explanation; nobody has to learn the word "scope".
  */
 export function SectionQuestions({
+  company,
   entries,
   today,
   emptyPrompt,
 }: {
-  entries: FaqEntry[]
+  company: Company
+  entries: CompanyQuestion[]
   today: Date
   emptyPrompt: string
 }) {
-  // Unanswered first, most-asked first within each half — the only ordering that
-  // survives a section with twelve questions in it.
   const ordered = React.useMemo(
     () =>
       [...entries].sort((a, b) => {
@@ -83,7 +106,12 @@ export function SectionQuestions({
       ) : (
         <div className="space-y-2">
           {ordered.map((entry) => (
-            <QuestionRow key={entry.id} entry={entry} today={today} />
+            <QuestionRow
+              key={entry.questionId}
+              company={company}
+              entry={entry}
+              today={today}
+            />
           ))}
         </div>
       )}
@@ -92,49 +120,46 @@ export function SectionQuestions({
 }
 
 /**
- * One question, answered or not — **the same row in the section and in the
- * Unanswered inbox**, bound to the same draft keys.
- *
- * That sameness is the point: answering from the inbox and answering from the
- * section are one edit, so nothing has to "move back" to a section afterwards.
- * The row was in its section the whole time; answering it only drops it out of
- * the inbox's filter.
+ * One question and every answer written for it — **the same row in a section, in
+ * the Unanswered inbox, and on a job**, bound to the same draft keys.
  */
 export function QuestionRow({
+  company,
   entry,
   today,
   sectionLabel,
 }: {
-  entry: FaqEntry
+  company: Company
+  entry: CompanyQuestion
   today: Date
   /** Set only in the inbox, where you can't tell which section a row lands in. */
   sectionLabel?: string
 }) {
+  const catalog = questionOf(company, entry)
   const unanswered = isUnanswered(entry)
-  // An unanswered row opens on arrival: the answer box is the only reason to be
-  // looking at it, and making someone click a disclosure to reach it is the kind
-  // of ceremony that turns a two-minute job into a deferred one.
   const [open, setOpen] = React.useState(unanswered)
-  const visibility = useVisibilityDraft(
-    `faq-${entry.id}`,
-    entry.visibility,
-    entry.questionIntent
-  )
 
-  const waitScope = useFieldScope(`${entry.questionIntent} — waiting on the client`)
+  // Scopes the recruiter has chosen to answer at during this session. UI-only:
+  // a real publish would create the answer row.
+  const [addedScopes, setAddedScopes] = React.useState<ResolvedScope[]>([])
+
+  const stack = answerStack(company, entry)
+  const winning = stack.at(-1) ?? null
+
+  const waitScope = useFieldScope(`${catalog?.intent ?? entry.questionId} — waiting on the client`)
   const [askedClientAt, setAskedClientAt] = useDraftField(
-    `faq-${entry.id}-asked-client`,
+    `faq-${entry.questionId}-asked-client`,
     entry.askedClientAt ?? "",
     waitScope
   ) as readonly [string, (next: string) => void]
 
-  const handedOff = visibility.agentUse === "escalate"
+  if (!catalog) return null
 
   return (
     <div
       className={cn(
         "rounded-lg border border-border",
-        unanswered && !handedOff && "border-amber-300 dark:border-amber-900"
+        unanswered && "border-amber-300 dark:border-amber-900"
       )}
     >
       <button
@@ -148,9 +173,7 @@ export function QuestionRow({
             open && "rotate-90"
           )}
         />
-        <span className="min-w-0 flex-1 text-sm font-medium">
-          {entry.questionIntent}
-        </span>
+        <span className="min-w-0 flex-1 text-sm font-medium">{catalog.intent}</span>
 
         {sectionLabel && (
           <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
@@ -160,53 +183,49 @@ export function QuestionRow({
 
         <span className="shrink-0 text-xs text-muted-foreground">
           asked {entry.askedCount}×
-          {unanswered && (
-            <span
-              className={cn(
-                "ml-1",
-                !handedOff && !askedClientAt && "text-amber-700 dark:text-amber-300"
-              )}
-            >
+          {unanswered ? (
+            <span className={cn("ml-1", !askedClientAt && "text-amber-700 dark:text-amber-300")}>
               ·{" "}
-              {handedOff
-                ? "handed to a recruiter"
-                : askedClientAt
-                  ? `waiting on the client since ${formatDate(askedClientAt)}`
-                  : "no answer yet"}
+              {askedClientAt
+                ? `waiting on the client since ${formatDate(askedClientAt)}`
+                : "no answer yet"}
             </span>
+          ) : (
+            stack.length > 1 && (
+              <span className="ml-1">
+                · {stack.length - 1} override{stack.length === 2 ? "" : "s"}
+              </span>
+            )
           )}
         </span>
       </button>
 
       {open && (
         <div className="space-y-4 border-t border-border p-4">
-          <Field label={unanswered ? "Write the answer" : "What the agent says"}>
-            <EditableTextarea
-              fieldKey={`faq-${entry.id}-answer`}
-              value={entry.approvedAnswer}
-              label={entry.questionIntent}
-              ariaLabel={`Answer to ${entry.questionIntent}`}
-              placeholder="Nothing written yet — the agent hands this question back to you until there is."
-              rows={3}
-            />
-          </Field>
+          <AnswerStack
+            company={company}
+            entry={entry}
+            catalog={catalog}
+            stack={stack}
+            addedScopes={addedScopes}
+            onAddScope={(scope) => setAddedScopes((prev) => [...prev, scope])}
+          />
 
           {unanswered ? (
             <UnansweredActions
               askedClientAt={askedClientAt}
-              onAskClient={(next) => setAskedClientAt(next)}
-              handedOff={handedOff}
-              onHandOff={(next) =>
-                visibility.onChange({
-                  clearance: visibility.clearance,
-                  agentUse: next ? "escalate" : "on_request",
-                })
-              }
+              onAskClient={setAskedClientAt}
               today={today}
               lastAskedAt={entry.lastAskedAt}
             />
           ) : (
-            <AnsweredDetail entry={entry} today={today} visibility={visibility} />
+            <AnsweredDetail
+              company={company}
+              entry={entry}
+              catalog={catalog}
+              winning={winning}
+              today={today}
+            />
           )}
         </div>
       )}
@@ -215,27 +234,220 @@ export function QuestionRow({
 }
 
 /**
+ * The stack — **the whole UI for inheritance**.
+ *
+ * Every answer written for this question, widest first, indented by how deep its
+ * scope sits, with the narrowest marked as the one that wins. That indentation
+ * plus one sentence *("The most specific answer wins")* is the entire
+ * explanation, which is the point: a recruiter should never have to learn a
+ * vocabulary of levels to understand what an agent will say.
+ */
+function AnswerStack({
+  company,
+  entry,
+  catalog,
+  stack,
+  addedScopes,
+  onAddScope,
+}: {
+  company: Company
+  entry: CompanyQuestion
+  catalog: Question
+  stack: ResolvedAnswer[]
+  addedScopes: ResolvedScope[]
+  onAddScope: (scope: ResolvedScope) => void
+}) {
+  const answeredScopes = new Set(
+    stack.map((s) => `${s.scope.kind}:${s.scope.refId ?? ""}`)
+  )
+  const pending = addedScopes.filter(
+    (s) => !answeredScopes.has(`${s.kind}:${s.refId ?? ""}`)
+  )
+
+  // Anywhere that doesn't already have an answer, and isn't already open for
+  // editing on this screen.
+  const open = availableScopes(company).filter(
+    (s) =>
+      !answeredScopes.has(`${s.kind}:${s.refId ?? ""}`) &&
+      !pending.some((p) => p.kind === s.kind && p.refId === s.refId)
+  )
+
+  return (
+    <div className="space-y-2">
+      {stack.length === 0 && pending.length === 0 && (
+        <AnswerRow
+          company={company}
+          entry={entry}
+          catalog={catalog}
+          scope={{
+            kind: "company",
+            refId: null,
+            label: "Everywhere",
+            badge: "From company",
+          }}
+          answer={null}
+          depth={0}
+          wins
+        />
+      )}
+
+      {stack.map((row, i) => (
+        <AnswerRow
+          key={row.answer.id}
+          company={company}
+          entry={entry}
+          catalog={catalog}
+          scope={row.scope}
+          answer={row.answer}
+          depth={stackDepth(company, row.scope)}
+          wins={i === stack.length - 1}
+        />
+      ))}
+
+      {pending.map((scope) => (
+        <AnswerRow
+          key={`${scope.kind}:${scope.refId}`}
+          company={company}
+          entry={entry}
+          catalog={catalog}
+          scope={scope}
+          answer={null}
+          depth={stackDepth(company, scope)}
+          wins={false}
+        />
+      ))}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        <p className="text-xs text-muted-foreground">
+          The most specific answer wins.
+        </p>
+
+        {open.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
+                  <Plus className="size-3.5" />
+                  Answer differently…
+                </Button>
+              }
+            />
+            <DropdownMenuContent className="min-w-72">
+              {open.map((scope) => {
+                // The blast radius, at the moment of choosing. "For everyone in
+                // Go-to-Market — 3 jobs" is a decision someone can make; "team
+                // level" is a guess.
+                const reach = jobsInScope(company, {
+                  kind: scope.kind,
+                  refId: scope.refId,
+                }).length
+                return (
+                  <DropdownMenuItem
+                    key={`${scope.kind}:${scope.refId}`}
+                    onClick={() => onAddScope(scope)}
+                    className="flex-col items-start gap-0.5"
+                  >
+                    <span>{scope.badge}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {reach === 0
+                        ? "No jobs yet"
+                        : `${reach} job${reach === 1 ? "" : "s"}`}
+                    </span>
+                  </DropdownMenuItem>
+                )
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** One row of the stack: where it applies, and the sentence the agent says there. */
+function AnswerRow({
+  company,
+  entry,
+  catalog,
+  scope,
+  answer,
+  depth,
+  wins,
+}: {
+  company: Company
+  entry: CompanyQuestion
+  catalog: Question
+  scope: ResolvedScope
+  answer: Answer | null
+  depth: number
+  wins: boolean
+}) {
+  const fieldKey = `faq-${entry.questionId}-${scope.kind}-${scope.refId ?? "all"}-answer`
+  const reach = jobsInScope(company, { kind: scope.kind, refId: scope.refId }).length
+
+  return (
+    <div
+      // Indent by depth so the tree is the explanation. Inline padding rather
+      // than a Tailwind class: the depth is data, and arbitrary values in this
+      // project have silently failed to generate before.
+      style={{ paddingLeft: `${depth * 1.25}rem` }}
+    >
+      <div className="rounded-lg border border-border p-3">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              "rounded-md px-1.5 py-0.5 text-xs font-medium",
+              scope.kind === "company"
+                ? "bg-muted text-muted-foreground"
+                : "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+            )}
+          >
+            {scope.label}
+          </span>
+          {wins && answer && (
+            <span className="text-xs text-muted-foreground">
+              what the agent says
+              {reach > 0 && scope.kind !== "company"
+                ? ` for ${reach} job${reach === 1 ? "" : "s"}`
+                : ""}
+            </span>
+          )}
+        </div>
+
+        <EditableTextarea
+          fieldKey={fieldKey}
+          value={answer?.body ?? ""}
+          label={`${catalog.intent} — ${scope.label}`}
+          ariaLabel={`Answer to ${catalog.intent} for ${scope.label}`}
+          placeholder={
+            scope.kind === "company"
+              ? "Nothing written yet — the agent hands this question back to you until there is."
+              : `Write the answer for ${scope.label}, or leave this empty to keep inheriting.`
+          }
+          rows={2}
+        />
+      </div>
+    </div>
+  )
+}
+
+/**
  * The two ways out of an unanswered question that aren't writing the answer.
  *
- * Both are real states rather than bookkeeping. "Ask the client" records that
- * we're blocked on someone outside the tool and since when — the honest
- * replacement for an assignee field, which only ever named the account owner
- * already printed in the header. "Hand to a recruiter" isn't a dismissal: it
- * writes `agentUse: escalate`, so the agent gets defined behaviour on the topic
- * instead of a hole it will fall into again tomorrow.
+ * "Ask the client" records that we're blocked on someone outside the tool and
+ * since when — the honest replacement for an assignee field. There's no
+ * "hand to a recruiter" button any more: a sensitive question already arrives
+ * from the catalog with an escalate posture, so an unanswered one is *already*
+ * handed back, and a button claiming to do it was theatre.
  */
 function UnansweredActions({
   askedClientAt,
   onAskClient,
-  handedOff,
-  onHandOff,
   today,
   lastAskedAt,
 }: {
   askedClientAt: string
   onAskClient: (next: string) => void
-  handedOff: boolean
-  onHandOff: (next: boolean) => void
   today: Date
   lastAskedAt: string | null
 }) {
@@ -254,19 +466,6 @@ function UnansweredActions({
           : "Ask the client"}
       </Button>
 
-      <Button
-        size="sm"
-        variant={handedOff ? "secondary" : "ghost"}
-        onClick={() => onHandOff(!handedOff)}
-        title={
-          handedOff
-            ? "Let the agent answer this once it has an answer"
-            : "The agent will route this topic to a recruiter instead of answering"
-        }
-      >
-        {handedOff ? "Handed to a recruiter" : "Hand to a recruiter"}
-      </Button>
-
       {lastAskedAt && (
         <span className="ml-auto text-xs text-muted-foreground">
           Last asked {formatDate(lastAskedAt)}
@@ -277,37 +476,65 @@ function UnansweredActions({
 }
 
 function AnsweredDetail({
+  company,
   entry,
+  catalog,
+  winning,
   today,
-  visibility,
 }: {
-  entry: FaqEntry
+  company: Company
+  entry: CompanyQuestion
+  catalog: Question
+  winning: ResolvedAnswer | null
   today: Date
-  visibility: ReturnType<typeof useVisibilityDraft>
 }) {
+  const visibility = useVisibilityDraft(
+    `faq-${entry.questionId}`,
+    winning?.answer.visibility ?? {
+      clearance: "cleared_for_candidates",
+      agentUse: catalog.defaultAgentUse,
+      state: "draft",
+      source: "",
+      verification: "unverified",
+      lastVerifiedAt: null,
+      verifiedBy: null,
+      owner: "",
+      reviewCadenceDays: null,
+      nextReviewAt: null,
+      isPresetDefault: true,
+    },
+    catalog.intent
+  )
+
+  const prohibitions = effectiveProhibitions(company, entry, catalog, {
+    jobId: winning?.scope.kind === "job" ? winning.scope.refId : null,
+    teamId: winning?.scope.kind === "team" ? winning.scope.refId : null,
+  })
+  const standing = new Set(catalog.prohibitions)
+
   return (
     <>
       <Field label="Candidates also ask it like this">
         <EditablePills
-          fieldKey={`faq-${entry.id}-variants`}
-          values={entry.questionVariants}
+          fieldKey={`faq-${entry.questionId}-variants`}
+          values={catalog.variants}
           addLabel="Add phrasing"
           ariaLabel="Question variants"
         />
       </Field>
 
-      {entry.expandedAnswer !== null && (
+      {winning?.answer.expandedAnswer && (
         <Field label="If they ask for more">
           <EditableTextarea
-            fieldKey={`faq-${entry.id}-expanded`}
-            value={entry.expandedAnswer}
+            fieldKey={`faq-${entry.questionId}-expanded`}
+            value={winning.answer.expandedAnswer}
             ariaLabel="Expanded answer"
             rows={2}
           />
         </Field>
       )}
 
-      {entry.escalationInstructions && (
+      {winning?.answer.escalationInstructions && (
         <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 dark:bg-amber-950/30">
           <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" />
           <div className="min-w-0 flex-1">
@@ -315,33 +542,48 @@ function AnsweredDetail({
               When to hand off instead
             </p>
             <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-300">
-              {entry.escalationInstructions}
+              {winning.answer.escalationInstructions}
             </p>
           </div>
         </div>
       )}
 
-      {entry.prohibitedClaims.length > 0 && (
+      {prohibitions.length > 0 && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/[0.04] p-3">
           <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
             <Ban className="size-3.5" />
             Never say, however the question is phrased
           </p>
           <ul className="mt-2 space-y-1">
-            {entry.prohibitedClaims.map((claim) => (
+            {prohibitions.map((claim) => (
               <li
                 key={claim}
                 className="flex items-start gap-2 text-sm text-muted-foreground"
               >
-                <Ban className="mt-0.5 size-3 shrink-0 text-destructive" />
+                {standing.has(claim) ? (
+                  // Rule 2 made visible: catalog prohibitions accumulate onto
+                  // every company and no scope can drop one.
+                  <Lock
+                    className="mt-0.5 size-3 shrink-0 text-destructive"
+                    aria-label="Standing rule — applies at every company"
+                  />
+                ) : (
+                  <Ban className="mt-0.5 size-3 shrink-0 text-destructive" />
+                )}
                 {claim}
               </li>
             ))}
           </ul>
+          {[...standing].length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Locked rules come with the question and apply at every company. A
+              team or role can add to this list, never remove from it.
+            </p>
+          )}
         </div>
       )}
 
-      <TrustWarning item={entry} today={today} />
+      {winning && <TrustWarning item={winning.answer} today={today} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
         <VisibilitySentence
@@ -350,7 +592,7 @@ function AnsweredDetail({
           onChange={visibility.onChange}
         />
         <span className="text-xs text-muted-foreground">
-          {FAQ_CATEGORY_LABELS[entry.category]}
+          {FAQ_CATEGORY_LABELS[catalog.category]}
         </span>
       </div>
     </>
@@ -363,5 +605,101 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       {children}
     </div>
+  )
+}
+
+export type { AnswerScope }
+
+/**
+ * **What the agent will actually say on one job** — one line per question, the
+ * resolved answer, and where it came from.
+ *
+ * This is the other half of the stack. In the company workspace you read the
+ * cascade; standing on a job you want the opposite — no cascade at all, just the
+ * answer and a badge saying which scope produced it. Both call `resolveAnswer`,
+ * so the badge here and the winner marked over there cannot disagree.
+ *
+ * "Answer differently for this role" is the only way a job-scoped answer gets
+ * created, and it opens *underneath the answer it replaces* — you can't write an
+ * override without seeing what you're overriding.
+ */
+export function JobAnswers({
+  company,
+  jobId,
+}: {
+  company: Company
+  jobId: string
+}) {
+  const [overriding, setOverriding] = React.useState<string[]>([])
+
+  const rows = companyQuestions(company)
+    .map((entry) => ({
+      entry,
+      catalog: questionOf(company, entry),
+      hit: resolveAnswer(company, entry, { jobId }),
+    }))
+    .filter((r) => r.catalog && r.hit)
+
+  if (rows.length === 0) {
+    return (
+      <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+        No answers reach this role yet. Anything written at the company or on a
+        team above it will appear here.
+      </p>
+    )
+  }
+
+  return (
+    <ul className="divide-y divide-border rounded-lg border border-border">
+      {rows.map(({ entry, catalog, hit }) => {
+        const own = hit!.scope.kind === "job"
+        const isOverriding = overriding.includes(entry.questionId)
+
+        return (
+          <li key={entry.questionId} className="space-y-1.5 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="min-w-0 text-sm font-medium">{catalog!.intent}</p>
+              <span
+                className={cn(
+                  "shrink-0 rounded-md px-1.5 py-0.5 text-xs",
+                  own
+                    ? "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {hit!.scope.badge}
+              </span>
+            </div>
+
+            <p className="text-sm text-muted-foreground">{hit!.answer.body}</p>
+
+            {!own &&
+              (isOverriding ? (
+                <div className="pt-1">
+                  <EditableTextarea
+                    fieldKey={`faq-${entry.questionId}-job-${jobId}-answer`}
+                    value=""
+                    label={`${catalog!.intent} — this role`}
+                    ariaLabel={`Answer to ${catalog!.intent} for this role`}
+                    placeholder="Write the answer for this role. Leave it empty to keep inheriting."
+                    rows={2}
+                  />
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 text-xs text-muted-foreground"
+                  onClick={() =>
+                    setOverriding((prev) => [...prev, entry.questionId])
+                  }
+                >
+                  Answer differently for this role
+                </Button>
+              ))}
+          </li>
+        )
+      })}
+    </ul>
   )
 }

@@ -3,23 +3,21 @@ import { AlertTriangle, ArrowLeft, ArrowRight, ExternalLink, Plus } from "lucide
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  InheritanceBadge,
-  OverrideRow,
-} from "@/components/companies/shared/inheritance-badge"
+import { OverrideRow } from "@/components/companies/shared/inheritance-badge"
 import {
   SectionEmpty,
   SectionShell,
 } from "@/components/companies/workspace/section-shell"
 import { JobStatusBadge } from "@/components/jobs/job-status-badge"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
-import { SectionQuestions } from "@/components/companies/shared/section-questions"
+import { JobAnswers, SectionQuestions } from "@/components/companies/shared/section-questions"
 import {
-  faqSection,
+  questionsForSection,
   jobCoverage,
   type CompanyReadiness,
   type JobCoverage,
 } from "@/lib/company-readiness"
+import { teamPath } from "@/lib/company-inheritance"
 import {
   allTeams,
   IMMIGRATION_VALUE_LABELS,
@@ -105,8 +103,9 @@ export function JobsSection({
       )}
 
       <SectionQuestions
+        company={company}
         today={today}
-        entries={company.faq.filter((f) => faqSection(f.category) === section.key)}
+        entries={questionsForSection(company, section.key)}
         emptyPrompt="Nothing recorded yet. Questions about what a typical day or week looks like belong here."
       />
     </SectionShell>
@@ -178,57 +177,7 @@ function JobRow({ company, coverage }: { company: Company; coverage: JobCoverage
 }
 
 function JobDetail({ company, job }: { company: Company; job: CompanyJob }) {
-  const department = job.departmentId
-    ? company.departments.find((d) => d.id === job.departmentId)
-    : null
-  const team = job.teamId ? allTeams(company).find((t) => t.id === job.teamId) : null
-
-  const inherited = [
-    {
-      label: "Company narrative",
-      level: "company" as const,
-      source: company.preferredName,
-      detail: `${company.knowledge.filter((k) => k.kind !== "brief_note" && k.body.trim()).length} blocks`,
-    },
-    {
-      label: "Benefits",
-      level: "company" as const,
-      source: company.preferredName,
-      detail: `${company.policies.filter((p) => p.group === "benefits" && p.value).length} items`,
-    },
-    {
-      label: "Work authorization",
-      level: "company" as const,
-      source: company.preferredName,
-      detail: `${company.policies.filter((p) => p.group === "immigration" && p.immigrationValue === "unknown").length} unconfirmed`,
-    },
-    {
-      label: "Candidate FAQ",
-      level: "company" as const,
-      source: company.preferredName,
-      detail: `${company.faq.filter((f) => f.level === "company").length} answers`,
-    },
-    ...(department
-      ? [
-          {
-            label: "Department mission",
-            level: "department" as const,
-            source: department.name,
-            detail: department.mission,
-          },
-        ]
-      : []),
-    ...(team
-      ? [
-          {
-            label: "Team context",
-            level: "team" as const,
-            source: team.name,
-            detail: team.dayInTheLife ? "Day-in-the-life published" : "No day-in-the-life",
-          },
-        ]
-      : []),
-  ]
+  const chain = teamPath(company, job.teamId)
 
   return (
     <div className="space-y-5">
@@ -253,30 +202,21 @@ function JobDetail({ company, job }: { company: Company; job: CompanyJob }) {
       )}
 
       <section className="space-y-2">
-        <h4 className="text-sm font-medium">Inherited from this company</h4>
-        <ul className="divide-y divide-border rounded-lg border border-border">
-          {inherited.map((row) => (
-            <li
-              key={row.label}
-              className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="text-sm">{row.label}</p>
-                <p className="text-xs text-muted-foreground">{row.detail}</p>
-              </div>
-              <InheritanceBadge level={row.level} sourceName={row.source} />
-            </li>
-          ))}
-        </ul>
+        <h4 className="text-sm font-medium">What the agent says on this role</h4>
         <p className="text-xs text-muted-foreground">
-          Precedence, highest first: role override → team → department → company →
-          safe fallback and recruiter escalation.
+          Inherits from {[company.preferredName, ...chain.map((t) => t.name).reverse()].join(" › ")}.
+          The most specific answer wins.
         </p>
+        {/* Was a list of counts — "4 answers", "6 blocks" — which told you
+            something was inherited without telling you *what*, and so couldn't
+            answer the only question worth asking here: what will a candidate
+            actually hear on this job. */}
+        <JobAnswers company={company} jobId={job.id} />
       </section>
 
       {job.overrides.length > 0 && (
         <section className="space-y-2">
-          <h4 className="text-sm font-medium">Overridden at role level</h4>
+          <h4 className="text-sm font-medium">Fields overridden at role level</h4>
           <div className="space-y-2">
             {job.overrides.map((o) => (
               <OverrideRow

@@ -12,6 +12,14 @@ import {
   type CompanyJob,
   type KnowledgeLevel,
 } from "@/lib/mock-companies"
+import {
+  allAnswers,
+  companyQuestions,
+  effectiveProhibitions,
+  questionOf,
+  resolveAnswer,
+  teamPath,
+} from "@/lib/company-inheritance"
 
 /**
  * The compile step — COMPANY.md § E.
@@ -66,8 +74,7 @@ export type CompiledAgentContext = {
 const LEVEL_RANK: Record<KnowledgeLevel, number> = {
   job: 0,
   team: 1,
-  department: 2,
-  company: 3,
+  company: 2,
 }
 
 function sortByPrecedence<T extends { level: KnowledgeLevel }>(items: T[]): T[] {
@@ -78,10 +85,11 @@ export function compileAgentContext(
   company: Company,
   job?: CompanyJob | null
 ): CompiledAgentContext {
-  const department = job?.departmentId
-    ? company.departments.find((d) => d.id === job.departmentId)
-    : null
-  const team = job?.teamId ? allTeams(company).find((t) => t.id === job.teamId) : null
+  // Every team from the job's own up to the root — Channel Growth *and*
+  // Go-to-Market, nearest first. What used to be "the department and the team"
+  // is now however many hops the org actually has.
+  const teams = teamPath(company, job?.teamId)
+  const team = teams[0] ?? null
 
   // --- 1. Narrative blocks -------------------------------------------------
   const blocks: ContextBlock[] = narrativeItems(company)
@@ -94,39 +102,39 @@ export function compileAgentContext(
       body: k.body,
     }))
 
-  if (department && agentCanUse(department) && department.candidateFacingDescription) {
-    blocks.push({
-      id: department.id,
-      level: "department",
-      sourceName: department.name,
-      heading: `About ${department.name}`,
-      body: department.candidateFacingDescription,
-    })
-  }
-
-  if (team && agentCanUse(team)) {
-    if (team.dayInTheLife) {
+  for (const t of teams) {
+    if (!agentCanUse(t)) continue
+    if (t.description) {
       blocks.push({
-        id: `${team.id}-day`,
+        id: `${t.id}-about`,
         level: "team",
-        sourceName: team.name,
-        heading: `A typical week on ${team.name}`,
-        body: team.dayInTheLife,
+        sourceName: t.name,
+        heading: `About ${t.name}`,
+        body: t.description,
       })
     }
-    if (team.workingStyle) {
+    if (t.dayInTheLife) {
       blocks.push({
-        id: `${team.id}-style`,
+        id: `${t.id}-day`,
         level: "team",
-        sourceName: team.name,
-        heading: `How ${team.name} works`,
-        body: team.workingStyle,
+        sourceName: t.name,
+        heading: `A typical week on ${t.name}`,
+        body: t.dayInTheLife,
+      })
+    }
+    if (t.workingStyle) {
+      blocks.push({
+        id: `${t.id}-style`,
+        level: "team",
+        sourceName: t.name,
+        heading: `How ${t.name} works`,
+        body: t.workingStyle,
       })
     }
   }
 
-  const hiringManager = team?.hiringManagerId
-    ? company.stakeholders.find((s) => s.id === team.hiringManagerId)
+  const hiringManager = team?.leaderId
+    ? company.stakeholders.find((s) => s.id === team.leaderId)
     : null
   if (hiringManager && agentCanUse(hiringManager) && hiringManager.candidateFacingBio) {
     blocks.push({
@@ -160,24 +168,30 @@ export function compileAgentContext(
     }
   }
 
-  // --- 3. FAQ answers ------------------------------------------------------
-  const scopedFaq = company.faq.filter((f) => {
-    if (f.level === "company") return true
-    if (f.level === "department") return f.levelRefId === department?.id
-    if (f.level === "team") return f.levelRefId === team?.id
-    return f.levelRefId === job?.id
-  })
+  // --- 3. Answers, resolved per job ---------------------------------------
+  // The compile is where the cascade actually pays: every question is resolved
+  // once for this job, so the agent receives one answer per question with no
+  // notion of scope at all. `publishedOnly` stops an unpublished draft at a
+  // narrow scope from shadowing a published answer at a wider one — editing a
+  // role must never silently take the agent's answer away.
+  const resolved = companyQuestions(company).map((q) => ({
+    q,
+    catalog: questionOf(company, q),
+    hit: resolveAnswer(company, q, { jobId: job?.id }, { publishedOnly: true }),
+  }))
 
   const answers: ContextAnswer[] = sortByPrecedence(
-    scopedFaq.filter(agentCanUse)
-  ).map((f) => ({
-    id: f.id,
-    level: f.level,
-    question: f.questionIntent,
-    variants: f.questionVariants,
-    answer: f.approvedAnswer,
-    expanded: f.expandedAnswer,
-  }))
+    resolved
+      .filter((r) => r.hit && agentCanUse(r.hit.answer))
+      .map((r) => ({
+        id: r.hit!.answer.id,
+        level: r.hit!.scope.kind,
+        question: r.catalog?.intent ?? r.q.questionId,
+        variants: r.catalog?.variants ?? [],
+        answer: r.hit!.answer.body,
+        expanded: r.hit!.answer.expandedAnswer,
+      }))
+  )
 
   // --- 4. Policies ---------------------------------------------------------
   const policies = company.policies
@@ -186,13 +200,27 @@ export function compileAgentContext(
 
   // --- 5. Escalation rules — topic and instruction only, never the body ----
   const escalations: ContextEscalation[] = [
-    ...scopedFaq.filter(agentMustEscalate).map((f) => ({
-      id: f.id,
-      topic: f.questionIntent,
-      instruction:
-        f.escalationInstructions ??
-        "Hand this topic to the recruiter instead of answering.",
-    })),
+    ...resolved
+      .filter((r) => r.hit && agentMustEscalate(r.hit.answer))
+      .map((r) => ({
+        id: r.hit!.answer.id,
+        topic: r.catalog?.intent ?? r.q.questionId,
+        instruction:
+          r.hit!.answer.escalationInstructions ??
+          "Hand this topic to the recruiter instead of answering.",
+      })),
+    // A sensitive catalog question nobody has answered yet becomes an explicit
+    // escalation rather than silence. This is the catalog's whole promise: a
+    // company that has configured nothing is still safe on immigration and pay,
+    // because the *question* arrived carrying that posture.
+    ...resolved
+      .filter((r) => !r.hit && r.catalog?.sensitive)
+      .map((r) => ({
+        id: `${r.q.questionId}-unanswered`,
+        topic: r.catalog!.intent,
+        instruction:
+          "No approved answer for this company. Use the fallback and route the candidate to the recruiter.",
+      })),
     ...company.policies.filter(agentMustEscalate).map((p) => ({
       id: p.id,
       topic: p.label,
@@ -202,26 +230,33 @@ export function compileAgentContext(
           : "Hand this topic to the recruiter instead of answering.",
     })),
     // An answered FAQ can still carry escalation instructions for follow-ups.
-    ...scopedFaq
-      .filter((f) => agentCanUse(f) && f.escalationInstructions)
-      .map((f) => ({
-        id: `${f.id}-followup`,
-        topic: `${f.questionIntent} (follow-up)`,
-        instruction: f.escalationInstructions!,
+    ...resolved
+      .filter((r) => r.hit && agentCanUse(r.hit.answer) && r.hit.answer.escalationInstructions)
+      .map((r) => ({
+        id: `${r.hit!.answer.id}-followup`,
+        topic: `${r.catalog?.intent ?? r.q.questionId} (follow-up)`,
+        instruction: r.hit!.answer.escalationInstructions!,
       })),
   ]
 
   // --- 6. Prohibited claims — the union, plus the standing set -------------
+  // Rule 2: prohibitions accumulate. Every scope in the chain contributes and
+  // nothing removes — including the catalog's, which is why a company that has
+  // written no compensation answer still can't have an agent quote a figure.
   const prohibitedClaims = Array.from(
-    new Set([...scopedFaq.flatMap((f) => f.prohibitedClaims), ...STANDING_PROHIBITIONS])
+    new Set([
+      ...companyQuestions(company).flatMap((q) =>
+        effectiveProhibitions(company, q, questionOf(company, q), { jobId: job?.id })
+      ),
+      ...STANDING_PROHIBITIONS,
+    ])
   )
 
   // --- 7. Excluded counts, for the recruiter's benefit ---------------------
   const everything: (VisibilityBearing & { id: string })[] = [
     ...company.knowledge,
     ...company.policies,
-    ...company.faq,
-    ...company.departments,
+    ...allAnswers(company).map((a) => a.answer),
     ...allTeams(company),
     ...company.stakeholders,
   ]

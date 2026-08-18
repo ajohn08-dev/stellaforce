@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { allAnswers } from "@/lib/company-inheritance"
 import { Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -30,7 +31,7 @@ export default async function CompaniesPage({
 
     // The most recently verified item anywhere in the profile — a single
     // "how current is this account" signal.
-    const lastVerified = [...company.knowledge, ...company.policies, ...company.faq]
+    const lastVerified = [...company.knowledge, ...company.policies, ...allAnswers(company).map((a) => a.answer)]
       .map((i) => i.visibility.lastVerifiedAt)
       .filter((d): d is string => Boolean(d))
       .sort()

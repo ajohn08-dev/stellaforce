@@ -199,10 +199,47 @@ migrating the full app layer to V3.2 is an ongoing pass.
   editing the answer about that fact is one job. Only the unanswered queue is its
   own destination.
 
+  **Questions are global; answers are scoped.** The catalog
+  (`src/lib/question-catalog.ts`) is the one thing shared across *every*
+  customer — intent, phrasings, category, `sensitive` risk class, default agent
+  posture, and standing prohibitions. Companies own only answers. That split is
+  what makes this scale past one customer: a new company inherits the whole
+  catalog with no answers, so its Unanswered inbox is the intake checklist on
+  day one; a `sensitive` question arrives escalate-by-default carrying its
+  prohibitions, so company #40 is safe because the catalog is; a question first
+  asked at one company is promoted once and every other company sees it; and
+  "sponsorship unanswered at 7 of 12 companies" is one query. **Answers are
+  never shared between customers** — not as templates, not as "copy from a
+  similar company" — because that is exactly how an agent states another
+  client's policy.
+
+  **The cascade is `global → company → team … team → job`**, resolved by
+  `src/lib/company-inheritance.ts` — the same shape
+  `src/lib/workflow-settings.ts` already uses for workflow settings. Three
+  entity types, not four levels: **`Department` merged into a self-nesting
+  `Team`** (`parentTeamId`), so Go-to-Market › Channel Growth is two teams and
+  depth is data. That removes a decision nobody could make correctly ("is this a
+  department or a team?") and lets a customer have one tier or four with no
+  schema change. Two rules, deliberately different: **answers override**
+  (nearest scope wins, `resolveAnswer`), **prohibitions accumulate**
+  (`effectiveProhibitions` — unioned, never removable, or a job-level answer
+  could quietly drop "never guarantee sponsorship"). Every surface — the stack
+  on screen, readiness, and `compileAgentContext` — calls that one module, so
+  the badge saying where an answer comes from and the answer the agent uses
+  can't diverge.
+
+  **On screen it's an indented stack**, widest first, narrowest marked as the
+  winner, under one sentence: *"The most specific answer wins."* Nobody learns
+  the word "scope". "Answer differently…" lists each scope with its blast radius
+  ("For everyone in Go-to-Market · 3 jobs"), because choosing a scope is only
+  answerable if you can see what it reaches. On a job the same data reads
+  inverted — one resolved answer per question with a `From company` /
+  `From Channel Growth` / `Set for this role` badge, and an override can only be
+  written directly underneath the answer it replaces.
+
   **There is also no separate "knowledge gap" type.** An unanswered question is
-  an `FaqEntry` with an empty `approvedAnswer` and `visibility.state = 'draft'`
-  — same type, same list, already sitting in the section `faqSection()` routes
-  it to. `isUnanswered()` / `unansweredQuestions()`
+  a `CompanyQuestion` with no written answer at any scope — same type, same
+  list, already sitting in the section `faqSection()` routes it to. `isUnanswered()` / `unansweredQuestions()`
   (`src/lib/company-readiness.ts`) are the entire test, derived and never
   stored, so nothing has to be *filed* into a section when it's answered: the
   row was there all along and simply stops matching the filter. Draft state also

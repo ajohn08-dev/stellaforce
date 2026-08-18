@@ -11,6 +11,7 @@ import {
   unansweredQuestions,
   type CompanyReadiness,
 } from "@/lib/company-readiness"
+import { questionOf } from "@/lib/company-inheritance"
 import type { Company } from "@/lib/mock-companies"
 
 /**
@@ -57,10 +58,12 @@ export function UnansweredSection({
       ) : (
         <div className="space-y-2">
           {open.map((entry) => {
-            const target = faqSection(entry.category)
+            const catalog = questionOf(company, entry)
+            const target = catalog ? faqSection(catalog.category) : "profile"
             return (
-              <FieldScopeProvider key={entry.id} section={target}>
+              <FieldScopeProvider key={entry.questionId} section={target}>
                 <QuestionRow
+                  company={company}
                   entry={entry}
                   today={today}
                   sectionLabel={sectionLabel(target)}

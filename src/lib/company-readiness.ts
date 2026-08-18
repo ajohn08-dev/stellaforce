@@ -16,10 +16,17 @@ import {
   type CompanyJob,
   type KnowledgeItem,
   type FaqCategory,
-  type FaqEntry,
   type KnowledgeKind,
   type PolicyGroup,
 } from "@/lib/mock-companies"
+import {
+  allAnswers,
+  companyQuestions,
+  isUnanswered,
+  questionOf,
+  unansweredQuestions as unansweredCompanyQuestions,
+  type CompanyQuestion,
+} from "@/lib/company-inheritance"
 
 /**
  * Knowledge health and agent-readiness evaluation — see COMPANY.md § B.10.
@@ -299,7 +306,7 @@ function companyLevelChecks(company: Company, today: Date): ReadinessCheck[] {
   }
 
   // 5. Escalation path
-  const hasEscalation = company.faq.some((f) => f.escalationInstructions)
+  const hasEscalation = allAnswers(company).some((a) => a.answer.escalationInstructions)
   checks.push(
     hasEscalation
       ? pass(
@@ -318,9 +325,7 @@ function companyLevelChecks(company: Company, today: Date): ReadinessCheck[] {
   )
 
   // 6. Interview-process baseline
-  const interviewFaq = company.faq.find(
-    (f) => f.category === "interview_process" && isPublishedCleared(f)
-  )
+  const interviewFaq = answeredInCategory(company, "interview_process")
   checks.push(
     interviewFaq
       ? pass(
@@ -339,7 +344,7 @@ function companyLevelChecks(company: Company, today: Date): ReadinessCheck[] {
   )
 
   // 7. Company-size answer
-  const sizeFaq = company.faq.find((f) => f.category === "size_growth" && isPublishedCleared(f))
+  const sizeFaq = answeredInCategory(company, "size_growth")
   checks.push(
     sizeFaq
       ? pass("size_answer", "Approved answer for company size", "A published answer exists.")
@@ -354,7 +359,7 @@ function companyLevelChecks(company: Company, today: Date): ReadinessCheck[] {
   )
 
   // 8. Culture answer
-  const cultureFaq = company.faq.find((f) => f.category === "culture" && isPublishedCleared(f))
+  const cultureFaq = answeredInCategory(company, "culture")
   checks.push(
     cultureFaq
       ? pass(
@@ -598,24 +603,38 @@ export function faqSection(category: FaqCategory): CompanySection {
 }
 
 /**
- * The whole definition of "unanswered": a question candidates asked that nobody
- * has written an answer to yet.
- *
- * Derived, never stored. An earlier pass kept a five-state enum
- * (`open → assigned → drafted → resolved → wont_answer`) on a separate
- * `KnowledgeGap` type, which meant the status and the answer could disagree —
- * and nothing ever advanced the enum anyway. "Drafted" is what the edit buffer
- * already means, and "resolved" is what a filled-in answer already means.
+ * Re-exported so a component needs one import for "the question and whether it's
+ * answered". The definitions live in `company-inheritance.ts`, next to the
+ * resolver that decides what "answered" means across scopes.
  */
-export function isUnanswered(entry: FaqEntry): boolean {
-  return !entry.approvedAnswer.trim()
+export { isUnanswered, unansweredQuestions } from "@/lib/company-inheritance"
+
+/**
+ * A published, candidate-cleared answer in a category — the existence test the
+ * baseline checks use.
+ *
+ * Scope-agnostic on purpose: an interview-process answer written only for one
+ * team still means the company has one. What it can't tell you is whether *this
+ * job* has one, which is what `resolveAnswer` is for.
+ */
+function answeredInCategory(company: Company, category: FaqCategory) {
+  return allAnswers(company).find(
+    ({ answer, catalog }) => catalog?.category === category && isPublishedCleared(answer)
+  )
 }
 
-/** Unanswered questions, most-asked first — the inbox and the rail badge. */
-export function unansweredQuestions(company: Company): FaqEntry[] {
-  return company.faq
-    .filter(isUnanswered)
-    .sort((a, b) => b.askedCount - a.askedCount)
+/**
+ * The questions a section owns — routed by the *catalog's* category, so a
+ * question lands in the section that answers it without anyone filing it there.
+ */
+export function questionsForSection(
+  company: Company,
+  section: CompanySection
+): CompanyQuestion[] {
+  return companyQuestions(company).filter((q) => {
+    const catalog = questionOf(company, q)
+    return catalog ? faqSection(catalog.category) === section : false
+  })
 }
 
 /** Which section owns each policy group. */
@@ -646,15 +665,10 @@ function allBearings(company: Company): LabeledBearing[] {
       label: `Policy — ${p.label}`,
       section: policySection(p.group),
     })),
-    ...company.faq.map((f) => ({
-      ...f,
-      label: `Question — ${f.questionIntent}`,
-      section: faqSection(f.category),
-    })),
-    ...company.departments.map((d) => ({
-      ...d,
-      label: `Department — ${d.name}`,
-      section: "teams" as CompanySection,
+    ...allAnswers(company).map(({ answer, catalog }) => ({
+      ...answer,
+      label: `Question — ${catalog?.intent ?? answer.id}`,
+      section: catalog ? faqSection(catalog.category) : ("profile" as CompanySection),
     })),
     ...allTeams(company).map((t) => ({
       ...t,
@@ -717,24 +731,19 @@ function buildQueues(company: Company, today: Date): IssueQueue[] {
   // Routed to the section that will answer them. This used to be stamped
   // `"faq"` — a section that no longer exists, hidden by an `as` cast, so every
   // item in this queue linked nowhere.
-  const missingAnswers = unansweredQuestions(company).map((f) => ({
-    id: f.id,
-    label: f.questionIntent,
-    detail: f.askedClientAt
-      ? `Asked ${f.askedCount}× · waiting on the client since ${f.askedClientAt}`
-      : `Asked ${f.askedCount}×`,
-    section: faqSection(f.category),
-  }))
+  const missingAnswers = unansweredCompanyQuestions(company).map((q) => {
+    const catalog = questionOf(company, q)
+    return {
+      id: q.questionId,
+      label: catalog?.intent ?? q.questionId,
+      detail: q.askedClientAt
+        ? `Asked ${q.askedCount}× · waiting on the client since ${q.askedClientAt}`
+        : `Asked ${q.askedCount}×`,
+      section: catalog ? faqSection(catalog.category) : ("profile" as CompanySection),
+    }
+  })
 
   const contextlessGroups = [
-    ...company.departments
-      .filter((d) => !d.candidateFacingDescription || !isPublishedCleared(d))
-      .map((d) => ({
-        id: d.id,
-        label: `Department — ${d.name}`,
-        detail: "No approved candidate-facing description",
-        section: "teams" as CompanySection,
-      })),
     ...allTeams(company)
       .filter((t) => !t.dayInTheLife || !isPublishedCleared(t))
       .map((t) => ({
@@ -832,19 +841,19 @@ function computeCompleteness(company: Company) {
   // Only answered questions count as done. An unanswered one still raises the
   // denominator below, so a company that keeps collecting questions without
   // answering them reports as *less* complete, which is the truth.
-  const faqAnswered = company.faq.filter((f) => !isUnanswered(f)).length
+  const faqAnswered = companyQuestions(company).filter((q) => !isUnanswered(q)).length
 
   const overallDone = narrativeFilled + policiesFilled + identityFilled + faqAnswered
   const overallTotal =
     narrative.length +
     Math.max(company.policies.length, 12) +
     identityFields.length +
-    Math.max(company.faq.length, 8)
+    Math.max(companyQuestions(company).length, 8)
 
   const candidateFacing = [
     ...narrative,
     ...company.policies,
-    ...company.faq,
+    ...allAnswers(company).map((a) => a.answer),
   ].filter((i) => i.visibility.clearance === "cleared_for_candidates")
   const candidateReady = candidateFacing.filter(isCleared).length
 
@@ -875,11 +884,11 @@ function computeCompleteness(company: Company) {
 
 function computeAgentContext(company: Company) {
   const narrative = narrativeItems(company).filter((k) => k.body.trim())
-  const all = [...narrative, ...company.policies, ...company.faq]
+  const all = [...narrative, ...company.policies, ...allAnswers(company).map((a) => a.answer)]
 
   return {
     narrativeBlocks: narrative.filter(agentCanUse).length,
-    faqAnswers: company.faq.filter(agentCanUse).length,
+    faqAnswers: allAnswers(company).filter((a) => agentCanUse(a.answer)).length,
     policies: company.policies.filter((p) => agentCanUse(p) && p.candidateFacingText).length,
     escalationRules: all.filter(agentMustEscalate).length,
     excludedInternal: allBearings(company).filter((b) => b.visibility.clearance === "recruiters_only")

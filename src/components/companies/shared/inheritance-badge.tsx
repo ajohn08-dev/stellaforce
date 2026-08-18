@@ -16,7 +16,6 @@ import type { KnowledgeLevel } from "@/lib/mock-companies"
 
 const LEVEL_LABELS: Record<KnowledgeLevel, string> = {
   company: "Company",
-  department: "Department",
   team: "Team",
   job: "Role",
 }

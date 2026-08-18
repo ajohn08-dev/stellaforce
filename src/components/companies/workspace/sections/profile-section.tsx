@@ -13,7 +13,7 @@ import {
   SectionShell,
 } from "@/components/companies/workspace/section-shell"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
-import { faqSection, type CompanyReadiness } from "@/lib/company-readiness"
+import { questionsForSection, type CompanyReadiness } from "@/lib/company-readiness"
 import {
   COMPANY_STAGE_LABELS,
   OPERATING_MODEL_LABELS,
@@ -63,7 +63,7 @@ export function ProfileSection({
   readiness: CompanyReadiness
   today: Date
 }) {
-  const questions = company.faq.filter((f) => faqSection(f.category) === section.key)
+  const questions = questionsForSection(company, section.key)
 
   return (
     <SectionShell section={section} readiness={readiness}>
@@ -208,6 +208,7 @@ export function ProfileSection({
       </FieldCard>
 
       <SectionQuestions
+        company={company}
         entries={questions}
         today={today}
         emptyPrompt="Nothing recorded yet. Questions about company size, growth, and stability belong here — agents will escalate them until you add one."

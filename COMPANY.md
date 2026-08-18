@@ -455,7 +455,14 @@ reading as a property of the system, not a setting someone chose.
 
 ## B.8 Departments & teams · Jobs · Interview process
 
-**Departments & teams.** The one section whose **empty state is the correct state**:
+**Departments & teams.** `Department` is **gone** — merged into a self-nesting
+`Team` (`parentTeamId`), so Go-to-Market › Channel Growth is two teams and depth
+is data. That deletes a decision nobody could make correctly ("is this a
+department or a team?"), lets a customer have one tier or four with no schema
+change, and makes the rendered tree the org chart. One recursive component draws
+every tier. Each team shows how many jobs inherit from it.
+
+The one section whose **empty state is the correct state**:
 *"No departments yet — that's fine. Company-level knowledge covers most roles. Create
 a department when a job needs context this company profile can't provide."* Each
 department card names the job that caused it to exist and nests its teams, each
@@ -827,7 +834,7 @@ integrator and distributor relationships across the United States."*
 `id` · `companyId` · `departmentId?` · `teamId?` · `title` · `location` · `travelPct` ·
 `reportsToStakeholderId` · `rolePurpose` · `compensation` · `sponsorshipPolicy` ·
 `typicalWeek` · `first90DayOutcomes` · `roleRisks` · `overrides[]` (InheritanceOverride)
-· `roleFaqEntryIds[]`.
+· job-scoped `Answer` rows (see D.6).
 
 **LumaGrid.** Regional Channel Development Manager, Central — location *"Texas
 preferred; remote within the Central United States"*, `travelPct: "40–60%"`, reports to
@@ -836,12 +843,43 @@ VP of Channel Growth, `compensation: "$115K base; $200K OTE; uncapped commission
 considered for candidates already authorized to work in the United States, subject to
 legal review. Do not promise sponsorship."*
 
-## D.6 FAQEntry
+## D.6 Question · CompanyQuestion · Answer
 
-`id` · `companyId` · `level` + `levelRefId` · `category` · `questionIntent` ·
-`questionVariants[]` · `approvedAnswer` · `expandedAnswer` · `escalationInstructions` ·
-`fallbackAnswer` · `prohibitedClaims[]` · `relatedLinks[]` · `visibility` ·
-`askedCount` · `lastAskedAt` · `askedClientAt`.
+**`FaqEntry` is gone.** It fused a question and an answer into one row owned by
+one company, which is why customer #2 retyped the same twenty questions, drifted
+on categories, and invented their own prohibited-claims list. A question is the
+same question everywhere; only the answer differs.
+
+**`Question`** (`src/lib/question-catalog.ts`) — `id` · `scope` (`global` |
+`company`) · `intent` · `variants[]` · `category` · `sensitive` ·
+`defaultAgentUse` · `prohibitions[]`. **The one thing shared across every
+customer.** Company-scoped entries exist for the genuinely bespoke (*"Is the
+Central territory greenfield?"*) and should stay rare — anything a second
+company would recognise belongs in the global catalog, where every customer gets
+it.
+
+**`CompanyQuestion`** — `questionId` · `askedCount` · `lastAskedAt` ·
+`askedClientAt` · `answers[]`. Derived, not stored per customer:
+`companyQuestions()` projects the catalog onto a company and synthesises an empty
+row wherever there's nothing recorded (a left join, in DB terms). That's what
+makes a new customer's Unanswered inbox an intake checklist on day one.
+
+**`Answer`** — `id` · `scope` (`company` | `team` | `job` + `refId`) · `body` ·
+`expandedAnswer` · `escalationInstructions` · `prohibitedClaims[]` ·
+`visibility`. The visibility block lives here, not on the question: clearance,
+verification, and review cadence describe a *claim*, and only an answer makes
+one.
+
+**Resolution** (`src/lib/company-inheritance.ts`) — `global → company → team …
+team → job`, the same cascade `workflow-settings.ts` uses. **Answers override**
+(nearest wins); **prohibitions accumulate** (unioned from the catalog and every
+scope in the chain, never removable). `resolveAnswer` is called by the UI, by
+readiness, and by the agent compile, so what the screen says the agent will say
+and what it says cannot diverge.
+
+**Never shared between customers:** answers. Not as templates, not as "copy from
+a similar company." Questions, phrasings, categories, and prohibitions travel;
+answers never do.
 
 **This type covers unanswered questions too** — there is no second type for them
 (see D.10). An unanswered question is an entry with an empty `approvedAnswer`
@@ -908,9 +946,9 @@ detail available in the activity log.
 ## D.10 KnowledgeGap — **removed; merged into FAQEntry (D.6)**
 
 There is no gap type. A question the agent couldn't answer is not a different
-kind of object from one it could — it's an `FaqEntry` whose `approvedAnswer` is
-still empty, already sitting in the section that will answer it (routed by
-`faqSection()`), from the moment a candidate asks.
+kind of object from one it could — it's a `CompanyQuestion` with no written
+answer at any scope, already sitting in the section that will answer it (routed
+by `faqSection()`), from the moment a candidate asks.
 
 What the merge deleted, and why:
 
@@ -920,7 +958,7 @@ What the merge deleted, and why:
 | `assignedOwnerId` | Assignment needs a team queue, a notification, and a "mine" filter. There are none. The assignee was always the account owner (already in the header) or the client — and the client isn't an assignee, they're a **wait**, now `askedClientAt`. |
 | `proposedLevel` | Asked the consequential question before the answer was written, offering three levels that don't apply in a company workspace. The level is inferred from *where* it gets answered. |
 | `sourceQuestion` / `occurrenceCount` / `firstAskedAt` | Already `questionIntent` / `askedCount` / `lastAskedAt` on the entry. |
-| `resolvedByFaqEntryId` | The gap **is** the entry. Nothing to link. |
+| `resolvedByFaqEntryId` | The gap **is** the question. Writing an answer resolves it. |
 
 Consequences: nothing "moves back" to a section on resolution (it was never
 anywhere else); the Unanswered inbox is a **filter over `company.faq`**, not a
@@ -1015,8 +1053,8 @@ When a critical question has unknown or unverified information, the agent escala
 > "I don't have a confirmed answer for this role. I can flag this for the recruiting
 > team to verify."
 
-It then records an **unanswered `FaqEntry`** — same type as an answered one, empty
-`approvedAnswer` — in the section its category routes to, where it surfaces both in
+It then records an **unanswered `CompanyQuestion`** — same type as an answered one,
+no written answer at any scope — in the section its category routes to, where it surfaces both in
 place and in the Unanswered inbox with its `askedCount`. Candidate questions are the
 primary discovery mechanism for what the profile is missing; unanswered questions are a
 feature of the loop, not an error log.

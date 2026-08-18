@@ -1,4 +1,6 @@
 import type { MockJobStatus } from "@/lib/mock-jobs"
+import { COMPANY_SCOPE, type CompanyQuestion, type ScopeKind } from "@/lib/company-inheritance"
+import type { Question } from "@/lib/question-catalog"
 import type {
   AgentUse,
   Clearance,
@@ -41,7 +43,11 @@ export const STANDING_PROHIBITIONS: string[] = [
 // Shared
 // ---------------------------------------------------------------------------
 
-export type KnowledgeLevel = "company" | "department" | "team" | "job"
+/**
+ * The scopes knowledge can attach to. **No `department`** — `Department` merged
+ * into a self-nesting `Team`, so depth is data rather than a named level.
+ */
+export type KnowledgeLevel = ScopeKind
 
 export type CompanyStage =
   | "seed"
@@ -328,50 +334,20 @@ export const FAQ_CATEGORY_ORDER: FaqCategory[] = Object.keys(
 ) as FaqCategory[]
 
 /**
- * A question candidates ask — **answered or not**.
+ * Questions are **global** and answers are **scoped** — see
+ * `src/lib/question-catalog.ts` for the catalog and
+ * `src/lib/company-inheritance.ts` for `CompanyQuestion`, `Answer`, and the
+ * resolver.
  *
- * There is no separate "knowledge gap" type any more. A question the agent
- * couldn't answer isn't a different kind of object; it's this one with
- * `approvedAnswer` still empty, sitting in the section that will answer it
- * (routed by `faqSection`). That emptiness is the entire unanswered state — no
- * status enum, no assignee, no separate inbox table — so answering is the same
- * edit-and-publish as every other field in the workspace, and the question is
- * already where it belongs rather than needing to be filed there afterwards.
- *
- * Unanswered entries carry `state: "draft"`, so every published-only sweep
- * (agent context, staleness, unverified claims) skips them for free: a question
- * with no answer asserts nothing.
+ * `FaqEntry` used to fuse the two into one row owned by one company, which is
+ * why customer #2 retyped the same twenty questions, drifted on categories, and
+ * invented their own prohibited-claims list. A question is the same question
+ * everywhere; only the answer differs.
  */
-export type FaqEntry = {
-  id: string
-  level: KnowledgeLevel
-  levelRefId: string | null
-  category: FaqCategory
-  questionIntent: string
-  questionVariants: string[]
-  /** Empty means unanswered. See `isUnanswered` in `company-readiness.ts`. */
-  approvedAnswer: string
-  expandedAnswer: string | null
-  escalationInstructions: string | null
-  fallbackAnswer: string | null
-  /** Things the agent must never say on this topic. The safety valve. */
-  prohibitedClaims: string[]
-  relatedLinks: { label: string; url: string }[]
-  visibility: VisibilityBlock
-  askedCount: number
-  lastAskedAt: string | null
-  /**
-   * ISO date the client was asked for the answer, or null.
-   *
-   * This is the honest replacement for an assignee. The blocking fact about an
-   * unanswered question is almost never *which colleague owns it* — it's whether
-   * we're waiting on someone outside the tool, and since when.
-   */
-  askedClientAt: string | null
-}
+export type { Answer, CompanyQuestion } from "@/lib/company-inheritance"
 
 // ---------------------------------------------------------------------------
-// Departments, teams, stakeholders
+// Teams and stakeholders
 // ---------------------------------------------------------------------------
 
 export type StakeholderRole =
@@ -399,42 +375,48 @@ export type Stakeholder = {
   visibility: VisibilityBlock
 }
 
+/**
+ * An org unit knowledge can be scoped to — **and `Department` is gone, merged
+ * into this.**
+ *
+ * They were the same shape at two depths: both carried a name, a mission, a
+ * candidate-facing description, a leader, a size, internal notes, and a
+ * visibility block. The only difference was that one nested the other, and the
+ * split forced a decision at creation time — *"is Go-to-Market a department or a
+ * team?"* — that a recruiter can't get right and whose answer has no visible
+ * consequence until much later.
+ *
+ * With `parentTeamId`, Go-to-Market → Channel Growth is two teams, one nested in
+ * the other. Depth is data, so the tree *is* the org chart at whatever depth a
+ * company actually has, and a customer with four tiers needs no schema change.
+ * Teams are still created only when a job needs context the company profile
+ * can't give (`createdBecauseJobId`).
+ */
 export type Team = {
   id: string
-  departmentId: string
+  /** Null for a root team. The whole of what used to be the department/team split. */
+  parentTeamId: string | null
   name: string
   mission: string
-  hiringManagerId: string | null
+  /** What an agent may say about this unit. Was `candidateFacingDescription` on Department. */
+  description: string | null
+  /** Hiring manager for a leaf team; the executive for a parent. Same field, same purpose. */
+  leaderId: string | null
   sizeRange: string | null
+  operatingModel: string | null
   locations: string[]
   timezoneSpread: string | null
   workingStyle: string | null
   collaborationCadence: string | null
   dayInTheLife: string | null
   goals: string[]
+  crossFunctionalPartners: string[]
+  commonRoleFamilies: string[]
   cultureNotes: string | null
   internalNotes: string | null
   visibility: VisibilityBlock
   /** Which job caused this team to exist. Enforces "create only when needed". */
   createdBecauseJobId: string | null
-  linkedJobIds: string[]
-}
-
-export type Department = {
-  id: string
-  name: string
-  mission: string
-  executiveLeaderId: string | null
-  candidateFacingDescription: string | null
-  sizeRange: string | null
-  operatingModel: string | null
-  crossFunctionalPartners: string[]
-  commonRoleFamilies: string[]
-  internalNotes: string | null
-  visibility: VisibilityBlock
-  createdBecauseJobId: string | null
-  linkedJobIds: string[]
-  teams: Team[]
 }
 
 // ---------------------------------------------------------------------------
@@ -454,7 +436,6 @@ export type InheritanceOverride = {
 export type CompanyJob = {
   id: string
   title: string
-  departmentId: string | null
   teamId: string | null
   location: string
   travel: string | null
@@ -594,8 +575,12 @@ export type Company = {
 
   knowledge: KnowledgeItem[]
   policies: PolicyItem[]
-  faq: FaqEntry[]
-  departments: Department[]
+  /** Catalog questions as they stand here: how often asked, and the answers written. */
+  questions: CompanyQuestion[]
+  /** The genuinely bespoke, e.g. "Is the Central territory greenfield?". Rare by design. */
+  customQuestions: Question[]
+  /** Flat list; nesting is `parentTeamId`. Was `departments` with `teams` inside. */
+  teams: Team[]
   stakeholders: Stakeholder[]
   jobs: CompanyJob[]
   activity: ActivityEntry[]
@@ -1380,538 +1365,522 @@ const LUMAGRID_POLICIES: PolicyItem[] = [
   },
 ]
 
-const LUMAGRID_FAQ: FaqEntry[] = [
+/**
+ * Company-scoped questions — the genuinely bespoke.
+ *
+ * *"Is the Central territory an existing book of business or greenfield?"* is
+ * not a question any other customer's candidates will ever ask. Anything a
+ * second company would recognise belongs in `GLOBAL_QUESTIONS` instead, where
+ * every customer gets it for free; these are the exception, and they should stay
+ * rare.
+ */
+const LUMAGRID_CUSTOM_QUESTIONS: Question[] = [
   {
-    id: "faq-lg-01",
-    level: "company",
-    levelRefId: null,
-    category: "size_growth",
-    questionIntent: "How big is the company?",
-    questionVariants: [
-      "How many employees do you have?",
-      "Is this a startup?",
-      "How fast are you growing?",
-    ],
-    approvedAnswer:
-      "LumaGrid has between 150 and 200 employees. It's growth-stage and privately held, and the go-to-market organization is the part growing fastest right now.",
-    expandedAnswer:
-      "The company has roughly doubled headcount since 2023, with most of that growth in go-to-market and customer-facing engineering.",
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: [
-      "Never give a specific revenue figure or growth rate.",
-      "Never characterize funding status beyond 'privately held'.",
-    ],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Client intake call, 4 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-04",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 180,
-      nextReviewAt: "2027-01-31",
-    }),
-    askedCount: 34,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-15",
-  },
-  {
-    id: "faq-lg-02",
-    level: "company",
-    levelRefId: null,
-    category: "culture",
-    questionIntent: "What is the culture like?",
-    questionVariants: [
-      "What's it like to work there?",
-      "How would you describe the team?",
-      "Is it a fast-paced environment?",
-    ],
-    approvedAnswer:
-      "Customer-focused, high-ownership, and practical. Decisions get made close to the customer rather than escalated, and people are expected to come with a recommendation rather than a status update. It moves quickly.",
-    expandedAnswer:
-      "In the go-to-market org specifically, that means a regional lead sets their own territory strategy rather than executing a plan handed down from headquarters.",
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: [
-      "Never characterize work-life balance in hours-per-week terms.",
-      "Never compare the culture to a named competitor.",
-    ],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Client intake call, 4 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-04",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 180,
-      nextReviewAt: "2027-01-31",
-    }),
-    askedCount: 28,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-03",
-    level: "company",
-    levelRefId: null,
-    category: "work_authorization",
-    questionIntent: "Do you sponsor visas?",
-    questionVariants: [
-      "Can you sponsor H-1B?",
-      "Do you do green card sponsorship?",
-      "Will you transfer my H-1B?",
-      "Do I need to already have work authorization?",
-    ],
-    approvedAnswer:
-      "Work authorization is evaluated per role. For this role, an H-1B transfer may be considered for candidates already authorized to work in the United States, subject to legal review.",
-    expandedAnswer: null,
-    escalationInstructions:
-      "If the candidate asks about a new H-1B petition or a green-card timeline, hand off to the recruiter — those policies are not confirmed.",
-    fallbackAnswer: UNKNOWN_FALLBACK,
-    prohibitedClaims: [
-      "Never state or imply that sponsorship is guaranteed.",
-      "Never predict an immigration outcome or timeline.",
-      "Never advise on immigration eligibility.",
-      "Never confirm a new H-1B petition — that policy is unconfirmed.",
-    ],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Client counsel via Priya Raghunathan, 6 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-06",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 90,
-      nextReviewAt: "2026-11-04",
-      isPresetDefault: false,
-    }),
-    askedCount: 19,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-04",
-    level: "company",
-    levelRefId: null,
-    category: "comp_philosophy",
-    questionIntent: "How does compensation work?",
-    questionVariants: [
-      "What's the salary?",
-      "Is the commission capped?",
-      "How is the split between base and variable?",
-    ],
-    approvedAnswer:
-      "LumaGrid shares the range for a role in the first recruiter conversation. Quota-carrying roles are base plus uncapped commission, and all full-time roles include stock options.",
-    expandedAnswer: null,
-    escalationInstructions:
-      "If the candidate wants to negotiate, name a target number, or ask about an exception, hand off to the recruiter immediately.",
-    fallbackAnswer: UNKNOWN_FALLBACK,
-    prohibitedClaims: [
-      "Never confirm a specific offer figure.",
-      "Never suggest a number is negotiable or that an exception is possible.",
-      "Never compare compensation to another company or another candidate.",
-    ],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Client intake call, 4 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-04",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 90,
-      nextReviewAt: "2026-11-02",
-      isPresetDefault: false,
-    }),
-    askedCount: 41,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-05",
-    level: "company",
-    levelRefId: null,
-    category: "remote_model",
-    questionIntent: "Is this role remote?",
-    questionVariants: [
-      "Do I have to be in Austin?",
-      "How many days in office?",
-      "Can I work from anywhere in the US?",
-    ],
-    approvedAnswer:
-      "Austin-based teams work hybrid, three days a week in the office. Approved field roles, including regional channel roles, are fully remote — this role is remote within the Central United States.",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: [
-      "Never promise a permanent remote arrangement for an Austin-based role.",
-    ],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Client intake call, 4 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-04",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 180,
-      nextReviewAt: "2027-01-31",
-    }),
-    askedCount: 52,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-06",
-    level: "company",
-    levelRefId: null,
-    category: "interview_process",
-    questionIntent: "What does the interview process look like?",
-    questionVariants: [
-      "How many rounds?",
-      "How long does it take?",
-      "Who will I meet?",
-    ],
-    approvedAnswer:
-      "Four stages: a recruiter screen, a conversation with the hiring manager, a working session on territory or partner strategy, and a panel with go-to-market leadership. Most candidates go from first call to decision in about three weeks.",
-    expandedAnswer:
-      "The working session is a discussion, not a presentation to prepare — you'll talk through how you'd approach a region.",
-    escalationInstructions:
-      "Never confirm a specific interview date or commit to scheduling. Route scheduling to the recruiter.",
-    fallbackAnswer: null,
-    prohibitedClaims: [
-      "Never promise an interview or a next round.",
-      "Never commit to a specific date or timeline for a decision.",
-    ],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Client intake call, 4 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-04",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 90,
-      nextReviewAt: "2026-11-02",
-    }),
-    askedCount: 47,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-07",
-    level: "company",
-    levelRefId: null,
-    category: "products_customers",
-    questionIntent: "What does the product actually do?",
-    questionVariants: [
-      "What do you sell?",
-      "Who are your customers?",
-      "Is this hardware or software?",
-    ],
-    approvedAnswer:
-      "LumaGrid Command is an open-platform video management system with cloud device management and AI-assisted incident search. It's software — LumaGrid doesn't make cameras. Customers are security integrators and enterprise security teams in education, healthcare, logistics, and multi-site retail.",
-    expandedAnswer:
-      "The open-platform part is the point: customers keep the mixed camera hardware they already own and manage all of it from one place.",
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: ["Never name a specific customer that isn't in an approved case study."],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Product marketing one-pager, v4.2",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-12",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 180,
-      nextReviewAt: "2027-02-08",
-    }),
-    askedCount: 30,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-15",
-  },
-  {
-    id: "faq-lg-08",
-    level: "company",
-    levelRefId: null,
+    id: "q-lg-central-territory",
+    intent: "Is the Central territory an existing book of business or greenfield?",
     category: "why_role_open",
-    questionIntent: "Why is this role open?",
-    questionVariants: [
-      "Is this a backfill?",
-      "Did someone leave?",
-      "Is this a new position?",
-    ],
-    approvedAnswer:
-      "It's a new position. LumaGrid is building out a regional channel structure and the Central region doesn't have dedicated coverage yet.",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: [
-      "Never discuss a previous employee's departure.",
-      "Never speculate about restructuring.",
-    ],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Client intake call, 4 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-04",
-      verifiedBy: "Anna John",
-    }),
-    askedCount: 22,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-14",
-  },
-  {
-    id: "faq-lg-09",
-    level: "company",
-    levelRefId: null,
-    category: "benefits",
-    questionIntent: "What benefits do you offer?",
-    questionVariants: ["What's the health insurance like?", "Is there a 401k match?", "How much PTO?"],
-    approvedAnswer:
-      "PPO and high-deductible health options with 90% of the employee premium covered, company-paid dental and vision, a 401(k) with a 4% immediately-vesting match, flexible PTO with a 15-day minimum, and 12 weeks of fully paid primary parental leave.",
-    expandedAnswer:
-      "There's also a $2,000 annual learning allowance and a $1,500 home-office stipend for remote roles.",
-    escalationInstructions: null,
-    fallbackAnswer: UNKNOWN_FALLBACK,
-    prohibitedClaims: ["Never quote a specific premium dollar amount."],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "2026 benefits summary",
-      verification: "verified",
-      lastVerifiedAt: "2026-07-15",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 365,
-      nextReviewAt: "2027-07-15",
-    }),
-    askedCount: 38,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-10",
-    level: "company",
-    levelRefId: null,
-    category: "financial_stability",
-    questionIntent: "Is the company financially stable?",
-    questionVariants: ["Are you profitable?", "How much runway?", "Any layoffs recently?"],
-    approvedAnswer:
-      "LumaGrid is a growth-stage private company with an established customer base. I'm not able to share financial details — the recruiter can talk through what's public.",
-    expandedAnswer: null,
-    escalationInstructions:
-      "Always hand off. Do not attempt to reassure the candidate beyond this answer.",
-    fallbackAnswer: UNKNOWN_FALLBACK,
-    prohibitedClaims: [
-      "Never comment on runway, profitability, or funding.",
-      "Never comment on layoffs, past or anticipated.",
-      "Never reassure the candidate about job security.",
-    ],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "escalate", "published", {
-      source: "Recruiter policy",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-04",
-      verifiedBy: "Anna John",
-      isPresetDefault: false,
-    }),
-    askedCount: 11,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-13",
-  },
-  {
-    id: "faq-lg-11",
-    level: "team",
-    levelRefId: "team-lg-01",
-    category: "typical_day",
-    questionIntent: "What does a typical week look like on this team?",
-    questionVariants: ["What would I actually be doing?", "How much of it is travel?"],
-    approvedAnswer:
-      "Partner visits and enablement sessions, distributor coordination, partner pipeline reviews, joint business planning, sales-engineering coordination, and regional travel. Travel runs 40 to 60%.",
-    expandedAnswer:
-      "A typical week has two or three days on the road with partners and the rest on pipeline and planning work.",
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: ["Never promise a specific travel percentage below the stated range."],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Marcus Ellery, 5 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-05",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 180,
-      nextReviewAt: "2027-02-01",
-    }),
-    askedCount: 16,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-12",
-    level: "team",
-    levelRefId: "team-lg-01",
-    category: "leadership",
-    questionIntent: "Who would I report to?",
-    questionVariants: ["Who's the hiring manager?", "What's the reporting structure?"],
-    approvedAnswer:
-      "You'd report to Marcus Ellery, VP of Channel Growth. He spent twelve years building integrator and distributor programs in physical security before joining LumaGrid, and he still runs partner visits himself most weeks.",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: ["Never characterize the manager's management style beyond the approved bio."],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Bio approved by client marketing, 2 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-02",
-      verifiedBy: "Anna John",
-      reviewCadenceDays: 180,
-      nextReviewAt: "2027-01-29",
-    }),
-    askedCount: 24,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-15",
-  },
-  {
-    id: "faq-lg-13",
-    level: "team",
-    levelRefId: "team-lg-01",
-    category: "travel",
-    questionIntent: "How much travel is involved?",
-    questionVariants: ["Is this a road job?", "How many nights away?"],
-    approvedAnswer:
-      "Travel runs 40 to 60% for this role — partner visits, enablement sessions, and distributor meetings across the Central region.",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: ["Never promise travel below the stated range."],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Marcus Ellery, 5 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-05",
-      verifiedBy: "Anna John",
-    }),
-    askedCount: 20,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-14",
-    level: "department",
-    levelRefId: "dept-lg-01",
-    category: "team_collaboration",
-    questionIntent: "How does the go-to-market team work together?",
-    questionVariants: ["Who would I work with?", "Is there sales engineering support?"],
-    approvedAnswer:
-      "The go-to-market org covers direct sales, channel, customer success, and revenue operations. Channel roles work closely with sales engineering on partner technical enablement and with revenue operations on partner pipeline reporting.",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: null,
-    prohibitedClaims: [],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "published", {
-      source: "Marcus Ellery, 5 Aug 2026",
-      verification: "verified",
-      lastVerifiedAt: "2026-08-05",
-      verifiedBy: "Anna John",
-    }),
-    askedCount: 9,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-12",
-  },
-
-  // --- Asked by candidates, not yet answered -------------------------------
-  // Same type, same list, empty answer. They render at the top of the section
-  // that owns them and in the Unanswered inbox, which is a filter over exactly
-  // these rows rather than a second store.
-  {
-    id: "faq-lg-15",
-    level: "company",
-    levelRefId: null,
-    category: "why_role_open",
-    questionIntent: "Is the Central territory an existing book of business or greenfield?",
-    questionVariants: [],
-    approvedAnswer: "",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: UNKNOWN_FALLBACK,
-    prohibitedClaims: [],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "draft", {
-      source: "Asked in candidate screens",
-      verification: "unverified",
-    }),
-    askedCount: 6,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-16",
-    level: "company",
-    levelRefId: null,
-    category: "work_authorization",
-    questionIntent: "Would you file a new H-1B petition, not just a transfer?",
-    questionVariants: [],
-    approvedAnswer: "",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: UNKNOWN_FALLBACK,
-    prohibitedClaims: [],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "draft", {
-      source: "Asked in candidate screens",
-      verification: "unverified",
-    }),
-    askedCount: 4,
-    askedClientAt: "2026-08-12",
-    lastAskedAt: "2026-08-16",
-  },
-  {
-    id: "faq-lg-17",
-    level: "company",
-    levelRefId: null,
-    category: "comp_philosophy",
-    questionIntent: "What's the quota, and what share of the team hit it last year?",
-    questionVariants: [],
-    approvedAnswer: "",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: UNKNOWN_FALLBACK,
-    prohibitedClaims: [],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "draft", {
-      source: "Asked in candidate screens",
-      verification: "unverified",
-    }),
-    askedCount: 3,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-15",
-  },
-  {
-    id: "faq-lg-18",
-    level: "company",
-    levelRefId: null,
-    category: "benefits",
-    questionIntent: "Do you offer a wellness or mental-health benefit?",
-    questionVariants: [],
-    approvedAnswer: "",
-    expandedAnswer: null,
-    escalationInstructions: null,
-    fallbackAnswer: UNKNOWN_FALLBACK,
-    prohibitedClaims: [],
-    relatedLinks: [],
-    visibility: vis("cleared_for_candidates", "on_request", "draft", {
-      source: "Asked in candidate screens",
-      verification: "unverified",
-    }),
-    askedCount: 2,
-    askedClientAt: null,
-    lastAskedAt: "2026-08-14",
+    variants: [],
+    sensitive: false,
+    defaultAgentUse: "on_request",
+    prohibitions: [],
   },
 ]
 
-const LUMAGRID_DEPARTMENTS: Department[] = [
+const LUMAGRID_QUESTIONS: CompanyQuestion[] = [
   {
-    id: "dept-lg-01",
+    questionId: "q-company-size",
+    askedCount: 34,
+    lastAskedAt: "2026-08-15",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-01",
+        scope: COMPANY_SCOPE,
+        body:
+        "LumaGrid has between 150 and 200 employees. It's growth-stage and privately held, and the go-to-market organization is the part growing fastest right now.",
+        expandedAnswer: 
+        "The company has roughly doubled headcount since 2023, with most of that growth in go-to-market and customer-facing engineering.",
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never give a specific revenue figure or growth rate.",
+          "Never characterize funding status beyond 'privately held'.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Client intake call, 4 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-04",
+        verifiedBy: "Anna John",
+        reviewCadenceDays: 180,
+        nextReviewAt: "2027-01-31",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-culture",
+    askedCount: 28,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-02",
+        scope: COMPANY_SCOPE,
+        body:
+        "Customer-focused, high-ownership, and practical. Decisions get made close to the customer rather than escalated, and people are expected to come with a recommendation rather than a status update. It moves quickly.",
+        expandedAnswer: 
+        "In the go-to-market org specifically, that means a regional lead sets their own territory strategy rather than executing a plan handed down from headquarters.",
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never characterize work-life balance in hours-per-week terms.",
+          "Never compare the culture to a named competitor.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Client intake call, 4 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-04",
+        verifiedBy: "Anna John",
+        reviewCadenceDays: 180,
+        nextReviewAt: "2027-01-31",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-visa-sponsorship",
+    askedCount: 19,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-03",
+        scope: COMPANY_SCOPE,
+        body:
+        "Work authorization is evaluated per role. For this role, an H-1B transfer may be considered for candidates already authorized to work in the United States, subject to legal review.",
+        expandedAnswer: null,
+        escalationInstructions: 
+        "If the candidate asks about a new H-1B petition or a green-card timeline, hand off to the recruiter — those policies are not confirmed.",
+        prohibitedClaims: [
+          "Never state or imply that sponsorship is guaranteed.",
+          "Never predict an immigration outcome or timeline.",
+          "Never advise on immigration eligibility.",
+          "Never confirm a new H-1B petition — that policy is unconfirmed.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Client counsel via Priya Raghunathan, 6 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-06",
+        verifiedBy: "Anna John",
+        reviewCadenceDays: 90,
+        nextReviewAt: "2026-11-04",
+        isPresetDefault: false,
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-comp-approach",
+    askedCount: 41,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-04",
+        scope: COMPANY_SCOPE,
+        body:
+        "LumaGrid shares the range for a role in the first recruiter conversation. Quota-carrying roles are base plus uncapped commission, and all full-time roles include stock options.",
+        expandedAnswer: null,
+        escalationInstructions: 
+        "If the candidate wants to negotiate, name a target number, or ask about an exception, hand off to the recruiter immediately.",
+        prohibitedClaims: [
+          "Never confirm a specific offer figure.",
+          "Never suggest a number is negotiable or that an exception is possible.",
+          "Never compare compensation to another company or another candidate.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Client intake call, 4 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-04",
+        verifiedBy: "Anna John",
+        reviewCadenceDays: 90,
+        nextReviewAt: "2026-11-02",
+        isPresetDefault: false,
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-remote",
+    askedCount: 52,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-05",
+        scope: COMPANY_SCOPE,
+        body:
+        "Austin-based teams work hybrid, three days a week in the office. Approved field roles, including regional channel roles, are fully remote — this role is remote within the Central United States.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never promise a permanent remote arrangement for an Austin-based role.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Client intake call, 4 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-04",
+        verifiedBy: "Anna John",
+        reviewCadenceDays: 180,
+        nextReviewAt: "2027-01-31",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-interview-process",
+    askedCount: 47,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-06",
+        scope: COMPANY_SCOPE,
+        body:
+        "Four stages: a recruiter screen, a conversation with the hiring manager, a working session on territory or partner strategy, and a panel with go-to-market leadership. Most candidates go from first call to decision in about three weeks.",
+        expandedAnswer: 
+        "The working session is a discussion, not a presentation to prepare — you'll talk through how you'd approach a region.",
+        escalationInstructions: 
+        "Never confirm a specific interview date or commit to scheduling. Route scheduling to the recruiter.",
+        prohibitedClaims: [
+          "Never promise an interview or a next round.",
+          "Never commit to a specific date or timeline for a decision.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Client intake call, 4 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-04",
+        verifiedBy: "Anna John",
+        reviewCadenceDays: 90,
+        nextReviewAt: "2026-11-02",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-product",
+    askedCount: 30,
+    lastAskedAt: "2026-08-15",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-07",
+        scope: COMPANY_SCOPE,
+        body:
+        "LumaGrid Command is an open-platform video management system with cloud device management and AI-assisted incident search. It's software — LumaGrid doesn't make cameras. Customers are security integrators and enterprise security teams in education, healthcare, logistics, and multi-site retail.",
+        expandedAnswer: 
+        "The open-platform part is the point: customers keep the mixed camera hardware they already own and manage all of it from one place.",
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never name a specific customer that isn't in an approved case study.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Product marketing one-pager, v4.2",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-12",
+        verifiedBy: "Anna John",
+        reviewCadenceDays: 180,
+        nextReviewAt: "2027-02-08",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-why-role-open",
+    askedCount: 22,
+    lastAskedAt: "2026-08-14",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-08",
+        scope: COMPANY_SCOPE,
+        body:
+        "It's a new position. LumaGrid is building out a regional channel structure and the Central region doesn't have dedicated coverage yet.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never discuss a previous employee's departure.",
+          "Never speculate about restructuring.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Client intake call, 4 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-04",
+        verifiedBy: "Anna John",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-benefits",
+    askedCount: 38,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-09",
+        scope: COMPANY_SCOPE,
+        body:
+        "PPO and high-deductible health options with 90% of the employee premium covered, company-paid dental and vision, a 401(k) with a 4% immediately-vesting match, flexible PTO with a 15-day minimum, and 12 weeks of fully paid primary parental leave.",
+        expandedAnswer: 
+        "There's also a $2,000 annual learning allowance and a $1,500 home-office stipend for remote roles.",
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never quote a specific premium dollar amount.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "2026 benefits summary",
+        verification: "verified",
+        lastVerifiedAt: "2026-07-15",
+        verifiedBy: "Anna John",
+        reviewCadenceDays: 365,
+        nextReviewAt: "2027-07-15",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-financial-stability",
+    askedCount: 11,
+    lastAskedAt: "2026-08-13",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-10",
+        scope: COMPANY_SCOPE,
+        body:
+        "LumaGrid is a growth-stage private company with an established customer base. I'm not able to share financial details — the recruiter can talk through what's public.",
+        expandedAnswer: null,
+        escalationInstructions: 
+        "Always hand off. Do not attempt to reassure the candidate beyond this answer.",
+        prohibitedClaims: [
+          "Never comment on runway, profitability, or funding.",
+          "Never comment on layoffs, past or anticipated.",
+          "Never reassure the candidate about job security.",
+        ],
+        visibility: vis("cleared_for_candidates", "escalate", "published", {
+        source: "Recruiter policy",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-04",
+        verifiedBy: "Anna John",
+        isPresetDefault: false,
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-typical-week",
+    askedCount: 16,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-11",
+        scope: COMPANY_SCOPE,
+        body:
+          "It varies by function. Field roles are travel-heavy; Austin-based roles are in the office three days a week.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+          source: "Client intake call, 4 Aug 2026",
+          verification: "verified",
+          lastVerifiedAt: "2026-08-04",
+          verifiedBy: "Anna John",
+          reviewCadenceDays: 180,
+          nextReviewAt: "2027-01-31",
+        }),
+      },
+      {
+        id: "ans-lumagrid-11b",
+        scope: { kind: "team", refId: "team-lg-channel" },
+        body:
+          "Partner visits and enablement sessions, distributor coordination, partner pipeline reviews, joint business planning, sales-engineering coordination, and regional travel. Travel runs 40 to 60%.",
+        expandedAnswer:
+          "A typical week has two or three days on the road with partners and the rest on pipeline and planning work.",
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never promise a specific travel percentage below the stated range.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+          source: "Marcus Ellery, 5 Aug 2026",
+          verification: "verified",
+          lastVerifiedAt: "2026-08-05",
+          verifiedBy: "Anna John",
+          reviewCadenceDays: 180,
+          nextReviewAt: "2027-02-01",
+        }),
+      },
+    ],
+  },
+  {
+    // The three-deep example: a company default, a team answer, and a role that
+    // needs its own. "Who would I report to?" is the question this whole model
+    // exists for — the same question everywhere, a different true answer at
+    // every scope.
+    questionId: "q-reporting-line",
+    askedCount: 24,
+    lastAskedAt: "2026-08-15",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-12",
+        scope: COMPANY_SCOPE,
+        body:
+          "Every role reports into the function it sits in. Your recruiter will name the specific hiring manager in the first conversation.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never characterize a manager's management style beyond an approved bio.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+          source: "Client intake call, 4 Aug 2026",
+          verification: "verified",
+          lastVerifiedAt: "2026-08-04",
+          verifiedBy: "Anna John",
+          reviewCadenceDays: 180,
+          nextReviewAt: "2027-01-31",
+        }),
+      },
+      {
+        id: "ans-lumagrid-12b",
+        scope: { kind: "team", refId: "team-lg-channel" },
+        body:
+          "You'd report to Marcus Ellery, VP of Channel Growth. He spent twelve years building integrator and distributor programs in physical security before joining LumaGrid, and he still runs partner visits himself most weeks.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+          source: "Bio approved by client marketing, 2 Aug 2026",
+          verification: "verified",
+          lastVerifiedAt: "2026-08-02",
+          verifiedBy: "Anna John",
+          reviewCadenceDays: 180,
+          nextReviewAt: "2027-01-29",
+        }),
+      },
+      {
+        id: "ans-lumagrid-12c",
+        scope: { kind: "job", refId: "job-lg-01" },
+        body:
+          "You'd report to Marcus Ellery, VP of Channel Growth, with a dotted line to Revenue Operations for territory planning — the Central region reports through RevOps for forecasting.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: ["Never describe the dotted line as a second manager."],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+          source: "Marcus Ellery, 12 Aug 2026",
+          verification: "verified",
+          lastVerifiedAt: "2026-08-12",
+          verifiedBy: "Anna John",
+          isPresetDefault: false,
+        }),
+      },
+    ],
+  },
+  {
+    questionId: "q-travel",
+    askedCount: 20,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-13",
+        scope: COMPANY_SCOPE,
+        body:
+        "Travel runs 40 to 60% for this role — partner visits, enablement sessions, and distributor meetings across the Central region.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never promise travel below the stated range.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Marcus Ellery, 5 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-05",
+        verifiedBy: "Anna John",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-team-collaboration",
+    askedCount: 9,
+    lastAskedAt: "2026-08-12",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-lumagrid-14",
+        scope: COMPANY_SCOPE,
+        body:
+        "The go-to-market org covers direct sales, channel, customer success, and revenue operations. Channel roles work closely with sales engineering on partner technical enablement and with revenue operations on partner pipeline reporting.",
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Marcus Ellery, 5 Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-05",
+        verifiedBy: "Anna John",
+      }),
+      },
+    ],
+  },
+  {
+    questionId: "q-lg-central-territory",
+    askedCount: 6,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: null,
+    answers: [],
+  },
+  {
+    questionId: "q-new-h1b-petition",
+    askedCount: 4,
+    lastAskedAt: "2026-08-16",
+    askedClientAt: "2026-08-12",
+    answers: [],
+  },
+  {
+    questionId: "q-quota-attainment",
+    askedCount: 3,
+    lastAskedAt: "2026-08-15",
+    askedClientAt: null,
+    answers: [],
+  },
+  {
+    questionId: "q-wellness-benefit",
+    askedCount: 2,
+    lastAskedAt: "2026-08-14",
+    askedClientAt: null,
+    answers: [],
+  },
+]
+
+const LUMAGRID_TEAMS: Team[] = [
+  {
+    id: "team-lg-gtm",
+    parentTeamId: null,
     name: "Go-to-Market",
     mission:
       "Build scalable revenue through direct sales, channel partnerships, customer expansion, and market development.",
-    executiveLeaderId: "sh-lg-01",
-    candidateFacingDescription:
+    description:
       "The go-to-market organization covers direct sales, channel partnerships, customer success, and revenue operations. It's the part of LumaGrid growing fastest, and the channel program is its newest investment.",
+    leaderId: "sh-lg-01",
     sizeRange: "40–55",
     operatingModel: "Hybrid in Austin; regional roles fully remote",
+    locations: ["Austin, TX"],
+    timezoneSpread: null,
+    workingStyle: null,
+    collaborationCadence: null,
+    dayInTheLife: null,
+    goals: [],
     crossFunctionalPartners: ["Sales Engineering", "Product Marketing", "Revenue Operations"],
     commonRoleFamilies: [
       "Channel development",
@@ -1919,6 +1888,7 @@ const LUMAGRID_DEPARTMENTS: Department[] = [
       "Sales engineering",
       "Customer success",
     ],
+    cultureNotes: null,
     internalNotes:
       "Marcus owns headcount for the whole GTM org and moves budget between teams mid-quarter. Confirm the req is still funded before a long search.",
     visibility: vis("cleared_for_candidates", "on_request", "published", {
@@ -1930,45 +1900,47 @@ const LUMAGRID_DEPARTMENTS: Department[] = [
       nextReviewAt: "2027-02-01",
     }),
     createdBecauseJobId: "job-lg-01",
-    linkedJobIds: ["job-lg-01"],
-    teams: [
-      {
-        id: "team-lg-01",
-        departmentId: "dept-lg-01",
-        name: "Channel Growth",
-        mission:
-          "Recruit, enable, and grow strategic security integrator and distributor relationships across the United States.",
-        hiringManagerId: "sh-lg-01",
-        sizeRange: "6–9",
-        locations: ["Austin, TX", "Remote — US regional"],
-        timezoneSpread: "US Central and Eastern",
-        workingStyle:
-          "Field-heavy and autonomous. Regional leads own their territory strategy end to end and are measured on partner-sourced pipeline rather than activity.",
-        collaborationCadence:
-          "Weekly regional pipeline review, monthly partner business reviews, quarterly in-person team offsite in Austin.",
-        dayInTheLife:
-          "Partner visits and enablement sessions, distributor coordination, partner pipeline reviews, joint business planning, sales-engineering coordination, and regional travel. Two or three days on the road in a typical week.",
-        goals: [
-          "Build a repeatable regional channel motion",
-          "Grow partner-sourced pipeline in underserved regions",
-          "Activate and enable new integrator and distributor partners",
-        ],
-        cultureNotes:
-          "Small enough that one region's strategy visibly moves the team number. People are expected to build process rather than inherit it.",
-        internalNotes:
-          "Marcus will override the scorecard if he personally likes a candidate's partner relationships. Lead with named integrator relationships in submissions.",
-        visibility: vis("cleared_for_candidates", "on_request", "published", {
-          source: "Marcus Ellery, 5 Aug 2026",
-          verification: "verified",
-          lastVerifiedAt: "2026-08-05",
-          verifiedBy: "Anna John",
-          reviewCadenceDays: 180,
-          nextReviewAt: "2027-02-01",
-        }),
-        createdBecauseJobId: "job-lg-01",
-        linkedJobIds: ["job-lg-01"],
-      },
+  },
+  {
+    // Nested one level under Go-to-Market — what used to be "a team inside a
+    // department" is now just a team with a parent.
+    id: "team-lg-channel",
+    parentTeamId: "team-lg-gtm",
+    name: "Channel Growth",
+    mission:
+      "Recruit, enable, and grow strategic security integrator and distributor relationships across the United States.",
+    description: null,
+    leaderId: "sh-lg-01",
+    sizeRange: "6–9",
+    operatingModel: null,
+    locations: ["Austin, TX", "Remote — US regional"],
+    timezoneSpread: "US Central and Eastern",
+    workingStyle:
+      "Field-heavy and autonomous. Regional leads own their territory strategy end to end and are measured on partner-sourced pipeline rather than activity.",
+    collaborationCadence:
+      "Weekly regional pipeline review, monthly partner business reviews, quarterly in-person team offsite in Austin.",
+    dayInTheLife:
+      "Partner visits and enablement sessions, distributor coordination, partner pipeline reviews, joint business planning, sales-engineering coordination, and regional travel. Two or three days on the road in a typical week.",
+    goals: [
+      "Build a repeatable regional channel motion",
+      "Grow partner-sourced pipeline in underserved regions",
+      "Activate and enable new integrator and distributor partners",
     ],
+    crossFunctionalPartners: [],
+    commonRoleFamilies: [],
+    cultureNotes:
+      "Small enough that one region's strategy visibly moves the team number. People are expected to build process rather than inherit it.",
+    internalNotes:
+      "Marcus will override the scorecard if he personally likes a candidate's partner relationships. Lead with named integrator relationships in submissions.",
+    visibility: vis("cleared_for_candidates", "on_request", "published", {
+      source: "Marcus Ellery, 5 Aug 2026",
+      verification: "verified",
+      lastVerifiedAt: "2026-08-05",
+      verifiedBy: "Anna John",
+      reviewCadenceDays: 180,
+      nextReviewAt: "2027-02-01",
+    }),
+    createdBecauseJobId: "job-lg-01",
   },
 ]
 
@@ -1976,8 +1948,7 @@ const LUMAGRID_JOBS: CompanyJob[] = [
   {
     id: "job-lg-01",
     title: "Regional Channel Development Manager, Central",
-    departmentId: "dept-lg-01",
-    teamId: "team-lg-01",
+    teamId: "team-lg-channel",
     location: "Texas preferred; remote within the Central United States",
     travel: "40–60%",
     reportsTo: "VP of Channel Growth",
@@ -2137,8 +2108,9 @@ const LUMAGRID: Company = {
   updatedAt: "2026-08-16",
   knowledge: LUMAGRID_KNOWLEDGE,
   policies: LUMAGRID_POLICIES,
-  faq: LUMAGRID_FAQ,
-  departments: LUMAGRID_DEPARTMENTS,
+  questions: LUMAGRID_QUESTIONS,
+  customQuestions: LUMAGRID_CUSTOM_QUESTIONS,
+  teams: LUMAGRID_TEAMS,
   stakeholders: LUMAGRID_STAKEHOLDERS,
   jobs: LUMAGRID_JOBS,
   activity: LUMAGRID_ACTIVITY,
@@ -2279,8 +2251,9 @@ const VERITY: Company = {
       }),
     },
   ],
-  faq: [],
-  departments: [],
+  questions: [],
+  customQuestions: [],
+  teams: [],
   stakeholders: [
     {
       id: "sh-vh-01",
@@ -2304,7 +2277,6 @@ const VERITY: Company = {
     {
       id: "job-vh-01",
       title: "Senior Data Engineer",
-      departmentId: null,
       teamId: null,
       location: "Boston, MA",
       travel: null,
@@ -2336,6 +2308,18 @@ const VERITY: Company = {
 // ===========================================================================
 // Fixture 3 — Harborline Freight (expired → "Recruiter review required")
 // ===========================================================================
+
+const HARBORLINE_CUSTOM_QUESTIONS: Question[] = [
+  {
+    id: "q-hl-newark-req",
+    intent: "Is the Newark req still open after the hiring freeze?",
+    category: "hiring_timeline",
+    variants: [],
+    sensitive: false,
+    defaultAgentUse: "on_request",
+    prohibitions: [],
+  },
+]
 
 const HARBORLINE: Company = {
   id: "co-harborline",
@@ -2502,22 +2486,25 @@ const HARBORLINE: Company = {
       }),
     },
   ],
-  faq: [
-    {
-      id: "faq-hl-01",
-      level: "company",
-      levelRefId: null,
-      category: "remote_model",
-      questionIntent: "Is this role remote?",
-      questionVariants: ["Can I work from home?", "Is there any hybrid option?"],
-      approvedAnswer:
+  customQuestions: HARBORLINE_CUSTOM_QUESTIONS,
+  questions: [
+  {
+    questionId: "q-remote",
+    askedCount: 18,
+    lastAskedAt: "2026-01-28",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-harborline-01",
+        scope: COMPANY_SCOPE,
+        body:
         "Harborline roles are on-site five days a week, near the yard the team supports.",
-      expandedAnswer: null,
-      escalationInstructions: null,
-      fallbackAnswer: null,
-      prohibitedClaims: ["Never suggest a remote exception is possible."],
-      relatedLinks: [],
-      visibility: vis("cleared_for_candidates", "on_request", "published", {
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never suggest a remote exception is possible.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
         source: "Client intake call, Nov 2025",
         verification: "stale",
         lastVerifiedAt: "2025-11-03",
@@ -2525,25 +2512,24 @@ const HARBORLINE: Company = {
         reviewCadenceDays: 180,
         nextReviewAt: "2026-05-02",
       }),
-      askedCount: 18,
-      askedClientAt: null,
-      lastAskedAt: "2026-01-28",
+      },
+    ],
     },
     {
-      id: "faq-hl-02",
-      level: "company",
-      levelRefId: null,
-      category: "size_growth",
-      questionIntent: "How big is the company?",
-      questionVariants: ["How many employees?"],
-      approvedAnswer:
+    questionId: "q-company-size",
+    askedCount: 12,
+    lastAskedAt: "2026-01-22",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-harborline-02",
+        scope: COMPANY_SCOPE,
+        body:
         "Harborline has between 400 and 600 employees across Long Beach and Newark.",
-      expandedAnswer: null,
-      escalationInstructions: null,
-      fallbackAnswer: null,
-      prohibitedClaims: [],
-      relatedLinks: [],
-      visibility: vis("cleared_for_candidates", "on_request", "published", {
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
         source: "Client marketing site",
         verification: "stale",
         lastVerifiedAt: "2025-12-02",
@@ -2551,29 +2537,28 @@ const HARBORLINE: Company = {
         reviewCadenceDays: 180,
         nextReviewAt: "2026-05-31",
       }),
-      askedCount: 12,
-      askedClientAt: null,
-      lastAskedAt: "2026-01-22",
+      },
+    ],
     },
     {
-      id: "faq-hl-03",
-      level: "company",
-      levelRefId: null,
-      category: "interview_process",
-      questionIntent: "What does the interview process look like?",
-      questionVariants: ["How many rounds?", "Who will I meet?"],
-      approvedAnswer:
+    questionId: "q-interview-process",
+    askedCount: 15,
+    lastAskedAt: "2026-01-30",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-harborline-03",
+        scope: COMPANY_SCOPE,
+        body:
         "Three stages: a recruiter screen, an on-site with the yard operations director, and a shift walkthrough at the facility.",
-      expandedAnswer: null,
-      escalationInstructions:
+        expandedAnswer: null,
+        escalationInstructions: 
         "Never confirm a specific interview date or commit to scheduling. Route scheduling to the recruiter.",
-      fallbackAnswer: UNKNOWN_FALLBACK,
-      prohibitedClaims: [
-        "Never promise an interview or a next round.",
-        "Never commit to a timeline — the req is on hold.",
-      ],
-      relatedLinks: [],
-      visibility: vis("cleared_for_candidates", "on_request", "published", {
+        prohibitedClaims: [
+          "Never promise an interview or a next round.",
+          "Never commit to a timeline — the req is on hold.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
         source: "Client intake call, Nov 2025",
         verification: "stale",
         lastVerifiedAt: "2025-11-03",
@@ -2581,25 +2566,26 @@ const HARBORLINE: Company = {
         reviewCadenceDays: 180,
         nextReviewAt: "2026-05-02",
       }),
-      askedCount: 15,
-      askedClientAt: null,
-      lastAskedAt: "2026-01-30",
+      },
+    ],
     },
     {
-      id: "faq-hl-04",
-      level: "company",
-      levelRefId: null,
-      category: "culture",
-      questionIntent: "What is the culture like?",
-      questionVariants: ["What's it like to work there?", "How would you describe the team?"],
-      approvedAnswer:
+    questionId: "q-culture",
+    askedCount: 9,
+    lastAskedAt: "2026-01-25",
+    askedClientAt: null,
+    answers: [
+      {
+        id: "ans-harborline-04",
+        scope: COMPANY_SCOPE,
+        body:
         "Operations-driven and hands-on. Teams sit near the yards they support, and most decisions get made in person rather than over email.",
-      expandedAnswer: null,
-      escalationInstructions: null,
-      fallbackAnswer: null,
-      prohibitedClaims: ["Never characterize shift expectations or overtime."],
-      relatedLinks: [],
-      visibility: vis("cleared_for_candidates", "on_request", "published", {
+        expandedAnswer: null,
+        escalationInstructions: null,
+        prohibitedClaims: [
+          "Never characterize shift expectations or overtime.",
+        ],
+        visibility: vis("cleared_for_candidates", "on_request", "published", {
         source: "Client intake call, Nov 2025",
         verification: "stale",
         lastVerifiedAt: "2025-11-03",
@@ -2607,33 +2593,18 @@ const HARBORLINE: Company = {
         reviewCadenceDays: 180,
         nextReviewAt: "2026-05-02",
       }),
-      askedCount: 9,
-      askedClientAt: null,
-      lastAskedAt: "2026-01-25",
+      },
+    ],
     },
     {
-      id: "faq-hl-05",
-      level: "company",
-      levelRefId: null,
-      category: "hiring_timeline",
-      questionIntent: "Is the Newark req still open after the hiring freeze?",
-      questionVariants: [],
-      approvedAnswer: "",
-      expandedAnswer: null,
-      escalationInstructions: null,
-      fallbackAnswer: UNKNOWN_FALLBACK,
-      prohibitedClaims: [],
-      relatedLinks: [],
-      visibility: vis("cleared_for_candidates", "on_request", "draft", {
-        source: "Asked in candidate screens",
-        verification: "unverified",
-      }),
-      askedCount: 5,
-      askedClientAt: "2026-02-09",
-      lastAskedAt: "2026-02-08",
+    questionId: "q-hl-newark-req",
+    askedCount: 5,
+    lastAskedAt: "2026-02-08",
+    askedClientAt: "2026-02-09",
+    answers: [],
     },
   ],
-  departments: [],
+  teams: [],
   stakeholders: [
     {
       id: "sh-hl-01",
@@ -2654,7 +2625,6 @@ const HARBORLINE: Company = {
     {
       id: "job-hl-01",
       title: "Yard Operations Supervisor",
-      departmentId: null,
       teamId: null,
       location: "Newark, NJ",
       travel: null,
@@ -2726,9 +2696,13 @@ export function getMockCompany(id: string): Company | undefined {
   return MOCK_COMPANIES.find((c) => c.id === id || c.slug === id)
 }
 
-/** All teams across a company's departments, flattened. */
+/**
+ * Kept as a named helper even though it's now a field read: call sites say
+ * "every team at this company", and `company.teams` being flat (with nesting in
+ * `parentTeamId`) is the thing that replaced flattening departments.
+ */
 export function allTeams(company: Company): Team[] {
-  return company.departments.flatMap((d) => d.teams)
+  return company.teams
 }
 
 /** Narrative blocks only — everything except the internal brief notes. */

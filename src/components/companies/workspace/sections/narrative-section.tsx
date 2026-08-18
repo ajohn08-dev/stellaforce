@@ -6,7 +6,7 @@ import {
 } from "@/components/companies/workspace/section-shell"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import {
-  faqSection,
+  questionsForSection,
   knowledgeSection,
   type CompanyReadiness,
 } from "@/lib/company-readiness"
@@ -39,7 +39,7 @@ export function NarrativeSection({
     (k) => knowledgeSection(k.kind) === section.key
   )
   const written = items.filter((k) => k.body.trim())
-  const questions = company.faq.filter((f) => faqSection(f.category) === section.key)
+  const questions = questionsForSection(company, section.key)
 
   return (
     <SectionShell section={section} readiness={readiness} bulkItems={items}>
@@ -72,6 +72,7 @@ export function NarrativeSection({
       )}
 
       <SectionQuestions
+        company={company}
         entries={questions}
         today={today}
         emptyPrompt="No recorded questions on this topic yet. When a candidate asks something the blocks above don't cover, it lands in Unanswered questions and you can add it here."

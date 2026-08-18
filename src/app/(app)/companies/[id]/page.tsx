@@ -57,7 +57,7 @@ export default async function CompanyWorkspacePage({
   const agentContext = compileAgentContext(company, null)
 
   const counts: Partial<Record<CompanySection, number>> = {
-    teams: company.departments.length,
+    teams: company.teams.length,
     jobs: company.jobs.filter((j) => j.status === "open" || j.status === "draft").length,
     brief: briefItems(company).length,
   }

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowLeft, Building2, Plus, Users } from "lucide-react"
+import { ArrowLeft, Plus, Users } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,13 +10,20 @@ import {
 } from "@/components/companies/workspace/section-shell"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import { SectionQuestions } from "@/components/companies/shared/section-questions"
-import { faqSection, type CompanyReadiness } from "@/lib/company-readiness"
-import { allTeams, type Company, type Department, type Team } from "@/lib/mock-companies"
+import { questionsForSection, type CompanyReadiness } from "@/lib/company-readiness"
+import { childTeams, teamPath } from "@/lib/company-inheritance"
+import { type Company, type Team } from "@/lib/mock-companies"
 
 /**
- * Departments and teams — the one section whose **empty state is the correct
- * state**. Most companies never need either, so the copy frames having none as
- * fine rather than as a gap, and creation is always tied to a job that needed it.
+ * Teams — the one section whose **empty state is the correct state**. Most
+ * companies never need one, so the copy frames having none as fine rather than
+ * as a gap, and creation is always tied to a job that needed it.
+ *
+ * **There is no separate "department" any more.** A team nests in a team
+ * (`parentTeamId`), so Go-to-Market → Channel Growth is two rows of one tree
+ * rather than two entity types. That removes the decision nobody could make
+ * correctly — *"is this a department or a team?"* — and lets a company have one
+ * tier or four without a schema change. The tree renders as the org chart.
  *
  * `?team=<id>` drills into a single team.
  */
@@ -33,10 +40,9 @@ export function TeamsSection({
   today: Date
   teamId?: string
 }) {
-  const team = teamId ? allTeams(company).find((t) => t.id === teamId) : null
+  const team = teamId ? company.teams.find((t) => t.id === teamId) : null
 
   if (team) {
-    const department = company.departments.find((d) => d.id === team.departmentId)
     return (
       <SectionShell section={section} readiness={readiness}>
         <Button
@@ -46,89 +52,109 @@ export function TeamsSection({
           render={<Link href={`/companies/${company.id}?section=teams`} />}
         >
           <ArrowLeft className="size-3.5" />
-          All departments
+          All teams
         </Button>
-        <TeamDetail company={company} team={team} departmentName={department?.name} />
+        <TeamDetail company={company} team={team} />
       </SectionShell>
     )
   }
+
+  const roots = childTeams(company, null)
 
   return (
     <SectionShell
       section={section}
       readiness={readiness}
-      bulkItems={company.departments}
+      bulkItems={company.teams}
       actions={
         <Button variant="outline" size="sm" className="gap-1.5">
           <Plus className="size-3.5" />
-          Create department
+          Create team
         </Button>
       }
     >
-      {company.departments.length === 0 ? (
+      {company.teams.length === 0 ? (
         <SectionEmpty
-          title="No departments yet — that's fine"
-          prompt="Company-level knowledge covers most roles. Create a department when a job needs context this company profile can't provide."
-          actionLabel="Create department"
+          title="No teams yet — that's fine"
+          prompt="Company-level knowledge covers most roles. Create a team when a job needs context this company profile can't provide, and nest it under another team if that's how the org actually looks."
+          actionLabel="Create team"
         />
       ) : (
-        <div className="space-y-3">
-          {company.departments.map((department) => (
-            <DepartmentCard
-              key={department.id}
-              company={company}
-              department={department}
-            />
+        <div className="space-y-2">
+          {roots.map((root) => (
+            <TeamBranch key={root.id} company={company} team={root} />
           ))}
         </div>
       )}
 
       <SectionQuestions
+        company={company}
         today={today}
-        entries={company.faq.filter((f) => faqSection(f.category) === section.key)}
+        entries={questionsForSection(company, section.key)}
         emptyPrompt="Nothing recorded yet. Questions about reporting lines and who you'd work with belong here."
       />
     </SectionShell>
   )
 }
 
-function DepartmentCard({
-  company,
-  department,
-}: {
-  company: Company
-  department: Department
-}) {
-  const because = department.createdBecauseJobId
-    ? company.jobs.find((j) => j.id === department.createdBecauseJobId)
+/**
+ * A team and everything under it, recursively.
+ *
+ * One component for every tier, because there is only one kind of thing now. The
+ * indent is `teamPath().length`, so a four-deep org draws itself with no new
+ * code.
+ */
+function TeamBranch({ company, team }: { company: Company; team: Team }) {
+  const children = childTeams(company, team.id)
+  const depth = teamPath(company, team.id).length - 1
+  const because = team.createdBecauseJobId
+    ? company.jobs.find((j) => j.id === team.createdBecauseJobId)
     : null
 
+  // The inverse of "Created for X". A team exists because a job needed context
+  // the company profile couldn't give, so the count of jobs still inheriting
+  // from it is what says whether it's still earning its place — and an orphaned
+  // team becomes visible instead of quietly accumulating.
+  const usedBy = company.jobs.filter((j) =>
+    teamPath(company, j.teamId).some((t) => t.id === team.id)
+  ).length
+
   return (
-    <section className="rounded-lg border border-border">
-      <div className="space-y-2 p-4">
+    <div style={{ paddingLeft: depth > 0 ? "1.5rem" : undefined }}>
+      <section className="rounded-lg border border-border p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Building2 className="size-4 shrink-0 text-muted-foreground" />
-            <h3 className="font-medium">{department.name}</h3>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Users className="size-4 shrink-0 text-muted-foreground" />
+              <Link
+                href={`/companies/${company.id}?section=teams&team=${team.id}`}
+                className="font-medium hover:underline"
+              >
+                {team.name}
+              </Link>
+              <ClearanceBadge clearance={team.visibility.clearance} />
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{team.mission}</p>
           </div>
-          <ClearanceBadge clearance={department.visibility.clearance} />
+
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {usedBy === 0
+              ? "No jobs use this"
+              : `${usedBy} job${usedBy === 1 ? "" : "s"} inherit${usedBy === 1 ? "s" : ""} from this`}
+          </span>
         </div>
 
-        <p className="text-sm text-muted-foreground">{department.mission}</p>
+        {team.description && <p className="mt-2 text-sm">{team.description}</p>}
 
-        {department.candidateFacingDescription && (
-          <p className="text-sm">{department.candidateFacingDescription}</p>
-        )}
-
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {department.sizeRange && <span>{department.sizeRange} people</span>}
-          {department.operatingModel && <span>{department.operatingModel}</span>}
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {team.sizeRange && <span>{team.sizeRange} people</span>}
+          {team.operatingModel && <span>{team.operatingModel}</span>}
           {because && <span>Created for {because.title}</span>}
         </div>
 
-        {department.commonRoleFamilies.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {department.commonRoleFamilies.map((r) => (
+        {team.commonRoleFamilies.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {team.commonRoleFamilies.map((r) => (
               <Badge key={r} variant="secondary">
                 {r}
               </Badge>
@@ -136,72 +162,29 @@ function DepartmentCard({
           </div>
         )}
 
-      </div>
-
-      <div className="border-t border-border bg-muted/30 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            {department.teams.length} team{department.teams.length === 1 ? "" : "s"}
-          </p>
+        <div className="mt-3 border-t border-border pt-2">
           <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
             <Plus className="size-3" />
-            Create team
+            Create a team inside {team.name}
           </Button>
         </div>
+      </section>
 
-        {department.teams.length === 0 ? (
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            No teams here yet. Add one when a role needs a hiring manager, a
-            day-in-the-life, or team-specific answers.
-          </p>
-        ) : (
-          <ul className="mt-2 space-y-1">
-            {department.teams.map((team) => {
-              // The inverse of the department's "Created for X" line. A team
-              // exists because a job needed context the company profile
-              // couldn't give — so the count of jobs still using it is what
-              // says whether it's still earning its place, and an orphaned team
-              // becomes visible instead of quietly accumulating.
-              const usedBy = company.jobs.filter((j) => j.teamId === team.id).length
-
-              return (
-                <li key={team.id}>
-                  <Link
-                    href={`/companies/${company.id}?section=teams&team=${team.id}`}
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
-                  >
-                    <Users className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="font-medium">{team.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {team.sizeRange ? `${team.sizeRange} people` : ""}
-                    </span>
-                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                      {usedBy === 0
-                        ? "No jobs use this"
-                        : `${usedBy} job${usedBy === 1 ? "" : "s"} use${usedBy === 1 ? "s" : ""} this context`}
-                    </span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </div>
-    </section>
+      {children.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {children.map((child) => (
+            <TeamBranch key={child.id} company={company} team={child} />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
-function TeamDetail({
-  company,
-  team,
-  departmentName,
-}: {
-  company: Company
-  team: Team
-  departmentName?: string
-}) {
-  const manager = team.hiringManagerId
-    ? company.stakeholders.find((s) => s.id === team.hiringManagerId)
+function TeamDetail({ company, team }: { company: Company; team: Team }) {
+  const ancestors = teamPath(company, team.id).slice(1)
+  const manager = team.leaderId
+    ? company.stakeholders.find((s) => s.id === team.leaderId)
     : null
 
   return (
@@ -211,8 +194,10 @@ function TeamDetail({
           <h3 className="text-lg font-semibold">{team.name}</h3>
           <ClearanceBadge clearance={team.visibility.clearance} />
         </div>
-        {departmentName && (
-          <p className="text-sm text-muted-foreground">In {departmentName}</p>
+        {ancestors.length > 0 && (
+          <p className="text-sm text-muted-foreground">
+            In {ancestors.map((a) => a.name).join(" › ")}
+          </p>
         )}
         <p className="text-sm">{team.mission}</p>
       </div>
@@ -236,6 +221,7 @@ function TeamDetail({
         </section>
       )}
 
+      <DetailBlock title="What an agent may say about this team" body={team.description} />
       <DetailBlock title="A typical week" body={team.dayInTheLife} />
       <DetailBlock title="How they work" body={team.workingStyle} />
       <DetailBlock title="Collaboration cadence" body={team.collaborationCadence} />
@@ -265,7 +251,6 @@ function TeamDetail({
           <span className="font-medium">Recruiters only:</span> {team.internalNotes}
         </p>
       )}
-
     </div>
   )
 }

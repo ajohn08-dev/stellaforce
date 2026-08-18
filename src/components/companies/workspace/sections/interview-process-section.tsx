@@ -4,7 +4,8 @@ import { InternalNoteCard } from "@/components/companies/shared/internal-note-ca
 import { SectionQuestions } from "@/components/companies/shared/section-questions"
 import { SectionShell } from "@/components/companies/workspace/section-shell"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
-import { faqSection, type CompanyReadiness } from "@/lib/company-readiness"
+import { questionsForSection, type CompanyReadiness } from "@/lib/company-readiness"
+import { questionAnswers } from "@/lib/company-inheritance"
 import { briefItems, type Company } from "@/lib/mock-companies"
 
 /**
@@ -25,7 +26,7 @@ export function InterviewProcessSection({
   readiness: CompanyReadiness
   today: Date
 }) {
-  const questions = company.faq.filter((f) => faqSection(f.category) === section.key)
+  const questions = questionsForSection(company, section.key)
 
   // Internal notes about how reliably this client actually runs its process.
   const reliabilityNotes = briefItems(company).filter((n) =>
@@ -33,8 +34,9 @@ export function InterviewProcessSection({
   )
 
   return (
-    <SectionShell section={section} readiness={readiness} bulkItems={questions}>
+    <SectionShell section={section} readiness={readiness} bulkItems={questionAnswers(company, questions)}>
       <SectionQuestions
+        company={company}
         entries={questions}
         today={today}
         emptyPrompt="Nothing recorded yet. Candidates ask about the process in nearly every screen — without an answer here, agents escalate a question you could answer once and reuse forever."

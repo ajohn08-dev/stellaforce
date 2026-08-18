@@ -11,7 +11,7 @@ import {
   SectionShell,
 } from "@/components/companies/workspace/section-shell"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
-import { faqSection, type CompanyReadiness } from "@/lib/company-readiness"
+import { questionsForSection, type CompanyReadiness } from "@/lib/company-readiness"
 import type { Company, PolicyGroup } from "@/lib/mock-companies"
 
 /**
@@ -49,7 +49,7 @@ export function PolicySection({
   const inGroup = company.policies.filter((p) => groups.includes(p.group))
   const visible = inGroup.filter((p) => !restrictedKeys.includes(p.key))
   const restricted = company.policies.filter((p) => restrictedKeys.includes(p.key))
-  const questions = company.faq.filter((f) => faqSection(f.category) === section.key)
+  const questions = questionsForSection(company, section.key)
 
   return (
     <SectionShell
@@ -91,6 +91,7 @@ export function PolicySection({
       )}
 
       <SectionQuestions
+        company={company}
         entries={questions}
         today={today}
         emptyPrompt={questionsEmptyPrompt}
