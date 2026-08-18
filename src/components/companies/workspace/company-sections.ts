@@ -104,7 +104,7 @@ export const SECTION_GROUPS: SectionGroup[] = [
   },
   {
     key: "teams-hiring",
-    label: "Teams & hiring",
+    label: "Teams & jobs",
     sections: [
       {
         key: "teams",
@@ -120,20 +120,9 @@ export const SECTION_GROUPS: SectionGroup[] = [
         // everywhere else; a third word for one thing helped nobody.
         label: "Jobs",
         purpose:
-          "Which jobs this company's knowledge feeds, what each one is still missing, and what it overrides.",
+          "Every active role: what it's missing, the process it runs, and the questions only it can answer.",
         clearance: "cleared_for_candidates",
         drillable: true,
-      },
-      {
-        key: "interview-process",
-        label: "Interview process",
-        // The stages belong to the job, which snapshots its own pipeline at
-        // publish. What's company-level is the fallback for a conversation with
-        // no role in play — so the purpose line says that rather than promising
-        // a single process this company doesn't have.
-        purpose:
-          "Each role runs its own pipeline. This is what a candidate hears when no role is in play — and never a commitment.",
-        clearance: "cleared_for_candidates",
       },
     ],
   },

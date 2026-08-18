@@ -38,7 +38,7 @@ import {
   type ResolvedAnswer,
   type ResolvedScope,
 } from "@/lib/company-inheritance"
-import { FAQ_CATEGORY_LABELS, type Company } from "@/lib/mock-companies"
+import { FAQ_CATEGORY_LABELS, type Company, type CompanyJob } from "@/lib/mock-companies"
 import type { Question } from "@/lib/question-catalog"
 
 /**
@@ -137,11 +137,14 @@ export function QuestionRow({
   company,
   entry,
   today,
+  job,
   sectionLabel,
 }: {
   company: Company
   entry: CompanyQuestion
   today: Date
+  /** Set for a job-only question: the role this row is about. */
+  job?: CompanyJob | null
   /** Set only in the inbox, where you can't tell which section a row lands in. */
   sectionLabel?: string
 }) {
@@ -159,7 +162,11 @@ export function QuestionRow({
   // a real publish would create the answer row.
   const [addedScopes, setAddedScopes] = React.useState<ResolvedScope[]>([])
 
-  const stack = answerStack(company, entry)
+  // Scoped to one role when the row is about one role, so the stack shows that
+  // job's answers rather than every job's.
+  const stack = answerStack(company, entry).filter(
+    (row) => !job || row.scope.kind !== "job" || row.scope.refId === job.id
+  )
   const winning = stack.at(-1) ?? null
 
   const waitScope = useFieldScope(`${catalog?.intent ?? entry.questionId} — waiting on the client`)
@@ -227,6 +234,7 @@ export function QuestionRow({
             entry={entry}
             catalog={catalog}
             stack={stack}
+            job={job ?? null}
             addedScopes={addedScopes}
             onAddScope={(scope) => setAddedScopes((prev) => [...prev, scope])}
           />
@@ -267,6 +275,7 @@ function AnswerStack({
   entry,
   catalog,
   stack,
+  job,
   addedScopes,
   onAddScope,
 }: {
@@ -274,6 +283,8 @@ function AnswerStack({
   entry: CompanyQuestion
   catalog: Question
   stack: ResolvedAnswer[]
+  /** Set when the row is about one role — the stack then only offers that role. */
+  job: CompanyJob | null
   addedScopes: ResolvedScope[]
   onAddScope: (scope: ResolvedScope) => void
 }) {
@@ -286,7 +297,7 @@ function AnswerStack({
 
   // Anywhere that doesn't already have an answer, and isn't already open for
   // editing on this screen.
-  const open = availableScopes(company, {}, catalog).filter(
+  const open = availableScopes(company, job ? { jobId: job.id } : {}, catalog).filter(
     (s) =>
       !answeredScopes.has(`${s.kind}:${s.refId ?? ""}`) &&
       !pending.some((p) => p.kind === s.kind && p.refId === s.refId)

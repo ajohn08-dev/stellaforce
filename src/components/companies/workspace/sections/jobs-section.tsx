@@ -1,5 +1,12 @@
 import Link from "next/link"
-import { AlertTriangle, ArrowLeft, ArrowRight, ExternalLink, Plus } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight,
+  ExternalLink,
+  Plus,
+} from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,7 +19,7 @@ import { JobStatusBadge } from "@/components/jobs/job-status-badge"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
 import { JobAnswers, SectionQuestions } from "@/components/companies/shared/section-questions"
 import {
-  questionsForSection,
+  questionsForJob,
   jobCoverage,
   type CompanyReadiness,
   type JobCoverage,
@@ -71,7 +78,7 @@ export function JobsSection({
           <ArrowLeft className="size-3.5" />
           All jobs
         </Button>
-        <JobDetail company={company} job={job} />
+        <JobDetail company={company} job={job} today={today} />
       </SectionShell>
     )
   }
@@ -104,12 +111,10 @@ export function JobsSection({
         </ul>
       )}
 
-      <SectionQuestions
-        company={company}
-        today={today}
-        entries={questionsForSection(company, section.key)}
-        emptyPrompt="Nothing recorded yet. Questions about what a typical day or week looks like belong here."
-      />
+      {/* No "What candidates ask" block here on purpose. Questions whose answer
+          depends on a role live *on* that role, and company-wide ones live in
+          the topical section that answers them — so a list of roles has nothing
+          of its own to ask. The block used to render an empty prompt forever. */}
     </SectionShell>
   )
 }
@@ -141,7 +146,13 @@ function JobRow({ company, coverage }: { company: Company; coverage: JobCoverage
             <JobStatusBadge status={job.status} />
           </div>
           <p className="text-sm text-muted-foreground">
-            {[job.location, team?.name, job.reportsTo ? `Reports to ${job.reportsTo}` : null]
+            {[
+              job.location,
+              team?.name,
+              job.interviewStages.length > 0
+                ? `${job.interviewStages.length}-stage process`
+                : "No pipeline yet",
+            ]
               .filter(Boolean)
               .join(" · ")}
           </p>
@@ -178,7 +189,15 @@ function JobRow({ company, coverage }: { company: Company; coverage: JobCoverage
   )
 }
 
-function JobDetail({ company, job }: { company: Company; job: CompanyJob }) {
+function JobDetail({
+  company,
+  job,
+  today,
+}: {
+  company: Company
+  job: CompanyJob
+  today: Date
+}) {
   const chain = teamPath(company, job.teamId)
 
   return (
@@ -202,6 +221,45 @@ function JobDetail({ company, job }: { company: Company; job: CompanyJob }) {
           <p className="text-sm text-muted-foreground">{job.rolePurpose}</p>
         </section>
       )}
+
+      {/* The pipeline. It moved here from a company section that couldn't be
+          right: each job snapshots its own stages at publish, so "the interview
+          process" is a different answer for every role. It's read-only — the job
+          owns it, and a second editable copy is a second thing to change. */}
+      <section className="space-y-1.5 rounded-lg border border-border p-4">
+        <h4 className="text-sm font-medium">
+          The process for this role
+          {job.interviewStages.length > 0 && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {job.interviewStages.length} stages
+            </span>
+          )}
+        </h4>
+        {job.interviewStages.length > 0 ? (
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
+            {job.interviewStages.map((stage, i) => (
+              <span key={stage} className="inline-flex items-center gap-1.5">
+                {i > 0 && <ChevronRight className="size-3 shrink-0 opacity-60" />}
+                {stage}
+              </span>
+            ))}
+          </p>
+        ) : (
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            No pipeline yet, so an agent can&apos;t describe the process for this
+            role at all.
+          </p>
+        )}
+      </section>
+
+      {/* Questions only this role can answer, plus any company question it has
+          overridden — the job's own knowledge, in the one place it belongs. */}
+      <SectionQuestions
+        company={company}
+        today={today}
+        entries={questionsForJob(company, job)}
+        emptyPrompt="Nothing role-specific yet. Questions whose answer depends on this role appear here as soon as a candidate asks one."
+      />
 
       <AgentKnowledgePanel
         bundles={{

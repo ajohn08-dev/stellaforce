@@ -82,6 +82,22 @@ const COMP_PROHIBITIONS = [
   "Never compare compensation to another company or another candidate.",
 ]
 
+/**
+ * The rule that used to be a paragraph at the bottom of the Interview process
+ * section.
+ *
+ * As section copy it applied only where someone had built that section; as a
+ * catalog prohibition it travels to every customer, renders locked beside the
+ * answer it constrains, and can\'t be switched off at any scope. Promising a
+ * date is the easiest thing for an agent to do and one of the worst to get
+ * wrong.
+ */
+const INTERVIEW_PROMISE_PROHIBITIONS = [
+  "Never promise an interview, an offer, or a hiring decision.",
+  "Never commit to a specific date or turnaround.",
+  "Never characterize the candidate\'s chances.",
+]
+
 const FINANCIAL_PROHIBITIONS = [
   "Never give a specific revenue, runway, or growth figure.",
   "Never speculate about layoffs, funding, or an acquisition.",
@@ -123,6 +139,32 @@ function sensitive(
     sensitive: true,
     answerableAt: "company",
     defaultAgentUse: "escalate",
+    prohibitions,
+  }
+}
+
+/**
+ * Answerable only on a role, and carrying constraints.
+ *
+ * These never appear in a company section at all — see `answerableAt`. Offering
+ * a company box for them is offering somewhere to write a sentence that is wrong
+ * for most roles.
+ */
+function jobOnly(
+  id: string,
+  intent: string,
+  category: FaqCategory,
+  variants: string[],
+  prohibitions: string[] = []
+): Question {
+  return {
+    id,
+    intent,
+    category,
+    variants,
+    sensitive: false,
+    answerableAt: "job",
+    defaultAgentUse: "on_request",
     prohibitions,
   }
 }
@@ -186,11 +228,16 @@ export const GLOBAL_QUESTIONS: Question[] = [
     "Can I work from home?",
     "Is there any hybrid option?",
   ]),
-  q("q-interview-process", "What does the interview process look like?", "interview_process", [
-    "How many rounds?",
-    "How long does it take?",
-    "Who will I meet?",
-  ]),
+  // Job-only, like the timeline. Each job snapshots its own pipeline, so a
+  // company-wide sentence about "the process" is wrong for every role that
+  // doesn't happen to match it — and the candidate is who finds out.
+  jobOnly(
+    "q-interview-process",
+    "What does the interview process look like?",
+    "interview_process",
+    ["How many rounds?", "How long does it take?", "Who will I meet?"],
+    INTERVIEW_PROMISE_PROHIBITIONS
+  ),
   q("q-product", "What does the product actually do?", "products_customers", [
     "What do you sell?",
     "Who are your customers?",
@@ -223,22 +270,21 @@ export const GLOBAL_QUESTIONS: Question[] = [
     "Who would I work with?",
     "Is there sales engineering support?",
   ]),
-  // Job-only. The answer is a function of the role's pipeline and how fast this
-  // client actually moves — five stages is not three, and a client who
-  // reschedules a third of first rounds is not one who doesn't. A company-wide
-  // sentence here would be a promise made on behalf of every role at once.
+  // The answer is a function of the role's pipeline and how fast this client
+  // actually moves — five stages is not three, and a client who reschedules a
+  // third of first rounds is not one who doesn't.
   //
   // ⚠️ Eventually derivable rather than typed: `job_workflow_sub_stages` plus
   // the job's resolved `sla_policies` already describe stage count and expected
   // turnaround. Not derived yet — the mock has stage names but no durations, and
   // inventing one would be exactly the false promise this flag exists to
   // prevent.
-  q(
+  jobOnly(
     "q-hiring-timeline",
     "How long will the process take?",
     "hiring_timeline",
     ["When do you want someone to start?", "Is the req still open?"],
-    "job"
+    INTERVIEW_PROMISE_PROHIBITIONS
   ),
 ]
 

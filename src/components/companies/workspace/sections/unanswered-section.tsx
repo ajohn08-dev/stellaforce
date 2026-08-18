@@ -6,12 +6,8 @@ import { FieldScopeProvider } from "@/components/companies/shared/field-scope"
 import { QuestionRow } from "@/components/companies/shared/section-questions"
 import { ALL_SECTIONS } from "@/components/companies/workspace/company-sections"
 import type { SectionDef } from "@/components/companies/workspace/company-sections"
-import {
-  faqSection,
-  unansweredQuestions,
-  type CompanyReadiness,
-} from "@/lib/company-readiness"
-import { questionOf } from "@/lib/company-inheritance"
+import { faqSection, type CompanyReadiness } from "@/lib/company-readiness"
+import { questionOf, unansweredItems, withDerived } from "@/lib/company-inheritance"
 import type { Company } from "@/lib/mock-companies"
 
 /**
@@ -46,7 +42,7 @@ export function UnansweredSection({
   readiness: CompanyReadiness
   today: Date
 }) {
-  const open = unansweredQuestions(company)
+  const open = unansweredItems(company)
 
   return (
     <SectionShell section={section} readiness={readiness}>
@@ -57,16 +53,24 @@ export function UnansweredSection({
         />
       ) : (
         <div className="space-y-2">
-          {open.map((entry) => {
-            const catalog = questionOf(company, entry)
+          {open.map(({ question, job }) => {
+            const catalog = questionOf(company, question)
             const target = catalog ? faqSection(catalog.category) : "profile"
             return (
-              <FieldScopeProvider key={entry.questionId} section={target}>
+              <FieldScopeProvider
+                key={`${question.questionId}:${job?.id ?? "company"}`}
+                section={target}
+              >
                 <QuestionRow
                   company={company}
-                  entry={entry}
+                  entry={job ? withDerived(company, question, job) : question}
+                  job={job}
                   today={today}
-                  sectionLabel={sectionLabel(target)}
+                  // A job-only question is labelled with the role it's missing
+                  // for, not with a section — "answer this for the Central AE"
+                  // is the actual job, and it says nothing about the Data
+                  // Engineer sitting two rows down.
+                  sectionLabel={job ? job.title : sectionLabel(target)}
                 />
               </FieldScopeProvider>
             )

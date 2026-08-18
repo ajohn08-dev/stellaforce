@@ -1,6 +1,5 @@
 import { ActivitySection } from "@/components/companies/workspace/sections/activity-section"
 import { BriefSection } from "@/components/companies/workspace/sections/brief-section"
-import { InterviewProcessSection } from "@/components/companies/workspace/sections/interview-process-section"
 import { JobsSection } from "@/components/companies/workspace/sections/jobs-section"
 import { NarrativeSection } from "@/components/companies/workspace/sections/narrative-section"
 import { PolicySection } from "@/components/companies/workspace/sections/policy-section"
@@ -89,9 +88,6 @@ export function SectionRouter({
 
     case "jobs":
       return <JobsSection {...common} jobId={drill.job} />
-
-    case "interview-process":
-      return <InterviewProcessSection {...common} />
 
     case "unanswered":
       return <UnansweredSection {...common} />

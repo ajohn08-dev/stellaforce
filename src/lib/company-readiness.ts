@@ -26,7 +26,7 @@ import {
   questionOf,
   resolveAnswer,
   withDerived,
-  unansweredQuestions as unansweredCompanyQuestions,
+  unansweredItems,
   type CompanyQuestion,
 } from "@/lib/company-inheritance"
 
@@ -100,7 +100,6 @@ export type CompanySection =
   // Teams & roles
   | "teams"
   | "jobs"
-  | "interview-process"
   // Candidate questions — there is no FAQ destination; questions live inside
   // the section that answers them (see `faqSection`). This is the inbox only.
   | "unanswered"
@@ -326,24 +325,11 @@ function companyLevelChecks(company: Company, today: Date): ReadinessCheck[] {
         )
   )
 
-  // 6. Interview-process baseline
-  const interviewFaq = answeredInCategory(company, "interview_process")
-  checks.push(
-    interviewFaq
-      ? pass(
-          "interview_baseline",
-          "Interview-process baseline",
-          "A published answer describes the interview process."
-        )
-      : problem(
-          "interview_baseline",
-          "Interview-process baseline",
-          "fail",
-          "No published answer for the interview process. Candidates ask this in nearly every screen.",
-          "Add an interview-process answer",
-          "interview-process"
-        )
-  )
+  // 6. The interview-process baseline moved to a per-job check
+  // (`role_process` in JOB_CHECKS). It used to look for a published *company*
+  // answer describing the process, which can't exist: each job snapshots its own
+  // pipeline, so the only truthful version of this check is "does this role have
+  // stages". The check followed the question to the job.
 
   // 7. Company-size answer
   const sizeFaq = answeredInCategory(company, "size_growth")
@@ -439,6 +425,14 @@ const JOB_CHECKS: {
     missing: "doesn't explain why the role exists",
     short: "No role purpose",
     fix: "Add the role purpose",
+  },
+  {
+    key: "role_process",
+    label: "Interview process for this role",
+    get: (j) => (j.interviewStages.length > 0 ? j.interviewStages : null),
+    missing: "has no pipeline, so an agent can't describe its process",
+    short: "No pipeline",
+    fix: "Pick a workflow",
   },
   {
     key: "role_travel",
@@ -633,9 +627,12 @@ export function faqSection(category: FaqCategory): CompanySection {
     // function exists to prevent.
     case "typical_day":
       return "teams"
+    // Job-only questions never reach a company section (see
+    // `questionsForSection`); this is only their topical home for the inbox's
+    // "where would this land" label.
     case "interview_process":
     case "hiring_timeline":
-      return "interview-process"
+      return "jobs"
   }
 }
 
@@ -644,7 +641,7 @@ export function faqSection(category: FaqCategory): CompanySection {
  * answered". The definitions live in `company-inheritance.ts`, next to the
  * resolver that decides what "answered" means across scopes.
  */
-export { isUnanswered, unansweredQuestions } from "@/lib/company-inheritance"
+export { isUnanswered, unansweredItems } from "@/lib/company-inheritance"
 
 /**
  * A published, candidate-cleared answer in a category — the existence test the
@@ -664,14 +661,44 @@ function answeredInCategory(company: Company, category: FaqCategory) {
  * The questions a section owns — routed by the *catalog's* category, so a
  * question lands in the section that answers it without anyone filing it there.
  */
+/**
+ * The questions a section owns.
+ *
+ * **Job-only questions are excluded entirely.** They live on the role, next to
+ * the pipeline and the overrides that decide their answer — one place per scope
+ * rather than a topic scattered across two. A company section that listed them
+ * would be a company section you can't answer anything in.
+ */
 export function questionsForSection(
   company: Company,
   section: CompanySection
 ): CompanyQuestion[] {
   return companyQuestions(company).filter((q) => {
     const catalog = questionOf(company, q)
-    return catalog ? faqSection(catalog.category) === section : false
+    if (!catalog || catalog.answerableAt === "job") return false
+    return faqSection(catalog.category) === section
   })
+}
+
+/**
+ * The questions that belong to one role: everything answerable only per job,
+ * plus every company question this role answers *itself* — whether someone wrote
+ * an override or the answer is derived from the role's own fields.
+ *
+ * Every job gets this the moment it exists. The catalog is projected onto the
+ * company and `withDerived` fills in what the job's own fields already answer,
+ * so a new req arrives with its knowledge space populated: nothing to seed,
+ * nothing to assign, and the gaps are real gaps rather than setup.
+ */
+export function questionsForJob(company: Company, job: CompanyJob): CompanyQuestion[] {
+  return companyQuestions(company)
+    .map((q) => withDerived(company, q, job))
+    .filter((q) => {
+      const catalog = questionOf(company, q)
+      if (!catalog) return false
+      if (catalog.answerableAt === "job") return true
+      return q.answers.some((a) => a.scope.kind === "job" && a.scope.refId === job.id)
+    })
 }
 
 /** Which section owns each policy group. */
@@ -768,14 +795,18 @@ function buildQueues(company: Company, today: Date): IssueQueue[] {
   // Routed to the section that will answer them. This used to be stamped
   // `"faq"` — a section that no longer exists, hidden by an `as` cast, so every
   // item in this queue linked nowhere.
-  const missingAnswers = unansweredCompanyQuestions(company).map((q) => {
-    const catalog = questionOf(company, q)
+  const missingAnswers = unansweredItems(company).map(({ question, job }) => {
+    const catalog = questionOf(company, question)
     return {
-      id: q.questionId,
-      label: catalog?.intent ?? q.questionId,
-      detail: q.askedClientAt
-        ? `Asked ${q.askedCount}× · waiting on the client since ${q.askedClientAt}`
-        : `Asked ${q.askedCount}×`,
+      id: `${question.questionId}:${job?.id ?? "company"}`,
+      label: catalog?.intent ?? question.questionId,
+      // A job-only question is missing *for a role*. Reporting it once, without
+      // saying which, is how two of three roles stay uncovered.
+      detail: job
+        ? `${job.title} · asked ${question.askedCount}×`
+        : question.askedClientAt
+          ? `Asked ${question.askedCount}× · waiting on the client since ${question.askedClientAt}`
+          : `Asked ${question.askedCount}×`,
       section: catalog ? faqSection(catalog.category) : ("profile" as CompanySection),
     }
   })

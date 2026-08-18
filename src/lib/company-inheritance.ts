@@ -490,8 +490,62 @@ export function isUnanswered(question: CompanyQuestion): boolean {
   return !question.answers.some(isWritten)
 }
 
+/** Roles a question can still be unanswered *for*. Active jobs only — a closed req isn't work. */
+export function activeJobs(company: Company): CompanyJob[] {
+  return company.jobs.filter((j) => j.status === "open" || j.status === "draft")
+}
+
+export type UnansweredItem = {
+  question: CompanyQuestion
+  /** Set for job-only questions: which role is still missing an answer. */
+  job: CompanyJob | null
+}
+
 /**
- * The inbox: unanswered questions, most-asked first, then sensitive topics.
+ * **The inbox, counted the way the work actually divides.**
+ *
+ * A company-answerable question is one item: answer it once and every role is
+ * covered. A job-only question is one item *per active role*, because answering
+ * "how long will this take?" for the Central AE says nothing about the Data
+ * Engineer — and a single row claiming otherwise is how a recruiter ticks
+ * something off and leaves two roles uncovered.
+ *
+ * Closed and filled roles are excluded everywhere: nothing is screening for
+ * them, so their gaps aren't work.
+ */
+export function unansweredItems(company: Company): UnansweredItem[] {
+  const items: UnansweredItem[] = []
+
+  for (const question of companyQuestions(company)) {
+    const catalog = questionOf(company, question)
+
+    if (catalog?.answerableAt === "job") {
+      for (const job of activeJobs(company)) {
+        const withJobFields = withDerived(company, question, job)
+        if (!resolveAnswer(company, withJobFields, { jobId: job.id })) {
+          items.push({ question, job })
+        }
+      }
+      continue
+    }
+
+    if (isUnanswered(question)) items.push({ question, job: null })
+  }
+
+  return items.sort((a, b) => {
+    if (b.question.askedCount !== a.question.askedCount)
+      return b.question.askedCount - a.question.askedCount
+    const aq = questionOf(company, a.question)
+    const bq = questionOf(company, b.question)
+    return Number(bq?.sensitive ?? false) - Number(aq?.sensitive ?? false)
+  })
+}
+
+/**
+ * Company-answerable questions with no answer anywhere.
+ *
+ * `unansweredItems` is what the inbox renders — it also splits job-only
+ * questions per role. This one stays for counts that are genuinely company-wide.
  *
  * The secondary sort is what makes a brand-new company useful rather than
  * daunting — nobody has asked it anything yet, so `askedCount` is 0 across the

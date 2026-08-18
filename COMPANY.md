@@ -101,8 +101,7 @@ with content a recruiter is reading and editing.
                                    Culture & working style · Why they're hiring
 ▸ Pay, benefits & policies  4      Locations & work model · Benefits ·
                                    Work authorization · Compensation approach
-▸ Teams & hiring            3      Departments & teams › · Jobs › ·
-                                   Interview process
+▸ Teams & jobs              2      Departments & teams › · Jobs ›
 ▸ Internal notes            2      Recruiter brief · Activity log
 ```
 
@@ -461,7 +460,17 @@ reading as a property of the system, not a setting someone chose.
 
 ---
 
-## B.8 Departments & teams · Jobs · Interview process
+## B.8 Departments & teams · Jobs
+
+**Where a question lives is decided by one rule: where its answer can be true.**
+`answerableAt: "company"` → the topical section that answers it.
+`answerableAt: "job"` → the role, and *nowhere else*. That is why there is no
+Interview process section: each job snapshots its own pipeline, so a company page
+about "the process" could only host a sentence wrong for every role that doesn't
+match it. Its contents went where each was true — pipelines to the job, the
+never-promise-a-date rule into the catalog as locked prohibitions, the
+client-reliability note to the Recruiter brief, and the readiness check from a
+company-level "is there an interview answer" to a per-job `role_process`.
 
 **Departments & teams.** `Department` is **gone** — merged into a self-nesting
 `Team` (`parentTeamId`), so Go-to-Market › Channel Growth is two teams and depth

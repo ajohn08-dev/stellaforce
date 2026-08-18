@@ -187,9 +187,9 @@ migrating the full app layer to V3.2 is an ongoing pass.
   on load: **Unanswered questions** (an inbox, above the groups) → *About the
   company* (Profile · What they do · Culture & working style · Why they're
   hiring) → *Pay, benefits & policies* (Locations & work model · Benefits · Work
-  authorization · Compensation approach) → *Teams & hiring* (Departments & teams ·
-  Jobs · Interview process) → *Internal notes* (Recruiter brief · Activity
-  log), the last group omitted entirely for profiles without the capability.
+  authorization · Compensation approach) → *Teams & jobs* (Departments & teams ·
+  Jobs) → *Internal notes* (Recruiter brief · Activity log), the last group
+  omitted entirely for profiles without the capability.
   Section order and labels live in
   `src/components/companies/workspace/company-sections.ts`.
 
@@ -241,6 +241,34 @@ migrating the full app layer to V3.2 is an ongoing pass.
   hand-written fixture in that file, where `companyName` defaults to the literal
   "Stellaforce". Until that join exists, **none of this affects what a candidate
   hears.**
+
+  **One rule places everything: a question lives where its answer can be true.**
+  `Question.answerableAt` is `'company'` or `'job'`. Company-answerable questions
+  render in the topical section that answers them (`faqSection`); **job-only
+  questions never appear in a company section at all** — they live on the role,
+  beside the pipeline and overrides that decide them (`questionsForJob`). There
+  is no Interview process section: the process is a per-job snapshot, so a
+  company page about it could only host a sentence that's wrong for every role
+  that doesn't match. Its pieces went where each was true — the pipelines to the
+  job, the never-promise-a-date rule into the catalog as locked prohibitions on
+  both process questions, the client-reliability note to the Recruiter brief, and
+  the readiness check from a company-level "is there an interview answer" to a
+  per-job `role_process` ("does this role have stages").
+
+  **A new req arrives with its knowledge space already populated.** The catalog
+  is projected onto the company and `withDerived` fills in what the job's own
+  fields answer, so there is nothing to seed and nothing to assign — the gaps a
+  new job shows are real gaps, not setup. **Only active roles (open/draft) are
+  ever listed**, in the Jobs section, the scope menus, the inbox, and the
+  publish warnings: nothing is screening for a closed req, so its gaps aren't
+  work.
+
+  **The inbox counts the way the work divides** (`unansweredItems`): a
+  company-answerable question is one row — answer it once, every role is covered
+  — while a job-only question is **one row per active role**, labelled with the
+  role. Answering "how long will this take?" for the Central AE says nothing
+  about the Data Engineer, and a single row claiming otherwise is how two of
+  three roles stay uncovered.
 
   **Questions are global; answers are scoped.** The catalog
   (`src/lib/question-catalog.ts`) is the one thing shared across *every*
