@@ -210,6 +210,26 @@ Shared conventions across every screen below, stated once:
 
 ## B.1 Company list — `/companies`
 
+**Five columns, not eight.** Industry, funding stage, and headquarters each had
+their own column — three of reference material nobody scans, taking the width
+from the one column anyone acts on, which was truncating mid-word. Industry and
+HQ read fine as a subline under the name; stage moved to the profile, where it's
+read once.
+
+**"Agent status" named something that doesn't exist.** An agent attaches to a job
+stage, never to a company. The column answers whether a screening agent could run
+for this company's roles yet, so it says **Screening readiness**, and every label
+states the consequence rather than the enum: *Ready to screen* · *Ready — some
+topics escalate* · *Re-confirm before screening* · *Can't screen yet*. The
+explanation sentence beneath wraps instead of clipping.
+
+**"Complete" became "Knowledge"** — "complete for what?" was a fair question.
+
+**Three colours, not four.** `ready_with_caveats` was sky blue with an eye icon,
+which read as a different *category* rather than a shade of ready. It's a ready
+state; the caveat is in the words. The palette now matches the message
+vocabulary: fine, needs you, broken.
+
 **Purpose.** Pick a company, and see at a glance which accounts have knowledge gaps
 serious enough to block agent deployment.
 

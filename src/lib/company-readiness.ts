@@ -49,11 +49,20 @@ export type ReadinessStatus =
   | "review_required"
   | "blocked"
 
+/**
+ * Labels say **what you can and can't do**, not the name of the enum.
+ *
+ * These used to read "Blocked", "Recruiter review required", "Ready with
+ * caveats" — accurate to the internal state and meaningless on a screen. Blocked
+ * from what? Reviewed by whom? The thing every one of them is actually about is
+ * whether a screening agent can run for this company's roles, so each label says
+ * that.
+ */
 export const READINESS_LABELS: Record<ReadinessStatus, string> = {
-  ready: "Ready to deploy",
-  ready_with_caveats: "Ready with caveats",
-  review_required: "Recruiter review required",
-  blocked: "Blocked",
+  ready: "Ready to screen",
+  ready_with_caveats: "Ready — some topics escalate",
+  review_required: "Re-confirm before screening",
+  blocked: "Can't screen yet",
 }
 
 export const READINESS_SUMMARY: Record<ReadinessStatus, string> = {

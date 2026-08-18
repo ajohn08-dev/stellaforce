@@ -1,4 +1,4 @@
-import { AlertOctagon, AlertTriangle, CheckCircle2, Eye } from "lucide-react"
+import { AlertOctagon, AlertTriangle, CheckCircle2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { READINESS_LABELS, type ReadinessStatus } from "@/lib/company-readiness"
@@ -13,11 +13,17 @@ import { READINESS_LABELS, type ReadinessStatus } from "@/lib/company-readiness"
  * standing paragraph, which is how it ended up duplicated three ways.
  */
 
+/**
+ * Three colours, matching the page's message vocabulary exactly: fine, needs
+ * you, broken. `ready_with_caveats` used to be a fourth — sky blue with an eye
+ * icon — which read as a different *category* rather than a shade of ready. It's
+ * a ready state; the caveat is in the words.
+ */
 const STATUS_STYLES: Record<ReadinessStatus, string> = {
   ready:
     "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20",
   ready_with_caveats:
-    "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-400/20",
+    "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-400/20",
   review_required:
     "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-400/20",
   blocked: "bg-destructive/10 text-destructive ring-destructive/20",
@@ -25,7 +31,7 @@ const STATUS_STYLES: Record<ReadinessStatus, string> = {
 
 const STATUS_ICONS: Record<ReadinessStatus, typeof CheckCircle2> = {
   ready: CheckCircle2,
-  ready_with_caveats: Eye,
+  ready_with_caveats: CheckCircle2,
   review_required: AlertTriangle,
   blocked: AlertOctagon,
 }

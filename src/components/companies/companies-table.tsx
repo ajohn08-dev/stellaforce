@@ -25,7 +25,6 @@ import { Progress } from "@/components/ui/progress"
 import { CompanyLogo } from "@/components/companies/company-logo"
 import { ReadinessPill } from "@/components/companies/shared/readiness-pill"
 import type { CompanyListItem } from "@/components/companies/company-list-item"
-import { COMPANY_STAGE_LABELS } from "@/lib/mock-companies"
 import type { ReadinessStatus } from "@/lib/company-readiness"
 
 /**
@@ -72,48 +71,35 @@ const columns: ColumnDef<CompanyListItem>[] = [
   {
     accessorKey: "name",
     header: sortHeader("Company"),
+    // Industry and headquarters were their own columns, along with funding
+    // stage. Three columns of reference material, none of them ever scanned,
+    // taking the width from the one column anyone acts on — which was truncating
+    // mid-word. They read fine as a subline; stage moved to the profile, where
+    // it's read once.
     cell: ({ row }) => (
       <Link
         href={`/companies/${row.original.id}`}
-        className="flex items-center gap-2.5 font-medium hover:text-brand-purple-600"
+        className="flex items-center gap-2.5 hover:text-brand-purple-600"
       >
         <CompanyLogo
           name={row.original.name}
           logoPath={row.original.logoPath}
           size="sm"
         />
-        {row.original.name}
+        <span className="min-w-0">
+          <span className="block font-medium">{row.original.name}</span>
+          <span className="block text-xs text-muted-foreground">
+            {[row.original.industry, row.original.headquarters]
+              .filter(Boolean)
+              .join(" · ") || "—"}
+          </span>
+        </span>
       </Link>
     ),
   },
   {
-    accessorKey: "industry",
-    header: "Industry",
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">{row.original.industry ?? "—"}</span>
-    ),
-  },
-  {
-    accessorKey: "stage",
-    header: "Stage",
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.original.stage ? COMPANY_STAGE_LABELS[row.original.stage] : "—"}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "headquarters",
-    header: "Headquarters",
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.original.headquarters ?? "—"}
-      </span>
-    ),
-  },
-  {
     accessorKey: "activeJobCount",
-    header: sortHeader("Jobs"),
+    header: sortHeader("Roles"),
     cell: ({ row }) => (
       <span className="tabular-nums">{row.original.activeJobCount}</span>
     ),
@@ -127,7 +113,10 @@ const columns: ColumnDef<CompanyListItem>[] = [
   },
   {
     accessorKey: "completeness",
-    header: sortHeader("Complete"),
+    // "Complete" invited the question "complete for what?". This is how much of
+    // the knowledge base has been written — the comparative measure, which is
+    // why it lives on the list rather than in the workspace header.
+    header: sortHeader("Knowledge"),
     cell: ({ row }) => (
       <div className="flex w-28 items-center gap-2">
         <Progress value={row.original.completeness} className="flex-1" />
@@ -140,11 +129,16 @@ const columns: ColumnDef<CompanyListItem>[] = [
   {
     id: "readiness",
     accessorFn: (row) => READINESS_RANK[row.readiness],
-    header: sortHeader("Agent status"),
+    // Was "Agent status", which named something that doesn't exist: an agent
+    // attaches to a job stage, never to a company. What this column actually
+    // answers is whether a screening agent could run for this company's roles
+    // yet — so it says that, and each label states the consequence rather than
+    // the enum.
+    header: sortHeader("Screening readiness"),
     cell: ({ row }) => (
-      <div className="max-w-xs space-y-1">
+      <div className="max-w-sm space-y-1">
         <ReadinessPill status={row.original.readiness} size="sm" />
-        <p className="line-clamp-2 text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {row.original.readinessHeadline}
         </p>
       </div>
