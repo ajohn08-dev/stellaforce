@@ -247,12 +247,22 @@ escalation path — is about what a candidate may be told. An agent working
 alongside a recruiter is cleared for everything the company has, so there is no
 internal bar that can fail. The candidate bar is the only one with a state.
 
-**One health column, not two.** "Knowledge 89%" and the status pill sat adjacent,
-both answering *is this account in good shape*, and they can disagree in a way
-that only makes sense together — 89% written and still not ready for candidates
-is a real state that read as a contradiction across two columns. The bar is the
-score; the pill is whether anything is broken. Sorting is readiness first,
-completeness as the tiebreak.
+**Status and Complete are two columns, and the sentence is gone.** They were
+merged for a moment; reading a bar, a percentage, a chip and a two-line
+explanation as one cell left the row with no scannable shape, and the sentence
+was both the widest thing in the table and the least often needed — it repeats
+what the company page already says beside the thing that would fix it.
+
+**Three states in the table, four in the model.** `READINESS_TONE` maps
+`ready` and `ready_with_caveats` onto one **Ready**, leaving *Ready · Review ·
+Warning* — green, amber, red. Both are ready, and ready-versus-ready-with-caveats
+is not a distinction anyone scans a list by; the caveat belongs on the company,
+next to the topic that escalates. The four descriptive labels stay on the
+workspace header, where a tooltip carries the *why*. Same one-state-two-registers
+idea as `CLEARANCE_SHORT_LABELS`.
+
+The filter pills group by tone too, so "Ready" isn't two pills that mean almost
+the same thing.
 
 **Three colours, not four.** `ready_with_caveats` was sky blue with an eye icon,
 which read as a different *category* rather than a shade of ready. It's a ready

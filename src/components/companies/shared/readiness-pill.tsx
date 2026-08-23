@@ -1,7 +1,12 @@
 import { AlertOctagon, AlertTriangle, CheckCircle2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { READINESS_LABELS, type ReadinessStatus } from "@/lib/company-readiness"
+import {
+  READINESS_LABELS,
+  READINESS_TONE,
+  READINESS_TONE_LABELS,
+  type ReadinessStatus,
+} from "@/lib/company-readiness"
 
 /**
  * The four-value readiness chip — the company's status badge, playing the same
@@ -40,10 +45,13 @@ export function ReadinessPill({
   status,
   className,
   size = "default",
+  short = false,
 }: {
   status: ReadinessStatus
   className?: string
   size?: "default" | "sm"
+  /** Ready / Review / Warning — for tables and filter pills. See `READINESS_TONE`. */
+  short?: boolean
 }) {
   const Icon = STATUS_ICONS[status]
   return (
@@ -56,7 +64,7 @@ export function ReadinessPill({
       )}
     >
       <Icon className={size === "sm" ? "size-3" : "size-3.5"} />
-      {READINESS_LABELS[status]}
+      {short ? READINESS_TONE_LABELS[READINESS_TONE[status]] : READINESS_LABELS[status]}
     </span>
   )
 }

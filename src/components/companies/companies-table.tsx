@@ -113,28 +113,24 @@ const columns: ColumnDef<CompanyListItem>[] = [
   },
   {
     id: "readiness",
-    // One health column, not two. "Knowledge 89%" and "Screening readiness" sat
-    // adjacent, both answering "is this account in good shape" — and they can
-    // disagree in a way that only makes sense together: 89% written and still
-    // not ready for candidates is a real state, and reading it across two
-    // columns made it look like a contradiction. The bar is the score; the pill
-    // is whether anything is broken.
-    accessorFn: (row) => READINESS_RANK[row.readiness] * 1000 + row.completeness,
-    header: sortHeader("Readiness"),
+    // Split back out from the merged column. Reading a bar, a percentage, a
+    // chip and a two-line sentence as one cell meant the row had no scannable
+    // shape — the sentence was the widest thing in the table and the part least
+    // often needed, since it repeats what the company page says beside the thing
+    // that would fix it.
+    accessorFn: (row) => READINESS_RANK[row.readiness],
+    header: sortHeader("Status"),
+    cell: ({ row }) => <ReadinessPill status={row.original.readiness} size="sm" short />,
+  },
+  {
+    accessorKey: "completeness",
+    header: sortHeader("Complete"),
     cell: ({ row }) => (
-      <div className="max-w-md space-y-1.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex w-24 items-center gap-2">
-            <Progress value={row.original.completeness} className="flex-1" />
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {row.original.completeness}%
-            </span>
-          </div>
-          <ReadinessPill status={row.original.readiness} size="sm" />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {row.original.readinessHeadline}
-        </p>
+      <div className="flex w-28 items-center gap-2">
+        <Progress value={row.original.completeness} className="flex-1" />
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {row.original.completeness}%
+        </span>
       </div>
     ),
   },

@@ -75,6 +75,34 @@ export const READINESS_LABELS: Record<ReadinessStatus, string> = {
   blocked: "Not ready for candidates",
 }
 
+/**
+ * The three-way form, for dense surfaces.
+ *
+ * Four descriptive labels are right on a company's header, where a tooltip can
+ * carry the *why*. In a table they were long enough to need their own column
+ * width and read as sentences competing with the data — and `ready` versus
+ * `ready_with_caveats` is a distinction nobody scans a list by. Both are ready;
+ * the caveat belongs on the company, next to the topic that escalates.
+ *
+ * Same idea as `CLEARANCE_SHORT_LABELS`: one state, two registers.
+ */
+export type ReadinessTone = "ready" | "review" | "warning"
+
+export const READINESS_TONE: Record<ReadinessStatus, ReadinessTone> = {
+  ready: "ready",
+  ready_with_caveats: "ready",
+  review_required: "review",
+  blocked: "warning",
+}
+
+export const READINESS_TONE_LABELS: Record<ReadinessTone, string> = {
+  ready: "Ready",
+  review: "Review",
+  warning: "Warning",
+}
+
+export const READINESS_TONE_ORDER: ReadinessTone[] = ["warning", "review", "ready"]
+
 export const READINESS_SUMMARY: Record<ReadinessStatus, string> = {
   ready: "Every critical check passes and nothing has gone stale.",
   ready_with_caveats:

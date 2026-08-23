@@ -9,7 +9,7 @@ import { CompanyStatusFilters } from "@/components/companies/company-status-filt
 import { CompanyViewToggle } from "@/components/companies/company-view-toggle"
 import type { CompanyListItem } from "@/components/companies/company-list-item"
 import { formatDate } from "@/lib/constants"
-import { evaluateReadiness } from "@/lib/company-readiness"
+import { evaluateReadiness, READINESS_TONE } from "@/lib/company-readiness"
 import { MOCK_COMPANIES } from "@/lib/mock-companies"
 
 /**
@@ -61,13 +61,17 @@ export default async function CompaniesPage({
   const q = (typeof sp.q === "string" ? sp.q : "").trim().toLowerCase()
   const status = typeof sp.status === "string" ? sp.status : null
 
+  // Counted and filtered by tone: `ready` and `ready_with_caveats` are one pill,
+  // because "is this account fine" is the question a list answers and the caveat
+  // belongs on the company page beside the topic that escalates.
   const counts = companies.reduce<Record<string, number>>((acc, c) => {
-    acc[c.readiness] = (acc[c.readiness] ?? 0) + 1
+    const tone = READINESS_TONE[c.readiness]
+    acc[tone] = (acc[tone] ?? 0) + 1
     return acc
   }, {})
 
   const visible = companies.filter((c) => {
-    if (status && c.readiness !== status) return false
+    if (status && READINESS_TONE[c.readiness] !== status) return false
     if (!q) return true
     return `${c.name} ${c.industry ?? ""} ${c.headquarters ?? ""} ${c.accountOwner}`
       .toLowerCase()

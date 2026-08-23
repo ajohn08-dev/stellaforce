@@ -3,7 +3,11 @@
 import { useRouter, useSearchParams } from "next/navigation"
 
 import { cn } from "@/lib/utils"
-import { READINESS_LABELS, type ReadinessStatus } from "@/lib/company-readiness"
+import {
+  READINESS_TONE_LABELS,
+  READINESS_TONE_ORDER,
+  type ReadinessTone,
+} from "@/lib/company-readiness"
 
 /**
  * Readiness filter pills, in the row Jobs uses for its active filters.
@@ -14,37 +18,31 @@ import { READINESS_LABELS, type ReadinessStatus } from "@/lib/company-readiness"
  * the code claimed. One source of truth for scope, shareable, and consistent
  * with every other list in the app.
  */
-const ORDER: ReadinessStatus[] = [
-  "blocked",
-  "review_required",
-  "ready_with_caveats",
-  "ready",
-]
-
 export function CompanyStatusFilters({
   counts,
   total,
 }: {
-  counts: Partial<Record<ReadinessStatus, number>>
+  /** Keyed by tone, not status — `ready` and `ready_with_caveats` are one pill. */
+  counts: Partial<Record<ReadinessTone, number>>
   total: number
 }) {
   const router = useRouter()
   const params = useSearchParams()
   const active = params.get("status")
 
-  function select(next: ReadinessStatus | null) {
+  function select(next: ReadinessTone | null) {
     const sp = new URLSearchParams(params.toString())
     if (next) sp.set("status", next)
     else sp.delete("status")
     router.push(`/companies?${sp.toString()}`)
   }
 
-  const pills: { key: ReadinessStatus | null; label: string; count: number }[] = [
+  const pills: { key: ReadinessTone | null; label: string; count: number }[] = [
     { key: null, label: "All", count: total },
-    ...ORDER.filter((s) => (counts[s] ?? 0) > 0).map((s) => ({
-      key: s,
-      label: READINESS_LABELS[s],
-      count: counts[s] ?? 0,
+    ...READINESS_TONE_ORDER.filter((t) => (counts[t] ?? 0) > 0).map((t) => ({
+      key: t,
+      label: READINESS_TONE_LABELS[t],
+      count: counts[t] ?? 0,
     })),
   ]
 
