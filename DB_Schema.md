@@ -289,18 +289,25 @@ library. Resolved by `src/lib/automation-resolve.ts` (pure) +
 `automation-settings.ts` (loading); written by
 `src/app/(app)/automations/actions.ts`.
 
-**⚠️ Configuration only — there is no executor.** No runs, no queue, no
-scheduler, no worker. These tables record what *would* run and who decided it.
+**⚠️ Mostly configuration.** Of the 14 seeded definitions **exactly one**
+(`send_booking_link`) has an executor — see `has_executor` below and **Interview
+scheduling** above. The other 13 record what *would* run and who decided it:
+no runs table, no generic queue, no scheduler, no worker.
 
-**automation_definitions** **[tenant RLS]** (11 cols) — one stable logical
+**automation_definitions** **[tenant RLS]** (12 cols) — one stable logical
 automation. `id`, `key` (text — e.g. `interview_scheduled`; **deliberately not the
 same column as `trigger_event_type`**, so two rules may hang off one trigger),
 `name`, `trigger_event_type` (activity_event_type), `category` (text:
 'lifecycle' | 'scheduling' | 'evaluation' — an `AutomationSectionKey`),
 `system_managed` (bool, default false — safeguards nobody may pause; false on
 every seeded row, the column exists so the resolver and write actions have a real
-axis to refuse on), `client_id` (**null = the global library**), `archived_at`
-(retire, never delete), `created_by`, `created_at`, `updated_at`.
+axis to refuse on), **`has_executor`** (bool, default false — whether code exists
+that acts on this rule; the 13 without one are `off` at global scope and the
+resolver reports them `isLocked`, so the UI disables their controls instead of
+offering a toggle that would do nothing. **Flip it in the same migration that
+ships the executor**, so "on" can only ever mean "runs"), `client_id`
+(**null = the global library**), `archived_at` (retire, never delete),
+`created_by`, `created_at`, `updated_at`.
 Two **partial** uniques on `key` — one `where client_id is null`, one where it
 isn't, since NULLs never collide in a plain unique.
 
