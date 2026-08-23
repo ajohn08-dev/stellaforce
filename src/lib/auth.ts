@@ -11,6 +11,8 @@ export type CurrentProfile = {
   role: UserRole | null
   side: ProfileSide
   client_id: string | null
+  /** The client's display name, joined from `clients` — null for Stellaforce-side profiles. */
+  client_name: string | null
   client_role: ClientRole | null
 }
 
@@ -30,7 +32,7 @@ export async function getCurrentProfile(): Promise<CurrentProfile | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, side, client_id, client_role")
+    .select("id, email, full_name, role, side, client_id, client_role, client:clients(client_name)")
     .eq("id", user.id)
     .single()
 
@@ -43,6 +45,7 @@ export async function getCurrentProfile(): Promise<CurrentProfile | null> {
     role: profile.role,
     side: profile.side,
     client_id: profile.client_id,
+    client_name: profile.client?.client_name ?? null,
     client_role: profile.client_role,
   }
 }

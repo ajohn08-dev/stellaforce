@@ -5,10 +5,17 @@ import { usePathname } from "next/navigation"
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { NAV_ITEMS, AGENTS_NAV_LABEL, AGENTS_NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/lib/nav"
+import {
+  NAV_ITEMS,
+  AGENTS_NAV_SECTION,
+  SETTINGS_NAV_SECTION,
+  operationsSectionFor,
+  type NavItem,
+  type NavSection,
+} from "@/lib/nav"
+import type { CompanyAccess } from "@/lib/company-access"
 import { useSidebarState } from "@/lib/sidebar-context"
 import { Logo } from "@/components/brand-logo"
-import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 
 function isActive(pathname: string, href: string) {
@@ -24,7 +31,7 @@ function NavLink({
 }: {
   href: string
   label: string
-  icon: (typeof NAV_ITEMS)[number]["icon"]
+  icon: NavItem["icon"]
   active: boolean
   collapsed: boolean
 }) {
@@ -46,14 +53,51 @@ function NavLink({
   )
 }
 
-export function AppSidebar() {
+/** A labelled group — Agents, Operations and Settings all render through this, so they can't drift apart. */
+function NavGroup({
+  section,
+  pathname,
+  collapsed,
+}: {
+  section: NavSection
+  pathname: string
+  collapsed: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      {!collapsed && (
+        <span className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+          {section.label}
+        </span>
+      )}
+      <nav className="flex flex-col gap-1">
+        {section.items.map((item) => (
+          <NavLink
+            key={item.href}
+            {...item}
+            active={isActive(pathname, item.href)}
+            collapsed={collapsed}
+          />
+        ))}
+      </nav>
+    </div>
+  )
+}
+
+export function AppSidebar({
+  /** A client-side profile gets "Company Profile" pointing at their own company. */
+  companyAccess = { scope: "all" },
+}: {
+  companyAccess?: CompanyAccess
+}) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useSidebarState()
+  const operations = operationsSectionFor(companyAccess)
 
   return (
     <aside
       className={cn(
-        "flex h-full shrink-0 flex-col border-r border-border bg-sidebar px-3 py-4 transition-[width]",
+        "flex h-full shrink-0 flex-col overflow-y-auto border-r border-border bg-sidebar px-3 py-4 transition-[width]",
         collapsed ? "w-16" : "w-[200px]"
       )}
     >
@@ -94,35 +138,15 @@ export function AppSidebar() {
         ))}
       </nav>
 
-      <Separator className="my-4" />
-
-      <div className="flex flex-col gap-1">
-        {!collapsed && (
-          <span className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
-            {AGENTS_NAV_LABEL}
-          </span>
-        )}
-        <nav className="flex flex-col gap-1">
-          {AGENTS_NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.href}
-              {...item}
-              active={isActive(pathname, item.href)}
-              collapsed={collapsed}
-            />
-          ))}
-        </nav>
+      <div className="mt-4 flex flex-col gap-4">
+        <NavGroup section={AGENTS_NAV_SECTION} pathname={pathname} collapsed={collapsed} />
+        <NavGroup section={operations} pathname={pathname} collapsed={collapsed} />
       </div>
 
-      <div className="mt-auto flex flex-col gap-1">
-        {BOTTOM_NAV_ITEMS.map((item) => (
-          <NavLink
-            key={item.href}
-            {...item}
-            active={isActive(pathname, item.href)}
-            collapsed={collapsed}
-          />
-        ))}
+      {/* `mt-auto` pins Settings to the bottom whenever the nav is shorter than
+          the viewport; `pt-4` keeps it off Operations when it isn't. */}
+      <div className="mt-auto pt-4">
+        <NavGroup section={SETTINGS_NAV_SECTION} pathname={pathname} collapsed={collapsed} />
       </div>
     </aside>
   )

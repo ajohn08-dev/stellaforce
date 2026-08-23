@@ -1,6 +1,10 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { allAnswers } from "@/lib/company-inheritance"
 import { Plus } from "lucide-react"
+
+import { getCurrentProfile } from "@/lib/auth"
+import { companyAccessFor } from "@/lib/company-access"
 
 import { Button } from "@/components/ui/button"
 import { CompaniesIndex } from "@/components/companies/companies-index"
@@ -25,6 +29,13 @@ export default async function CompaniesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  // There is no list for a client-side profile — they have one company, so the
+  // index is their own profile. Redirecting rather than rendering an
+  // empty/filtered list: a list of one still says "this is a list of
+  // companies", which is the impression that must not exist here.
+  const access = companyAccessFor(await getCurrentProfile())
+  if (access.scope === "own") redirect(`/companies/${access.companyId}`)
+
   const sp = await searchParams
   const view = sp.view === "grid" ? "grid" : "list"
   const today = new Date()

@@ -1,4 +1,7 @@
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
+
+import { getCurrentProfile } from "@/lib/auth"
+import { companyAccessFor, ownCompanyFor } from "@/lib/company-access"
 
 import { CompanyWorkspaceHeader } from "@/components/companies/workspace/company-workspace-header"
 import { CompanyWorkspaceNav } from "@/components/companies/workspace/company-workspace-nav"
@@ -33,15 +36,29 @@ export default async function CompanyWorkspacePage({
   params: Promise<{ id: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const [{ id }, sp] = await Promise.all([params, searchParams])
-  const company = getMockCompany(id)
+  const [{ id }, sp, profile] = await Promise.all([params, searchParams, getCurrentProfile()])
+
+  // A client-side profile has exactly one company. Any other id — a stale
+  // bookmark, a link pasted from a Stellaforce colleague — lands back on their
+  // own profile rather than a 404, which would confirm the other company
+  // exists.
+  const access = companyAccessFor(profile)
+  const ownCompany = ownCompanyFor(profile)
+  if (access.scope === "own" && id !== access.companyId) {
+    redirect(`/companies/${access.companyId}`)
+  }
+
+  const company = access.scope === "own" ? ownCompany : getMockCompany(id)
   if (!company) notFound()
 
   const param = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined)
 
-  // TODO: gate on `can(profile, ...)` once a company-brief capability exists.
-  // Stellaforce-side staff pass every gate the app currently defines.
-  const canViewInternal = true
+  // Internal notes are Stellaforce's own record *about* this account — the
+  // recruiter brief and the activity log — so the client themselves is exactly
+  // who they aren't for.
+  // TODO: gate Stellaforce-side staff on `can(profile, ...)` too, once a
+  // company-brief capability exists; today they all pass.
+  const canViewInternal = access.scope === "all"
 
   const requested = findSection(param("section"))
   // Falling back rather than 404-ing: a link to an internal section shared with
@@ -74,7 +91,10 @@ export default async function CompanyWorkspacePage({
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
       <div className="flex h-full flex-col gap-5 overflow-hidden rounded-lg border border-border bg-white p-4 dark:bg-background">
-        <SetCompanyBreadcrumb name={company.preferredName} />
+        <SetCompanyBreadcrumb
+          name={company.preferredName}
+          isOwnCompany={access.scope === "own"}
+        />
         <UnsavedChangesGuard companyId={company.id} />
 
         <div className="shrink-0">
@@ -82,6 +102,7 @@ export default async function CompanyWorkspacePage({
             company={company}
             readiness={readiness}
             agentContext={agentContext}
+            isOwnCompany={access.scope === "own"}
           />
         </div>
 

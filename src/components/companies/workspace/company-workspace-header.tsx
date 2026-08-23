@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ExternalLink, Plus } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { CompanyLogo } from "@/components/companies/company-logo"
@@ -50,10 +51,13 @@ export function CompanyWorkspaceHeader({
   company,
   readiness,
   agentContext,
+  isOwnCompany = false,
 }: {
   company: Company
   readiness: CompanyReadiness
   agentContext: CompiledAgentContext
+  /** True when the viewer is client-side and this is the one company they have. */
+  isOwnCompany?: boolean
 }) {
   const facts = [
     company.industry,
@@ -77,6 +81,15 @@ export function CompanyWorkspaceHeader({
             <h1 className="text-2xl font-semibold tracking-tight">
               {company.preferredName}
             </h1>
+            {/* Says whose page this is, once, where the name is. A client-side
+                viewer reaches exactly one company and never a list, so without
+                this the page is indistinguishable from the one a Stellaforce
+                recruiter opens from an index of many. */}
+            {isOwnCompany && (
+              <Badge variant="secondary" className="font-normal">
+                Your organization
+              </Badge>
+            )}
             <Tooltip>
               <TooltipTrigger
                 render={
