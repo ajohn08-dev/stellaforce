@@ -2,6 +2,7 @@ import { ActivitySection } from "@/components/companies/workspace/sections/activ
 import { BriefSection } from "@/components/companies/workspace/sections/brief-section"
 import { JobsSection } from "@/components/companies/workspace/sections/jobs-section"
 import { NarrativeSection } from "@/components/companies/workspace/sections/narrative-section"
+import { OperationsSection } from "@/components/companies/workspace/sections/operations-section"
 import { PolicySection } from "@/components/companies/workspace/sections/policy-section"
 import { ProfileSection } from "@/components/companies/workspace/sections/profile-section"
 import { TeamsSection } from "@/components/companies/workspace/sections/teams-section"
@@ -89,6 +90,10 @@ export function SectionRouter({
 
     case "jobs":
       return <JobsSection {...common} jobId={drill.job} />
+
+    case "automations":
+    case "communications":
+      return <OperationsSection {...common} />
 
     case "fallbacks":
       return <FallbacksSection {...common} />

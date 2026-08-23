@@ -149,6 +149,9 @@ export type CompanySection =
   // Teams & roles
   | "teams"
   | "jobs"
+  // Operating setup — inherited from the global library, not company knowledge
+  | "automations"
+  | "communications"
   // Candidate questions — there is no FAQ destination; questions live inside
   // the section that answers them (see `faqSection`). This is the inbox only.
   | "unanswered"

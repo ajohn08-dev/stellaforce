@@ -130,6 +130,28 @@ export const SECTION_GROUPS: SectionGroup[] = [
     ],
   },
   {
+    key: "operations",
+    label: "Operations",
+    sections: [
+      {
+        key: "automations",
+        label: "Automations",
+        purpose:
+          "Operating setup: which rules from the global library run on this company's roles.",
+        // Never said to a candidate — this is how the process runs, not
+        // anything an agent answers with.
+        clearance: "recruiters_only",
+      },
+      {
+        key: "communications",
+        label: "Communications",
+        purpose:
+          "Operating setup: what candidates and interviewers on this company's roles are sent, and when.",
+        clearance: "recruiters_only",
+      },
+    ],
+  },
+  {
     key: "internal",
     label: "Internal notes",
     internal: true,
