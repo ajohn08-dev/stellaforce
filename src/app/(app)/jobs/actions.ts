@@ -24,12 +24,15 @@ import {
   parseAiCompetenciesResponse,
 } from "@/lib/server/job-ai-competencies"
 import { sendCalendarConnectInvite } from "@/lib/server/calendar-invite"
+import { logActivity } from "@/lib/server/activity"
+import {
+  completeInterviewCommand,
+  moveApplicationToStage,
+} from "@/lib/server/pipeline-commands"
 import { getCalendarPreview, type CalendarPreview } from "@/lib/server/calendar-events"
 import type {
   ActivityEventType,
-  ActorType,
   EmploymentType,
-  EventSeverity,
   Json,
   PipelineStageRow,
   TablesUpdate,
@@ -51,43 +54,10 @@ export type ActionResult<T = unknown> =
 
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>
 
-type ActivityInput = {
-  event_type: ActivityEventType
-  client_id?: string | null
-  candidate_id?: string | null
-  job_id?: string | null
-  application_id?: string | null
-  sub_stage_id?: string | null
-  actor_type?: ActorType
-  actor_profile_id?: string | null
-  severity?: EventSeverity
-  payload?: Json
-  idempotency_key?: string | null
-}
-
-/** Append an activity event. When an idempotency_key is given, a redelivery is a no-op. */
-async function logActivity(supabase: SupabaseServer, e: ActivityInput) {
-  const row = {
-    event_type: e.event_type,
-    client_id: e.client_id ?? null,
-    candidate_id: e.candidate_id ?? null,
-    job_id: e.job_id ?? null,
-    application_id: e.application_id ?? null,
-    sub_stage_id: e.sub_stage_id ?? null,
-    actor_type: e.actor_type ?? "user",
-    actor_profile_id: e.actor_profile_id ?? null,
-    severity: e.severity ?? "info",
-    payload: e.payload ?? {},
-    idempotency_key: e.idempotency_key ?? null,
-  }
-  if (row.idempotency_key) {
-    await supabase
-      .from("activity_events")
-      .upsert(row, { onConflict: "idempotency_key", ignoreDuplicates: true })
-  } else {
-    await supabase.from("activity_events").insert(row)
-  }
-}
+// `logActivity` used to be a private helper here. It moved to
+// `src/lib/server/activity.ts` so the cron, the internal API routes and the
+// public booking page can use the same writer — a `"use server"` file may only
+// export async functions, so it could never simply be exported from here.
 
 // ── Draft creation ───────────────────────────────────────────────────────────
 
@@ -690,6 +660,10 @@ function snapshotRowFromTemplateStage(
     needs_final_approval: s.needs_final_approval,
     display_order: s.display_order,
     config: s.config,
+    // Carried onto the job so the booking gate reads the stage the candidate is
+    // actually in, not the template it came from — the snapshot is the point.
+    agent_id: s.agent_id,
+    scheduling_mode: s.scheduling_mode,
   }
 }
 
@@ -1265,6 +1239,12 @@ export async function addCandidateToPipeline(
   return { ok: true, application_id: app.application_id }
 }
 
+/**
+ * Move a candidate to another sub-stage. Thin wrapper over the domain command —
+ * see `src/lib/server/pipeline-commands.ts`. The bearer-authed route
+ * `/api/applications/[id]/move-stage` calls the same command, so a recruiter's
+ * click and an n8n webhook produce identical rows and identical events.
+ */
 export async function moveCandidate(
   applicationId: string,
   targetSubStageId: string,
@@ -1274,69 +1254,37 @@ export async function moveCandidate(
   if (!profile) return { ok: false, error: "Not signed in." }
   const supabase = await createClient()
 
-  const { data: app } = await supabase
-    .from("applications")
-    .select("application_id, candidate_id, job_id, client_id, current_stage_id, status")
-    .eq("application_id", applicationId)
-    .single()
-  if (!app) return { ok: false, error: "Application not found." }
-  if (app.status !== "active")
-    return { ok: false, error: "This application is already closed." }
-
-  // Transition validation: target sub-stage must belong to this job.
-  const { data: target } = await supabase
-    .from("job_workflow_sub_stages")
-    .select("id, display_order")
-    .eq("id", targetSubStageId)
-    .eq("job_id", app.job_id)
-    .maybeSingle()
-  if (!target) return { ok: false, error: "That stage is not part of this job's pipeline." }
-  if (target.id === app.current_stage_id)
-    return { ok: false, error: "Candidate is already in that stage." }
-
-  // Close the open stage-history row, open a new one.
-  await supabase
-    .from("application_stage_history")
-    .update({ exited_at: new Date().toISOString(), outcome: "advance", decided_by: profile.id })
-    .eq("application_id", applicationId)
-    .is("exited_at", null)
-  await supabase
-    .from("application_stage_history")
-    .insert({ application_id: applicationId, sub_stage_id: targetSubStageId })
-  await supabase
-    .from("applications")
-    .update({ current_stage_id: targetSubStageId })
-    .eq("application_id", applicationId)
-
-  const base = {
-    client_id: app.client_id,
-    candidate_id: app.candidate_id,
-    job_id: app.job_id,
-    application_id: applicationId,
-    actor_profile_id: profile.id,
-  }
-  const keyBase = opts.idempotencyKey ?? `${applicationId}:${targetSubStageId}`
-  await logActivity(supabase, {
-    ...base,
-    event_type: "candidate_leaves_stage",
-    sub_stage_id: app.current_stage_id,
-    idempotency_key: `candidate_leaves_stage:${keyBase}`,
+  const result = await moveApplicationToStage(supabase, {
+    applicationId,
+    targetSubStageId,
+    actor: { profileId: profile.id },
+    idempotencyKey: opts.idempotencyKey,
   })
-  await logActivity(supabase, {
-    ...base,
-    event_type: "candidate_advanced",
-    sub_stage_id: targetSubStageId,
-    severity: "action_needed",
-    idempotency_key: `candidate_advanced:${keyBase}`,
-  })
-  await logActivity(supabase, {
-    ...base,
-    event_type: "candidate_added_to_stage",
-    sub_stage_id: targetSubStageId,
-    idempotency_key: `candidate_added_to_stage:${keyBase}`,
-  })
+  if (!result.ok) return result
 
-  revalidatePath(`/jobs/${app.job_id}`)
+  revalidatePath(`/jobs/${result.jobId}`)
+  return { ok: true }
+}
+
+/**
+ * Mark an interview as having happened. Thin wrapper — see `moveCandidate`.
+ */
+export async function completeInterview(
+  interviewId: string,
+  opts: { outcome?: "completed" | "no_show" } = {}
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+
+  const result = await completeInterviewCommand(supabase, {
+    interviewId,
+    outcome: opts.outcome,
+    actor: { profileId: profile.id },
+  })
+  if (!result.ok) return result
+
+  revalidatePath(`/jobs/${result.jobId}`)
   return { ok: true }
 }
 

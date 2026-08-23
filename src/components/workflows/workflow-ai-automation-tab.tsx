@@ -1,13 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { ChevronRight } from "lucide-react"
-import { toast } from "sonner"
 
 import { Label } from "@/components/ui/label"
-import { AUTOMATION_EVENT_GROUPS } from "@/lib/automation-events"
+import { AUTOMATION_SECTIONS } from "@/lib/automation-sections"
+import { AutomationRuleRows } from "@/components/automations/automation-rule-rows"
 import { Switch } from "@/components/ui/switch"
 import { WorkflowSubNav } from "@/components/workflows/workflow-sub-nav"
+import type { ResolvedAutomation } from "@/lib/automation-resolve"
 
 const SUB_NAV_ITEMS = ["AI Capabilities", "SLA", "Automation"] as const
 type SubNavItem = (typeof SUB_NAV_ITEMS)[number]
@@ -65,22 +65,27 @@ function ToggleRowItem({
   )
 }
 
-/** Unwired for now — clicking opens nothing, just signals the automation-rule builder is coming later. */
-function AutomationEventRow({ label }: { label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={() => toast.info("Not wired up yet — automation rules are coming soon.")}
-      className="flex w-full items-center justify-between rounded-lg border border-border bg-white px-4 py-3 text-left text-sm hover:bg-muted/40"
-    >
-      {label}
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-    </button>
-  )
-}
+/** The rule categories, in the order the automations rail and job dialog use. */
+const AUTOMATION_CATEGORIES = AUTOMATION_SECTIONS.filter((s) => s.eventGroup)
 
-/** Fields are unwired placeholders — not yet saved anywhere. */
-export function WorkflowAiAutomationTab() {
+/**
+ * AI Capabilities and SLA are still unwired placeholders — not saved anywhere.
+ *
+ * **Automation is real.** It shows this Flow's effective rules and where each
+ * one's state was decided, resolved through `global → company → workflow`. It
+ * previously listed trigger names that opened a "coming soon" toast, which told
+ * you a rule might exist without saying whether it would run.
+ *
+ * Read-only here by design: the per-scope controls live on the job dialog,
+ * where "pause this" has one unambiguous meaning. A control on this tab would
+ * write a Flow-scoped binding affecting every job that runs it — a change worth
+ * its own confirmation, not a segmented control.
+ */
+export function WorkflowAiAutomationTab({
+  automations,
+}: {
+  automations: ResolvedAutomation[]
+}) {
   const [activeSubNav, setActiveSubNav] = React.useState<SubNavItem>("AI Capabilities")
   const [toggles, setToggles] = React.useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {}
@@ -140,18 +145,22 @@ export function WorkflowAiAutomationTab() {
             <div className="flex flex-col gap-0.5">
               <Label>Automation</Label>
               <p className="text-sm text-muted-foreground">
-                Define how you want your pipeline to run
+                What runs on this pipeline, and where each rule was decided.
+                Rules inherit from the global library unless this workflow or an
+                individual job overrides them.
               </p>
             </div>
 
-            {AUTOMATION_EVENT_GROUPS.map((group) => (
-              <div key={group.title} className="flex flex-col gap-2">
-                <Label>{group.title}</Label>
-                {group.events.map((event) => (
-                  <AutomationEventRow key={event.id} label={event.label} />
-                ))}
-              </div>
-            ))}
+            {AUTOMATION_CATEGORIES.map((category) => {
+              const rows = automations.filter((a) => a.category === category.key)
+              if (rows.length === 0) return null
+              return (
+                <div key={category.key} className="flex flex-col gap-2">
+                  <Label>{category.label}</Label>
+                  <AutomationRuleRows automations={rows} />
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

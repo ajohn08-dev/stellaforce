@@ -10,6 +10,7 @@ import { CandidateScorecardTab } from "@/components/jobs/workspace/candidate-sco
 import { CandidateEvaluationTab } from "@/components/jobs/workspace/candidate-evaluation-tab"
 import { CandidateBackgroundTab } from "@/components/jobs/workspace/candidate-background-tab"
 import { CandidateActivityTab } from "@/components/jobs/workspace/candidate-activity-tab"
+import { MoveCandidateControl } from "@/components/jobs/workspace/move-candidate-control"
 import {
   filterReachedScorecardCategories,
   getReachedScope,
@@ -47,19 +48,32 @@ export function PipelineCandidateDetail({
       <div className="h-10 shrink-0 bg-gradient-to-r from-brand-orange-500 to-brand-purple-600" />
 
       <div className="shrink-0 space-y-4 bg-white p-4">
-        <div className="flex items-center gap-3">
-          <CandidateAvatar name={candidate.full_name} className="size-14 text-base" />
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-semibold tracking-tight">
-                {candidate.full_name}
-              </h2>
-              <TierBadge tier={candidate.tier} />
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <CandidateAvatar name={candidate.full_name} className="size-14 text-base" />
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-semibold tracking-tight">
+                  {candidate.full_name}
+                </h2>
+                <TierBadge tier={candidate.tier} />
+              </div>
+              <p className="text-muted-foreground">
+                {candidate.title} at {candidate.company} • {candidate.location}
+              </p>
             </div>
-            <p className="text-muted-foreground">
-              {candidate.title} at {candidate.company} • {candidate.location}
-            </p>
           </div>
+
+          {/* The pipeline was read-only until now: `moveCandidate` existed and
+              had no caller, so no candidate could reach an interview stage —
+              and stage entry is what sends a booking link. */}
+          {candidate.application_id && (
+            <MoveCandidateControl
+              applicationId={candidate.application_id}
+              currentStageId={candidate.current_stage_id ?? null}
+              stages={jobEvalContext.subStages.map((s) => ({ id: s.id, name: s.name }))}
+            />
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

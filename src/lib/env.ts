@@ -128,6 +128,40 @@ export const serverEnv = {
   get siteUrl() {
     return required("SITE_URL", process.env.SITE_URL)
   },
+
+  /** n8n workflow that emails a candidate their `/book/<token>` link. */
+  get n8nBookingLinkWebhookUrl() {
+    return (
+      process.env.N8N_BOOKING_LINK_WEBHOOK_URL ??
+      "https://stellaforce.app.n8n.cloud/webhook/booking-link-send"
+    )
+  },
+
+  /**
+   * ⚠️ **The outbound kill switch, and it defaults to OFF.**
+   *
+   * A cron that dispatches agent calls on a schedule is categorically more
+   * dangerous than the manual test-call button it reuses: nobody has to click.
+   * All fourteen QA fixture candidates share one real phone number and one real
+   * inbox (see CLAUDE.md), so an accidental run reaches a person.
+   *
+   * With this off, the whole loop — link → book → interview → queued call —
+   * still runs end to end and the call is marked `suppressed` instead of
+   * placed. That is the correct default for every environment except the one
+   * where someone has decided to make a real call.
+   */
+  get schedulingOutboundEnabled() {
+    return process.env.SCHEDULING_OUTBOUND_ENABLED === "true"
+  },
+
+  /**
+   * Second guard, independent of the first: even with outbound enabled, refuse
+   * to dial a candidate whose `source = 'qa_test_fixture'` unless this is also
+   * set. `source` is the documented deletion key for those rows.
+   */
+  get schedulingAllowFixtureCalls() {
+    return process.env.SCHEDULING_ALLOW_FIXTURE_CALLS === "true"
+  },
 }
 
 /** True when the public Supabase config is present (used to guard demo UI). */

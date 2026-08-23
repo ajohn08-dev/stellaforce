@@ -65,7 +65,7 @@ new `companies` table.
 
 Postgres + pgvector on Supabase. UUID PKs (`gen_random_uuid()`), `created_at`
 everywhere, `updated_at` (trigger-maintained) where rows mutate, snake_case,
-Postgres enums for every controlled vocabulary. **47 tables.**
+Postgres enums for every controlled vocabulary. **56 tables.**
 
 **Shape.** A two-tier pipeline (fixed Tier-1 `pipeline_stages` → variable
 per-job Tier-2 `job_workflow_sub_stages`) and a four-layer evaluation model —
@@ -80,9 +80,10 @@ domain; `applications` is the **sole** candidate↔job link
 `workflow_template_sub_stages` (Stellaforce-global or per-client) are
 **snapshotted** into a job's `job_workflow_sub_stages` at publish, freezing the
 job's pipeline so later template edits don't touch live jobs. Cross-cutting
-settings (`workflow_settings`, `sla_policies`, `automation_rules`,
-`communication_templates`) inherit via a **global → client → workflow → job**
-cascade (resolver: `src/lib/workflow-settings.ts`). `activity_events` is the
+settings (`workflow_settings`, `sla_policies`, `communication_templates`)
+inherit via a **global → client → workflow → job** cascade (resolver:
+`src/lib/workflow-settings.ts`). **Automations use the same cascade but their
+own three tables and their own resolver** — see **Automations** below. `activity_events` is the
 unified append-only log + transactional outbox (realizes the V3 doc's
 `application_events` with wider scope), with `audit_log` + `ai_interactions` for
 governance / AI-activity. These template/settings/activity/AI/audit tables use
@@ -513,6 +514,10 @@ migrating the full app layer to V3.2 is an ongoing pass.
 
   **UI only** — renders from `src/lib/mock-companies.ts`, no tables or Server
   Actions yet. Full spec: **[COMPANY.md](COMPANY.md)**.
+- `/automations` — the global automation library. See **Automations** below.
+- `/book/[token]` — the **candidate's** interview booking page. Public,
+  unauthenticated, token-gated; sits outside the `(app)` group and is excluded
+  from the proxy matcher. See **Interview scheduling** below.
 - `/settings` — signed-in user's email/role
 - `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)
 - `/interview-room/[agentId]` — browser interview room: a briefing/device-check
@@ -523,6 +528,224 @@ migrating the full app layer to V3.2 is an ongoing pass.
   never transmitted. Reached from the Agents page test-run dialog. See
   **Interview channels** below.
 - `/login` — email/password sign-in
+
+## Automations
+
+**⚠️ This is a control plane, not an engine. Nothing executes yet.** There is no
+runtime, no queue, no scheduler, no worker, no n8n wiring — and deliberately no
+empty tables reserving their names. What exists is the configuration: what a rule
+is, where it applies, what state it's in there, and who decided that.
+
+**Three tables, because a rule and its scope are different things.**
+`automation_definitions` is one stable logical automation;
+`automation_definition_versions` is the immutable rule (its condition sentence,
+actions, tasks, exceptions, SLA, authored approval posture);
+`automation_bindings` is a **sparse override** saying "at this scope, this rule's
+state is X". Nothing is ever copied down the cascade. That split is the whole
+design: without it, pausing one rule on one job means cloning a definition, and
+every later fix to the library becomes invisible to every job that ever
+overrode anything. `automation_bindings` *is* the old `automation_rules`,
+renamed — it was empty, had no unique constraint, and had one reader and zero
+writers.
+
+**The cascade is `global → company → workflow → job`**, most-specific wins,
+resolved by `src/lib/automation-resolve.ts` (pure) +
+`src/lib/automation-settings.ts` (loading). It shares `rankOf` with
+`src/lib/workflow-settings.ts` via `src/lib/settings-scope.ts` so two resolvers
+can't disagree about what "more specific" means. The split into a pure half is
+what lets `npm run automation-check` drive the real inheritance logic headless
+rather than a re-implementation of it.
+
+**Provenance is the product, not a detail.** The useful question on a job isn't
+"what shall I set" but *"what's running here, and where was that decided"* — so
+`ResolvedAutomation.sourceChain` keeps **every** applicable layer with the winner
+marked, and the source label is the layer's own name (*"Off · Acme Robotics"*,
+*"Paused · Standard Hiring Workflow"*), because naming where a setting came from
+is only useful if it names somewhere you can go and change it. This is why
+`overrideByKey()` in `workflow-settings.ts` couldn't be reused — it discards the
+losing rows, and it keys on `trigger_event_type`, which would silently collapse
+two rules that share a trigger. **Its automations branch has been deleted**;
+there is exactly one cascade in the codebase that answers this question.
+
+**State, lock and block are three independent axes.** `automation_state` is
+`active | paused | off` — three, not a boolean, because an automation switched
+off for a fortnight while a hiring manager is away is a different thing from one
+this company never runs. `off` is *not* a lock: it means a source layer set the
+default, and **a job may turn an inherited-off rule back on**, which is exactly
+what `canActivateForJob` is for. A lock is a permission — today only
+`automation_definitions.system_managed`, which the resolver *and* the server
+action both refuse. `isBlocked` (active but a dependency is missing) is
+**always false in this pass**: the two real checks — a missing
+`google_calendar_connections` row, an `sla_type` resolving to no enabled
+`sla_policies` row — belong with the executor that would act on them, and
+inventing runtime health would put an amber warning on screen that means nothing.
+`off` rather than `stopped` deliberately: runtime verbs stay reserved so a
+configuration state and an execution outcome never share a word.
+
+**`automation_mode` is a second, orthogonal axis and not a disable switch.**
+`auto | approval_required` on a *version* — does a person sign off before
+something externally consequential leaves the building. It replaced
+`auto | manual | off`, where `off` duplicated the state axis (what does *Active +
+Off* mean?) and `manual` described the machine rather than who does what. Five of
+the thirteen are `approval_required`: rejection wording, a cancellation to a
+candidate, a no-show follow-up, a fast-track past required stages, creating an
+offer. Descriptive only until an executor exists; there is deliberately **no
+per-scope mode override**, which would need its own inheritance, provenance badge
+and reset for a field nothing reads yet.
+
+**Writes are job-scoped and sparse** (`src/app/(app)/automations/actions.ts`):
+`setAutomationState` covers pause / resume / turn-on, `resetAutomationToInherited`
+is a **DELETE**, not a row of nulls — `state` is NOT NULL precisely so a binding
+that overrides nothing cannot exist, the same rule `pruneStoredPolicy` follows in
+`src/lib/policy-settings.ts`. Both take a discriminated `target` union so the
+one-scope CHECK is unrepresentable in TS; the job dialog only ever constructs
+`{ scope: "job" }`, so nothing on a job screen can touch a wider layer. Every
+write **re-resolves and re-checks server-side** — a disabled button is a courtesy,
+not the rule — and writes one `audit_log` row (`entity_type:
+'automation_binding'`), *not* an `activity_event`: that log is what happened to
+people, this is what an admin configured.
+
+**Tenant ownership and company scope are separate columns** on
+`automation_bindings` — `tenant_client_id` (who owns the row, the RLS partition
+key) and `company_scope_client_id` (what it targets). One column answering both
+meant `where client_id is not null` looked like "company-scoped" while being true
+of every job row too. **All scope logic reads the generated `scope` column.**
+
+**Read surfaces:** `/automations` (global library, no context), the job
+workspace ⚡ dialog (the only place with controls), and the workflow **AI &
+Automation** tab (read-only — a control there writes a Flow-scoped binding
+affecting every job that runs it, which deserves its own confirmation rather
+than a segmented control). **⚠️ The company Operations section resolves with no
+company scope**, so every row reads *From Global library* — accurate, since no
+company binding exists, but it can't become company-specific until a company
+profile carries a `clients.client_id` (`/companies` renders from
+`mock-companies.ts`, which shares no key with `clients`).
+
+**Seeded as global truth only**: 13 definitions, 13 published v1 versions, 13
+global bindings at `active`. The old fixture's Company/Workflow/Job provenance
+was visual dressing and is discarded — seeding it needs a tenant id the seed
+doesn't have, and at job scope would fabricate a decision on a real req.
+`candidate_data_updated` is **not** seeded: "a field that feeds search or fit
+changed" names no field group and no action, so no rule can be written against
+it, and a row the resolver can't explain is worse than an absent one.
+`AUTOMATION_EVENT_GROUPS` survives as the display order and grouping headings
+only; `npm run automation-check` asserts it stays 1:1 with the seeded keys.
+
+**`publishJob` must never snapshot automations.** It snapshots
+`workflow_settings` / `sla_policies` / `communication_templates` as `scope='job'`
+rows so a published job is self-contained — correct there, because the pipeline
+is frozen at publish by design. Automations are live policy: mirroring it would
+write 13 job rows per publish, make every later global fix invisible to published
+jobs, and turn every provenance badge into "Job override", destroying the one
+thing the dialog exists to show.
+
+## Interview scheduling (agent interviews)
+
+**The first automation that actually runs.** Everything else in the automation
+library is still configuration; this one has an executor, a candidate-facing
+surface, and a queue that places real calls.
+
+```
+candidate reaches a self-scheduling agent stage
+  → the gate (`send_booking_link`) is checked for this job
+  → a scheduling request + a one-time token
+  → n8n re-checks the gate, then emails /book/<token>
+  → candidate picks a time, or "Start now"
+  → the interview is created atomically and a call is queued
+  → a cron tick hands the call to n8n at the right moment
+  → paused/off → `automation_skipped_by_policy`, no side effect, exit clean
+```
+
+**Scope is deliberately narrow: agent interviews only.** No human free/busy
+booking, no panel scheduling, no external scheduler, no candidate reschedule —
+the first link is one-time. The extension path is the same route and the same
+booking API; `src/lib/availability.ts` (real busy-interval reads via the existing
+Google connection) is already there for when human scheduling lands.
+
+**Four tables, one of which is a lease.** `interview_scheduling_requests` (the
+link, its expiry, and a **frozen config snapshot**), `interviews` (the booking of
+record — a deliberate re-creation of the table dropped in `20260807173038`),
+`interview_slot_holds` (a TTL'd lease, *not* a booking) and
+`scheduled_agent_calls` (the durable outbound queue). Full columns and the
+reasoning for each split are in [DB_Schema.md](DB_Schema.md).
+
+**A hold is a lease; a booking is a fact.** They are separate tables because a
+hold must stop existing on a clock with nothing on the critical path — an
+`interviews` row with `status='held'` never stops existing, needs a sweeper, and
+until that runs is indistinguishable from a real interview to *every* reader. One
+forgotten `and status <> 'held'` and a recruiter sees an interview that was never
+booked.
+
+**Concurrency: the advisory lock is the mechanism, the exclusion constraint is
+the invariant.** `pg_advisory_xact_lock` on `agent_id` serialises the
+read-then-write; `exclude using gist (agent_id, agent_slot_index, during)` on
+both `interviews` and `interview_slot_holds` catches any other write path.
+Constraints cannot be primary here: Postgres has no cross-table exclusion, a hold
+must not overlap an interview, and capacity is N rather than 1 —
+`agent_slot_index` is the lane trick that lets a capacity-1 constraint police a
+capacity-N pool. Lock order is fixed everywhere (request `FOR UPDATE`, then the
+agent), so deadlock is structurally impossible.
+
+**The token is opaque, hashed and single-use.** 32 random bytes base64url in the
+URL; only `sha256(token)` is stored. **Not** the HMAC `encodeState` pattern used
+for calendar consent: that is not revocable, puts its claims in the URL in
+plaintext, and has no single-use semantics — all three unacceptable for a
+capability that causes a real phone call. Confirm sets `token_expires_at = now()`,
+which is what makes the link one-time without a separate column. Every failure
+renders **one identical message**: the difference between "expired" and "never
+existed" is precisely what confirms a token existed.
+
+**Slots are generated in the agent's operating timezone and rendered in the
+candidate's.** Generating per viewer would give two candidates in different zones
+misaligned grids for the same agent, and capacity would fragment into unbookable
+slivers. The grid is a property of the stage; the display is a property of the
+viewer. Absolute instants everywhere, `Intl` at render, never an offset.
+
+**Per-stage config lives in `config.scheduling`; `scheduling_mode` is a column.**
+The rest are read once, by id, when a request is created and are then frozen onto
+it — a recruiter editing minimum notice while a candidate has the page open must
+not move the grid under them. `scheduling_mode` is the exception because it is the
+only scheduling field ever used in a WHERE, by system code with no session, and a
+gate predicate buried in untyped jsonb is what silently stops matching after a UI
+refactor. It reuses the `scheduling_policy` enum that had existed since
+`20260728100000` with no column using it.
+
+⚠️ **`SCHEDULING_OUTBOUND_ENABLED` defaults to `false`, and should stay that way.**
+A cron that dispatches on a timer is categorically more dangerous than the manual
+test-call button it reuses: nobody has to click. All fourteen QA fixture
+candidates share one real phone number and one real inbox. With the switch off
+the entire loop runs and the call is recorded `suppressed` rather than placed —
+which is how `npm run scheduling-e2e` exercises it. Two further guards:
+`SCHEDULING_ALLOW_FIXTURE_CALLS` (refuses `source = 'qa_test_fixture'`) and a cap
+of three live calls to one phone number.
+
+⚠️ **The public route runs as service-role.** Candidates have no login, so RLS is
+not there to catch a mistake. Three rules, stated at the top of every file under
+`src/app/book/`: never `select("*")`; never accept an identifier from the client
+(every action re-resolves the raw token); never read another candidate's row —
+the agent's occupancy query returns **instants only**.
+
+⚠️ **Nothing here stamps `activity_events.dispatched_at`**, and nothing may. That
+column is the shared outbox marker for a dozen event-driven n8n workflows; the
+dispatcher dedupes on `scheduled_agent_calls` state instead.
+
+⚠️ **`agents` has no tenant column**, so `max_concurrent_calls` is a global pool
+shared across clients. Accepted for this pass and flagged: a busy customer can
+starve another, and the *count* of another tenant's bookings is weakly inferable
+from which slots are unavailable. The fix needs `agents.client_id`.
+
+**Two prerequisites this pass had to build first**, both flagged in earlier
+passes as missing: the **agent picker** (`job_workflow_sub_stages.agent_id`
+existed and no UI ever set it) and a **stage-move control** (`moveCandidate`
+existed and had *no caller*, so no candidate could reach an interview stage at
+all). Both go through `src/lib/server/pipeline-commands.ts`, the same domain
+commands the bearer-authed routes call — so a recruiter's click and an n8n
+webhook produce identical rows and identical events.
+
+**Guards:** `npm run scheduling-check` (pure — slug parsing, grid generation,
+capacity, DST across a spring-forward boundary, backwards compatibility of
+`availability.ts`) and `npm run scheduling-e2e` (the whole loop against the real
+database, asserting no call is placed and every table is left empty).
 
 ## Interview channels (phone vs. room)
 
@@ -670,7 +893,29 @@ without the fixtures and disappears when they are deleted) →
 `call_recordings` row per fixture evaluation, transcript built from that
 evaluation's own Q&A; audio is attached separately by
 `npm run attach-fixture-audio`, which copies a real test-call clip into a
-per-evaluation object path since SQL can't write Storage).
+per-evaluation object path since SQL can't write Storage) → the **automation
+control plane**: `20260823195938_automation_enums` (`automation_state`,
+`automation_mode`, `automation_version_status`, + `decision_made` on
+`activity_event_type`), `_200011_automation_definitions`
+(`automation_definitions` + `automation_definition_versions`),
+`_200121_automation_bindings` (renames the empty, never-written
+`automation_rules` to `automation_bindings` and splits rule-from-scope: drops
+`conditions`/`actions`/`enabled`/`trigger_event_type`, adds
+`automation_definition_id`/`state`, and replaces `(scope, scope_id)` with typed
+FKs + a generated `scope`), `_200136_automation_rls`, `_200301_seed_automation_library`
+(13 definitions, 13 published v1 versions, 13 global bindings) → the **agent
+interview scheduling** set: `20260823211312_scheduling_extensions` (`btree_gist`),
+`_211325_scheduling_enums` (`interview_status` re-created, `scheduling_request_status`,
+`scheduled_call_status`, + 6 `activity_event_type` values),
+`_211338_sub_stage_scheduling_mode`, `_211434_interview_scheduling_tables`
+(`interview_scheduling_requests`, `interviews`, `interview_slot_holds`,
+`scheduled_agent_calls`, `agents.max_concurrent_calls`),
+`_211451_interview_scheduling_rls`, `_211548_interview_booking_functions`,
+`_211618_seed_send_booking_link_automation` (the 14th definition, plus a v2 of
+`interview_scheduled` replacing promises with no executor),
+`_211623_call_recordings_interview_link`,
+`_211822_fix_hold_interview_slot_column_ambiguity`,
+`_215500_confirm_booking_hold_id_default_null`.
 
 **RLS.** Permissive `authenticated`-ALL on core tables; **tenant-scoped** on the
 workflow-template / settings / activity / AI / audit tables (client users see

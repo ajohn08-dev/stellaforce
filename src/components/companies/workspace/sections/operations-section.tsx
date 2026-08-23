@@ -7,6 +7,7 @@ import type { CompanyReadiness } from "@/lib/company-readiness"
 import type { Company } from "@/lib/mock-companies"
 import { AUTOMATION_SECTIONS } from "@/lib/automation-sections"
 import { AutomationRuleRows } from "@/components/automations/automation-rule-rows"
+import { resolveAutomations, type ResolvedAutomation } from "@/lib/automation-settings"
 import {
   INTERVIEWER_PREP_SETTINGS,
   INVITE_SETTINGS,
@@ -37,7 +38,7 @@ import { POLICY_SCOPE_LABEL } from "@/lib/policy-settings"
  * row currently reads *From system defaults*: there is no company-scoped
  * policy to write to yet, so this is display-only for now.
  */
-export function OperationsSection({
+export async function OperationsSection({
   company,
   section,
   readiness,
@@ -47,6 +48,10 @@ export function OperationsSection({
   readiness: CompanyReadiness
 }) {
   const activeJobs = company.jobs.filter((j) => j.status === "open" || j.status === "draft")
+  // No `companyId` — see AutomationsBody. Skipped entirely for Communications,
+  // which resolves through its own module.
+  const automations =
+    section.key === "automations" ? await resolveAutomations({}) : []
 
   return (
     <SectionShell section={section} readiness={readiness}>
@@ -64,39 +69,55 @@ export function OperationsSection({
         </SectionNote>
       )}
 
-      {section.key === "automations" ? <AutomationsBody /> : <CommunicationsBody />}
+      {section.key === "automations" ? (
+        <AutomationsBody automations={automations} />
+      ) : (
+        <CommunicationsBody />
+      )}
     </SectionShell>
   )
 }
 
 /**
  * The rules reaching this company's roles, grouped the way `/automations`
- * groups them — same source, so a rule promised here is one that exists there.
- * Trigger lists come from `AUTOMATION_EVENT_GROUPS`, which the workflow
- * settings tab also renders.
+ * groups them — same rows, same resolver, so a rule promised here is one that
+ * exists there.
+ *
+ * ⚠️ **Resolved with no company scope, so every row reads *From Global
+ * library*.** That is accurate rather than a placeholder — no company binding
+ * exists to read — but it can't *become* company-specific until a company
+ * profile carries a `clients.client_id`. `/companies` renders from
+ * `src/lib/mock-companies.ts`, which shares no key with `clients` (see
+ * CLAUDE.md, "⚠️ The two job models aren't linked yet"), so there is no id to
+ * pass as `companyId`. One line changes here once that join lands; inventing
+ * the id now would show one customer another's settings.
  */
-function AutomationsBody() {
+function AutomationsBody({ automations }: { automations: ResolvedAutomation[] }) {
   // `runs` is a log of executions, not a set of rules — it has no place in a
   // library of what *will* run.
   const groups = AUTOMATION_SECTIONS.filter((s) => s.eventGroup)
 
   return (
     <div className="space-y-3">
-      {groups.map((group) => (
-        <section key={group.key} className="space-y-2 rounded-lg border border-border p-4">
-          <div className="space-y-1">
-            <h3 className="flex items-center gap-2 text-sm font-medium">
-              <Zap className="size-4 shrink-0 text-muted-foreground" />
-              {group.label}
-            </h3>
-            <p className="text-sm text-muted-foreground">{group.purpose}</p>
-          </div>
+      {groups.map((group) => {
+        const rows = automations.filter((a) => a.category === group.key)
+        if (rows.length === 0) return null
+        return (
+          <section key={group.key} className="space-y-2 rounded-lg border border-border p-4">
+            <div className="space-y-1">
+              <h3 className="flex items-center gap-2 text-sm font-medium">
+                <Zap className="size-4 shrink-0 text-muted-foreground" />
+                {group.label}
+              </h3>
+              <p className="text-sm text-muted-foreground">{group.purpose}</p>
+            </div>
 
-          <div className="border-t border-border pt-1">
-            <AutomationRuleRows groupTitle={group.eventGroup!} />
-          </div>
-        </section>
-      ))}
+            <div className="border-t border-border pt-1">
+              <AutomationRuleRows automations={rows} />
+            </div>
+          </section>
+        )
+      })}
     </div>
   )
 }

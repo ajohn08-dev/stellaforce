@@ -2,14 +2,22 @@ import "server-only"
 
 import { createClient } from "@/lib/supabase/server"
 import { isSupabaseConfigured } from "@/lib/env"
+import { rankOf } from "@/lib/settings-scope"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import type {
-  AutomationRuleRow,
   CommunicationTemplateRow,
+  Database,
   Json,
   SettingsScope,
   SlaPolicyRow,
   WorkflowSettingRow,
 } from "@/lib/supabase/types"
+
+/**
+ * Either the request-scoped session client or the service-role admin client.
+ * Which one you pass decides whether RLS applies to the resolve.
+ */
+export type SettingsLoadClient = SupabaseClient<Database>
 
 /**
  * Cross-cutting workflow settings resolve through a cascade
@@ -18,6 +26,14 @@ import type {
  * the effective settings for a given (client, template, job) context; it is
  * reused both for display and at job-publish (to snapshot the resolved values
  * as `scope='job'` rows so the published job is self-contained).
+ *
+ * **Automations are not resolved here.** They used to be, keyed by
+ * `trigger_event_type` through `overrideByKey()` — which collapses two rules on
+ * one trigger to one and throws away every losing row, so it could never answer
+ * "where was this decided". They now live in `src/lib/automation-settings.ts`,
+ * against `automation_bindings`. `rankOf` and `applicableScopes` are exported
+ * so that resolver shares this one's notion of "more specific" rather than
+ * forking it.
  */
 
 export type ResolvedWorkflowSettings = {
@@ -25,17 +41,8 @@ export type ResolvedWorkflowSettings = {
   settings: Record<string, Record<string, Json>>
   /** effective SLA policies keyed by sla_type */
   sla: SlaPolicyRow[]
-  /** effective automation rules keyed by trigger_event_type */
-  automations: AutomationRuleRow[]
   /** effective communication templates keyed by trigger_event_type + channel */
   communications: CommunicationTemplateRow[]
-}
-
-const SCOPE_RANK: Record<SettingsScope, number> = {
-  global: 0,
-  client: 1,
-  workflow: 2,
-  job: 3,
 }
 
 export type ResolveContext = {
@@ -45,7 +52,9 @@ export type ResolveContext = {
 }
 
 /** Build the (scope, scope_id) pairs that apply to a context, least→most specific. */
-function applicableScopes(ctx: ResolveContext): { scope: SettingsScope; scopeId: string | null }[] {
+export function applicableScopes(
+  ctx: ResolveContext
+): { scope: SettingsScope; scopeId: string | null }[] {
   const scopes: { scope: SettingsScope; scopeId: string | null }[] = [
     { scope: "global", scopeId: null },
   ]
@@ -55,9 +64,6 @@ function applicableScopes(ctx: ResolveContext): { scope: SettingsScope; scopeId:
   return scopes
 }
 
-function rankOf(scope: SettingsScope): number {
-  return SCOPE_RANK[scope]
-}
 
 /** True when `row` is one of the applicable scopes for `ctx`. */
 function matchesContext(
@@ -94,26 +100,46 @@ function overrideByKey<T extends { scope: SettingsScope; scope_id: string | null
   return [...winner.values()]
 }
 
+/**
+ * Resolve using the signed-in user's session client. For Server Components and
+ * Server Actions.
+ */
 export async function resolveWorkflowSettings(
+  ctx: ResolveContext
+): Promise<ResolvedWorkflowSettings> {
+  if (!isSupabaseConfigured) {
+    return { settings: {}, sla: [], communications: [] }
+  }
+  return resolveWorkflowSettingsWithClient(await createClient(), ctx)
+}
+
+/**
+ * The same resolve, against a client you supply.
+ *
+ * ⚠️ **Required for anything without a session.** These tables are tenant-RLS'd,
+ * so a sessionless caller reads zero rows and the cascade silently collapses to
+ * its in-code defaults — a wrong answer that looks like a right one. The
+ * scheduling trigger runs from both a Server Action and a bearer-authed route,
+ * and must resolve identically from either.
+ */
+export async function resolveWorkflowSettingsWithClient(
+  supabase: SettingsLoadClient,
   ctx: ResolveContext
 ): Promise<ResolvedWorkflowSettings> {
   const empty: ResolvedWorkflowSettings = {
     settings: {},
     sla: [],
-    automations: [],
     communications: [],
   }
   if (!isSupabaseConfigured) return empty
 
-  const supabase = await createClient()
   const scopes = applicableScopes(ctx)
   const scopeVals = scopes.map((s) => s.scope)
 
   // Fetch all rows for the applicable scopes, then filter/merge in memory.
-  const [settingsRes, slaRes, autoRes, commsRes] = await Promise.all([
+  const [settingsRes, slaRes, commsRes] = await Promise.all([
     supabase.from("workflow_settings").select("*").in("scope", scopeVals),
     supabase.from("sla_policies").select("*").in("scope", scopeVals),
-    supabase.from("automation_rules").select("*").in("scope", scopeVals),
     supabase.from("communication_templates").select("*").in("scope", scopeVals),
   ])
 
@@ -131,11 +157,6 @@ export async function resolveWorkflowSettings(
   return {
     settings,
     sla: overrideByKey((slaRes.data ?? []) as SlaPolicyRow[], ctx, (r) => r.sla_type),
-    automations: overrideByKey(
-      (autoRes.data ?? []) as AutomationRuleRow[],
-      ctx,
-      (r) => r.trigger_event_type
-    ),
     communications: overrideByKey(
       (commsRes.data ?? []) as CommunicationTemplateRow[],
       ctx,

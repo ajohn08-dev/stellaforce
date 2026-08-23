@@ -8,6 +8,7 @@ import {
 } from "@/components/jobs/workspace/add-candidate-to-job-dialog"
 import { JobTeamPanel, type JobTeamMemberItem } from "@/components/jobs/workspace/job-team-panel"
 import { JobAutomationMenu } from "@/components/jobs/workspace/job-automation-menu"
+import type { ResolvedAutomation } from "@/lib/automation-resolve"
 import type { MockJob } from "@/lib/mock-jobs"
 
 export function JobWorkspaceHeader({
@@ -15,11 +16,14 @@ export function JobWorkspaceHeader({
   jobId,
   candidateOptions,
   teamMembers,
+  automations,
 }: {
   job: MockJob
   jobId: string
   candidateOptions: JobCandidateOption[]
   teamMembers: JobTeamMemberItem[]
+  /** Resolved for this job's company + workflow, so each row can name its source. */
+  automations: ResolvedAutomation[]
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -46,7 +50,7 @@ export function JobWorkspaceHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <JobAutomationMenu />
+        <JobAutomationMenu jobId={jobId} automations={automations} />
         <JobTeamPanel jobId={jobId} members={teamMembers} />
         {job.status === "open" && (
           <AddCandidateToJobDialog jobId={jobId} candidates={candidateOptions} />

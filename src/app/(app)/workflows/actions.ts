@@ -9,6 +9,7 @@ import type {
   DecisionMode,
   EmploymentType,
   InterviewerType,
+  SchedulingPolicyMode,
   Json,
   PipelineStage,
   QuestionSource,
@@ -41,6 +42,10 @@ export type TemplateSubStageInput = {
   collaborator_role?: string | null
   entry_conditions?: StageEntryCondition[]
   interviewer_type?: InterviewerType
+  /** Which screening agent runs this stage. Required for `interviewer_type = 'ai'`. */
+  agent_id?: string | null
+  /** Null inherits the workflow's scheduling policy. Drives the booking gate. */
+  scheduling_mode?: SchedulingPolicyMode | null
   question_source?: QuestionSource | null
   required_questions?: string | null
   capture_feedback_form?: boolean
@@ -214,6 +219,11 @@ export async function saveTemplateSubStages(
       allowed_outcomes: s.allowed_outcomes ?? [],
       needs_final_approval: s.needs_final_approval ?? false,
       display_order: s.display_order,
+      // Only an AI stage keeps an agent: switching a stage to a human
+      // interviewer must not leave a dangling agent that the booking gate
+      // would still match on.
+      agent_id: s.interviewer_type === "ai" ? (s.agent_id ?? null) : null,
+      scheduling_mode: s.scheduling_mode ?? null,
       config: s.config ?? {},
     }
   })

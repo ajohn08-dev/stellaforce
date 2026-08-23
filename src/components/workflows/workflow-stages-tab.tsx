@@ -28,7 +28,11 @@ import { RadioCardGroup } from "@/components/workflows/radio-card-group"
 import { SubStageSchedulingPanel } from "@/components/workflows/sub-stage-scheduling-panel"
 import { SubStageCommunicationPanel } from "@/components/workflows/sub-stage-communication-panel"
 import { useScrollbarOnScroll } from "@/lib/use-scrollbar-on-scroll"
-import type { StoredSchedulingPolicy } from "@/lib/scheduling-policy"
+import {
+  SCHEDULING_MODE_OPTIONS,
+  type StoredSchedulingPolicy,
+} from "@/lib/scheduling-policy"
+import type { SchedulingPolicyMode } from "@/lib/supabase/types"
 import type { StoredCommunicationPolicy } from "@/lib/communication-policy"
 import {
   SCALE_OPTIONS,
@@ -76,6 +80,13 @@ type SubStage = {
   /** Multi-select — a stage can be entered either manually or automatically, not exclusively one or the other. */
   entryConditions: EntryCondition[]
   interviewerType: InterviewerType
+  /** Which screening agent runs this stage. Only meaningful for `ai`. */
+  agentId: string | null
+  /**
+   * NULL inherits the workflow's mode. Only `candidate_self_scheduling` on an
+   * `ai` stage with an agent and automatic entry sends a booking link.
+   */
+  schedulingMode: SchedulingPolicyMode | null
   /** Only meaningful for interviewerType "human"/"ai" — see externalTool* fields for "external". */
   interactionMode: InteractionMode
   externalToolMode: ExternalToolMode
@@ -261,6 +272,8 @@ function makeSubStage(
     collaborator: COLLABORATOR_OPTIONS[0],
     entryConditions: ["manual"],
     interviewerType: "human",
+    agentId: null,
+    schedulingMode: null,
     interactionMode: "phone",
     externalToolMode: "url",
     externalToolUrl: "",
@@ -329,6 +342,8 @@ function subStageFromTemplateRow(row: WorkflowTemplateSubStageWithStage): SubSta
     collaborator: row.collaborator_role ?? COLLABORATOR_OPTIONS[0],
     entryConditions: row.entry_conditions.length ? row.entry_conditions : ["manual"],
     interviewerType: row.interviewer_type,
+    agentId: row.agent_id,
+    schedulingMode: row.scheduling_mode,
     interactionMode: interactionModeFromFormat(row.format),
     externalToolMode: externalTool?.mode ?? "url",
     externalToolUrl: externalTool?.url ?? "",
@@ -376,6 +391,8 @@ function toTemplateSubStageInput(s: SubStage, displayOrder: number): TemplateSub
     collaborator_role: s.collaborator || null,
     entry_conditions: s.entryConditions,
     interviewer_type: s.interviewerType,
+    agent_id: s.agentId,
+    scheduling_mode: s.schedulingMode,
     question_source: s.questionSource,
     config,
     required_questions: s.requiredQuestionsEnabled ? s.requiredQuestions : null,
@@ -404,10 +421,13 @@ function toTemplateSubStageInput(s: SubStage, displayOrder: number): TemplateSub
 export function WorkflowStagesTab({
   workflow,
   initialSubStages,
+  agents,
 }: {
   workflow: MockWorkflow
   /** Real DB rows to hydrate from and save back to — null for the MOCK_WORKFLOWS fallback (legacy wf-* ids), which has no real template row to persist against. */
   initialSubStages: WorkflowTemplateSubStageWithStage[] | null
+  /** Active screening agents an AI stage can be assigned to. */
+  agents: { id: string; name: string }[]
 }) {
   const isRealTemplate = initialSubStages !== null
 
@@ -621,6 +641,7 @@ export function WorkflowStagesTab({
             subStage={selected}
             schedulingPolicy={workflow.scheduling_policy}
             communicationPolicy={workflow.communication_policy}
+            agents={agents}
             onChange={updateSelected}
           />
         ) : (
@@ -635,12 +656,14 @@ function SubStageSettingsPanel({
   subStage,
   schedulingPolicy,
   communicationPolicy,
+  agents,
   onChange,
 }: {
   subStage: SubStage
   /** The scopes directly above this stage in each cascade. */
   schedulingPolicy: StoredSchedulingPolicy | undefined
   communicationPolicy: StoredCommunicationPolicy | undefined
+  agents: { id: string; name: string }[]
   onChange: (updater: (s: SubStage) => SubStage) => void
 }) {
   const [activeSubNav, setActiveSubNav] = React.useState<SubNavItem>("Overview")
@@ -825,6 +848,76 @@ function SubStageSettingsPanel({
                 options={INTERVIEWER_OPTIONS}
               />
             </div>
+
+            {/*
+              The agent picker. `job_workflow_sub_stages.agent_id` and its
+              template twin have existed since the agents migration and NOTHING
+              has ever set them — CLAUDE.md flagged it as a missing link. Without
+              this, a self-scheduling AI stage has no agent to book against and
+              the booking gate refuses it as misconfigured.
+            */}
+            {subStage.interviewerType === "ai" && (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <Label>Screening agent</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Which agent runs this stage, and whose calling capacity it books against.
+                  </p>
+                </div>
+                <Select
+                  value={subStage.agentId ?? ""}
+                  onValueChange={(value) =>
+                    onChange((s) => ({ ...s, agentId: value || null }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Choose an agent…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agents.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {agents.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No active agents yet — add one on the Agents page first.
+                  </p>
+                )}
+
+                <div className="mt-2 flex flex-col gap-0.5">
+                  <Label>Scheduling</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Candidate self-scheduling sends the candidate a booking link when they
+                    reach this stage. The rest is set under Scheduling.
+                  </p>
+                </div>
+                <Select
+                  value={subStage.schedulingMode ?? "inherit"}
+                  onValueChange={(value) =>
+                    onChange((s) => ({
+                      ...s,
+                      schedulingMode:
+                        value === "inherit" ? null : (value as SchedulingPolicyMode),
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inherit">Inherit from this workflow</SelectItem>
+                    {SCHEDULING_MODE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {subStage.interviewerType === "external" ? (
               <div className="flex flex-col gap-2">

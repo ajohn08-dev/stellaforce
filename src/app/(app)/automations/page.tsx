@@ -5,13 +5,21 @@ import { AutomationToolbar } from "@/components/automations/automation-toolbar"
 import { AutomationSectionNav } from "@/components/automations/automation-section-nav"
 import { AutomationRuleRows } from "@/components/automations/automation-rule-rows"
 import { findAutomationSection } from "@/lib/automation-sections"
+import { resolveAutomations } from "@/lib/automation-settings"
 
 /**
- * Placeholder — the automation-rule builder isn't built yet (see
- * `automation_rules` in DB_Schema.md), so the toolbar and rail drive an empty
- * list. Same shell as `/jobs` and `/companies`: a bordered toolbar strip, then
- * a body that scrolls on its own; `?section=` drives the rail, so every
- * section is deep-linkable.
+ * The global automation library.
+ *
+ * Resolved with an empty context, so every row reads its global state — this is
+ * the page where "Off · Global library" means *nobody gets this by default*,
+ * rather than one job's decision. Per-scope overrides are made where they
+ * apply: a job in its ⚡ dialog, a Flow in its Automation tab.
+ *
+ * The empty-state block above the library is the still-unbuilt bit: customers
+ * can't yet author their own rules, only inherit and adjust Stellaforce's.
+ * Same shell as `/jobs` and `/companies`: a bordered toolbar strip, then a body
+ * that scrolls on its own; `?section=` drives the rail, so every section is
+ * deep-linkable.
  */
 export default async function AutomationsPage({
   searchParams,
@@ -21,6 +29,11 @@ export default async function AutomationsPage({
   const sp = await searchParams
   const q = (typeof sp.q === "string" ? sp.q : "").trim()
   const section = findAutomationSection(typeof sp.section === "string" ? sp.section : undefined)
+
+  // No context: the library as it stands globally, before any company, Flow or
+  // job has had an opinion about it.
+  const automations = await resolveAutomations({})
+  const inSection = automations.filter((a) => a.category === section.key)
 
   return (
     <div
@@ -61,13 +74,13 @@ export default async function AutomationsPage({
               </p>
             </div>
 
-            {/* The rules this section can run — the same vocabulary the
-                workflow settings tab offers, so what's listed here is what's
-                actually pickable there. Each row opens what the rule does. */}
-            {section.eventGroup && (
+            {/* The rules this section can run — the same rows the workflow tab
+                and the job dialog resolve, so what's listed here is what's
+                actually running there. Each row opens what the rule does. */}
+            {section.eventGroup && inSection.length > 0 && (
               <div className="flex flex-col gap-2">
                 <p className="text-sm font-medium text-foreground">Rules available here</p>
-                <AutomationRuleRows groupTitle={section.eventGroup} />
+                <AutomationRuleRows automations={inSection} />
               </div>
             )}
           </div>

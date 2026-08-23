@@ -19,7 +19,7 @@ Evaluation is layered: **L1** job template (`job_competencies`,
 (`application_scorecard_*`) → **L4** cross-job redeployment fit
 (`candidate_client_fit`).
 
-**Table count:** 47 tables. Tables marked **[tenant RLS]** enforce
+**Table count:** 56 tables. Tables marked **[tenant RLS]** enforce
 client-scoped row access; all others use the permissive `authenticated`-ALL
 policy (see RLS model at the end).
 
@@ -63,9 +63,22 @@ policy (see RLS model at the end).
 - `scheduling_policy`: recruiter_led | candidate_self_scheduling | system_auto_schedule
 - `workflow_template_status`: draft | published
 - `settings_scope`: global | client | workflow | job (cascade axis)
+- `automation_state`: active | paused | off (saved config state; `off` not
+  `stopped` — runtime verbs stay reserved for a future executor)
+- `automation_mode`: auto | approval_required (a version's authored approval
+  posture; **not** a way to disable a rule — that is `state = 'off'`)
+- `automation_version_status`: draft | published | archived
+- `interview_status`: scheduled | in_progress | completed | canceled | no_show
+  (**re-created** — the original was dropped in `20260807173038` with the first
+  `interviews` table; `in_progress` is new, so a call already ringing is
+  distinguishable from a future booking and never re-dialled)
+- `scheduling_request_status`: pending | sent | booked | expired | canceled | failed
+- `scheduled_call_status`: pending | claimed | sent | failed | canceled |
+  **suppressed** (deliberately not dialled — a kill switch or a QA-fixture guard.
+  A first-class state, never an alert)
 - `actor_type`: user | system | candidate
 - `event_severity`: info | action_needed | alert
-- `activity_event_type`: 31 V3 lifecycle events (`application_created` … `application_reopened`) + candidate/job activity (`candidate_created`, `resume_ingested`, `job_created`, `job_published`, `job_workflow_snapshotted`)
+- `activity_event_type`: 40 values — V3 lifecycle events (`application_created` … `application_reopened`), candidate/job activity (`candidate_created`, `resume_ingested`, `job_created`, `job_published`, `job_workflow_snapshotted`, `job_team_member_added`), calendar (`calendar_connected`, `calendar_connection_revoked`), and `decision_made` (a decision owner recorded advance / reject / offer created — added for the automation library; **nothing emits it yet**, the emit site is `moveCandidate`/`rejectCandidate`)
 
 ---
 
@@ -260,13 +273,182 @@ Unique(scope, scope_id, category).
 (text), `threshold_hours` (int), `enabled` (default true), `config` (jsonb),
 `client_id`, `created_at`, `updated_at`. Unique(scope, scope_id, sla_type).
 
-**automation_rules** **[tenant RLS]** (10 cols) — `id`, `scope`, `scope_id`,
-`trigger_event_type` (activity_event_type), `conditions` (jsonb), `actions` (jsonb,
-default `[]`), `enabled`, `client_id`, `created_at`, `updated_at`.
+> **`automation_rules` is gone** — renamed to `automation_bindings` and split
+> into three tables; see **Automations** below. It never held a row.
 
 **communication_templates** **[tenant RLS]** (12 cols) — `id`, `scope`, `scope_id`,
 `trigger_event_type`, `channel` (text, default email), `subject`, `body`,
 `recipients` (jsonb, default `[]`), `enabled`, `client_id`, `created_at`, `updated_at`.
+
+### Automations
+
+The control plane: what a rule **is** (versioned, global) split from where it
+**applies** (sparse per-scope rows). Nothing is copied down the cascade, so a job
+that pauses one rule stores one row and still receives every later fix to the
+library. Resolved by `src/lib/automation-resolve.ts` (pure) +
+`automation-settings.ts` (loading); written by
+`src/app/(app)/automations/actions.ts`.
+
+**⚠️ Configuration only — there is no executor.** No runs, no queue, no
+scheduler, no worker. These tables record what *would* run and who decided it.
+
+**automation_definitions** **[tenant RLS]** (11 cols) — one stable logical
+automation. `id`, `key` (text — e.g. `interview_scheduled`; **deliberately not the
+same column as `trigger_event_type`**, so two rules may hang off one trigger),
+`name`, `trigger_event_type` (activity_event_type), `category` (text:
+'lifecycle' | 'scheduling' | 'evaluation' — an `AutomationSectionKey`),
+`system_managed` (bool, default false — safeguards nobody may pause; false on
+every seeded row, the column exists so the resolver and write actions have a real
+axis to refuse on), `client_id` (**null = the global library**), `archived_at`
+(retire, never delete), `created_by`, `created_at`, `updated_at`.
+Two **partial** uniques on `key` — one `where client_id is null`, one where it
+isn't, since NULLs never collide in a plain unique.
+
+**automation_definition_versions** **[tenant RLS]** (16 cols) — the immutable
+rule. `id`, `definition_id` (fk cascade), `client_id` (denormalized for RLS),
+`version` (int), `status` (automation_version_status), `condition_text` (the
+authored English sentence), `actions` / `tasks_and_reminders` / `exceptions` (all
+jsonb `[{key,label}]`), `sla_type` (text — matches `sla_policies.sla_type` **by
+value**; no FK is possible, that table holds scoped rows not a vocabulary),
+`default_mode` (automation_mode — the authored approval posture, descriptive
+until an executor exists), `notes`, `published_at`, `created_by`, `created_at`,
+`updated_at`. Unique(definition_id, version), plus a partial unique enforcing
+**exactly one published version per definition** (so "what runs" is a lookup,
+never a `max()`).
+There is deliberately **no machine-readable condition or action spec** — nothing
+evaluates one yet, and an empty DSL column invites user-authored rule code.
+
+**automation_bindings** **[tenant RLS]** (12 cols) — *was* `automation_rules`.
+A sparse override: at this scope, this rule's state is X. `id`,
+`automation_definition_id` (fk cascade), `state` (automation_state, **NOT NULL** —
+a binding that overrides nothing must not exist, which is what makes "reset to
+inherited" a DELETE), `set_by` (fk profiles), `note`, `created_at`, `updated_at`,
+plus:
+- `tenant_client_id` (fk clients cascade) — **who owns the row**, the RLS
+  partition key. Null only for global-library rows and for bindings on a
+  Stellaforce-global workflow template.
+- `company_scope_client_id` / `workflow_template_id` / `job_id` (fk, cascade) —
+  **what the row targets**. Typed FKs rather than the siblings'
+  `(scope, scope_id)`: the parents are enumerable here, and an orphaned binding
+  is state the resolver reads *and the provenance UI renders*, not inert bloat.
+  Cascade deletes come for free.
+- `scope` (settings_scope, **generated stored** from which target is set:
+  job → workflow → client → global). ⚠️ **The only correct way to ask what scope
+  a binding applies at** — `tenant_client_id is not null` is true of job rows too.
+
+CHECKs: at most one target set; a job row always has a tenant; at company scope
+`tenant_client_id = company_scope_client_id`; a global row has no tenant.
+**Four partial unique indexes** (global / company / workflow / job) — the
+constraint `automation_rules` never had.
+RLS is the standard tenant pair but written against `tenant_client_id`, so it is
+**not** generated by the `wf_tenant_rls` loop (which hardcodes `client_id`).
+
+**Seeded:** 13 definitions, 13 published v1 versions, 13 global bindings at
+`active`, all `client_id`/`tenant_client_id` null. Company/workflow/job bindings
+are written by users, never seeded. `candidate_data_updated` is deliberately
+**not** seeded — it names no field group and no action, so no rule can be written
+against it. Guarded by `npm run automation-check`.
+
+### Interview scheduling
+
+Agent-interview self-scheduling: a candidate gets a one-time link, picks a time
+(or starts immediately), and a durable queue hands the call to n8n. Resolved and
+written by `src/lib/server/*` and the public `/book/[token]` route.
+
+**⚠️ Three of these four tables are service-role only** — RLS enabled with **zero
+policies**, exactly the `google_calendar_connections` precedent. One holds a link
+capability's hash, one is a transient lock nobody renders, one carries the context
+for dialling a real person. Recruiters read
+`interview_scheduling_request_status`, a view that omits `token_hash` and writes
+the tenant filter into its own WHERE (`security_invoker = false`).
+
+**interview_scheduling_requests** **[service-role only]** (33 cols) — one
+booking-link attempt. FKs `application_id`, `sub_stage_id`, `client_id`,
+`candidate_id`, `job_id`, `agent_id`; `status` (scheduling_request_status);
+the token as `token_hash` (**unique** — sha256 hex; the token itself, 32 random
+bytes base64url, is never stored anywhere), `token_issued_at`, `token_expires_at`;
+a **frozen config snapshot** (`slot_minutes`, `slot_granularity_minutes`,
+`minimum_notice_minutes`, `booking_horizon_days`, `hold_seconds`,
+`allow_start_now`, `agent_concurrency_limit`, `operating_timezone`,
+`operating_start_hour`, `operating_end_hour`, `operating_days`); and the outcome
+(`interview_id`, `booked_at`, `candidate_timezone`, `failure_reason_code`,
+`failure_event_id`, `dispatched_to_n8n_at`).
+The snapshot is frozen deliberately: a recruiter editing the stage while a
+candidate has the page open must not move the grid under them.
+**Partial unique on `(application_id, sub_stage_id) where status in
+('pending','sent')`** — one live link per candidate per stage, which is what
+stops a double-fired stage entry emailing two.
+
+**interviews** **[tenant RLS]** (22 cols) — the booking of record, and a
+deliberate re-creation of the table dropped in `20260807173038`.
+`scheduled_at`/`ends_at` plus `during tstzrange generated always as
+(tstzrange(scheduled_at, ends_at, '[)')) stored` — half-open, so a 10:00–10:30
+and a 10:30–11:00 booking do not collide. `status`, `interviewer_type`,
+`agent_id`, `agent_slot_index`, `candidate_timezone`, `started_now`,
+`scheduling_request_id`, `canceled_at`/`cancel_reason`, `completed_at`.
+
+`agent_slot_index` is what turns "capacity N" into something an exclusion
+constraint — which can only express capacity 1 — is able to police:
+```sql
+exclude using gist (agent_id with =, agent_slot_index with =, during with &&)
+  where (agent_id is not null and status in ('scheduled','in_progress'))
+```
+
+**interview_slot_holds** **[service-role only]** (9 cols) — a TTL'd lease, not a
+booking. Separate from `interviews` for three reasons: a hold must stop existing
+on a clock with nothing on the critical path; `interviews.id` is referenced by
+three tables while holds are high-churn garbage; and `interview_scheduled` must
+be emitted exactly once on INSERT, not on a status transition. Same
+`agent_id`/`agent_slot_index`/`during` exclusion constraint.
+⚠️ An `EXCLUDE` predicate cannot call `now()`, so an expired hold still occupies
+its lane at the index level — every writer deletes expired holds for the agent
+under the advisory lock before reading lanes. The table is self-cleaning wherever
+anyone is booking; the hourly sweep is a backstop for idle agents.
+
+**scheduled_agent_calls** **[service-role only]** (22 cols) — the durable
+outbound queue. `run_at`, `status`, `attempts`/`max_attempts`, `locked_until`
+(crash recovery with no reaper), `last_error`, `dispatched_at`, `canceled_at`,
+`suppressed_reason`, and `campaign_id` (stable across retries so the voice
+provider can dedupe). Partial unique on `interview_id where status in
+('pending','claimed')`. Named for exactly one job so it cannot quietly become the
+generic executor.
+
+**agents** gains `max_concurrent_calls smallint not null default 3`. Capacity
+belongs to the agent — the provider refuses the N+1th conversation regardless of
+which stage asked — so a per-stage `agent_concurrency` only ever *reduces* it.
+⚠️ `agents` has no `client_id`, so this ceiling is a **global pool shared across
+tenants**.
+
+**job_workflow_sub_stages** and **workflow_template_sub_stages** gain
+`scheduling_mode scheduling_policy` (nullable = inherit). It reuses the
+`scheduling_policy` enum created in `20260728100000` that no column had ever
+used. It is a typed column rather than a `config` key because it is the only
+scheduling field ever evaluated in a WHERE, by system code with no session.
+Everything else stays in `config.scheduling`.
+
+**call_recordings** gains `interview_id` (fk, nullable — null for test runs and
+browser interview-room sessions).
+
+#### Functions (all `security definer`, `revoke`d from public/anon/authenticated,
+`grant`ed to `service_role` only)
+
+| Function | Purpose |
+|---|---|
+| `hold_interview_slot(request, starts_at)` | Take or **move** this request's single lease |
+| `confirm_interview_booking(request, hold, tz, start_now)` | The atomic commit: capacity re-check → interview → consume hold → spend token → queue the call, one transaction |
+| `cancel_interview(interview, reason)` | Interview and its queued call together |
+| `claim_due_agent_calls(limit, lease)` | `FOR UPDATE SKIP LOCKED`, which PostgREST cannot express |
+
+**`pg_advisory_xact_lock` keyed on `agent_id` is the mechanism; the EXCLUDE
+constraints are the invariant.** The constraints cannot be primary: Postgres has
+no cross-table exclusion, and a hold must not overlap an interview. Lock order is
+fixed everywhere — request row `FOR UPDATE`, then the agent lock — so deadlock is
+structurally impossible. Reason codes are **returned, not `RAISE`d**, so the
+caller decides which failures become alerts.
+
+⚠️ These functions must contain **no network I/O**. Every seeded agent points at
+one ElevenLabs agent today, so every confirm in the system serialises on one
+advisory lock; the n8n POST happens after commit.
 
 ### Runtime & compliance logs
 
@@ -434,8 +616,11 @@ functions in `public` — not application code.)_
 `set_candidate_timestamps` → candidates. `set_application_timestamps` → applications.
 `set_updated_at` → clients, job_orders, placements, interactions, candidate_client_fit,
 resumes, ingestion_jobs, profiles, **workflow_templates, workflow_settings,
-sla_policies, automation_rules, communication_templates**, call_recordings,
-agents.
+sla_policies, automation_bindings, communication_templates**, call_recordings,
+agents, **automation_definitions, automation_definition_versions,
+interview_scheduling_requests, interviews, scheduled_agent_calls**.
+(`interview_slot_holds` has no `updated_at`: a hold is created, then consumed or
+deleted — never edited.)
 
 ---
 
@@ -443,7 +628,9 @@ agents.
 FK indexes on every fk column. Filter indexes on `candidates.candidate_tier`,
 `job_orders.status`. **ivfflat** on `candidates.embedding_vector`
 (`vector_cosine_ops`, lists=100). Scope indexes on the settings tables
-(`scope, scope_id` + `client_id`). Denormalized-scope indexes on `activity_events`
+(`scope, scope_id` + `client_id`) — except `automation_bindings`, which indexes
+its typed target columns and the generated `scope` instead, plus four **partial
+unique** indexes (one per scope). Denormalized-scope indexes on `activity_events`
 (`client_id`, `candidate_id`, `job_id`, `application_id`, `event_type`, `created_at`)
 plus a partial index `where dispatched_at is null` (outbox drain).
 
@@ -453,7 +640,8 @@ plus a partial index `where dispatched_at is null` (outbox drain).
   deferred pass.
 - **profiles** — SELECT-only for authenticated (written by the trigger).
 - **Tenant-scoped** (2 policies: `tenant_read` SELECT + `tenant_write` ALL) on
-  `workflow_templates`, `workflow_settings`, `sla_policies`, `automation_rules`,
+  `workflow_templates`, `workflow_settings`, `sla_policies`, `automation_definitions`,
+  `automation_definition_versions`,
   `communication_templates`, `activity_events`, `ai_interactions`, `audit_log`,
   `call_recordings`. Read: Stellaforce **or** row is global (`client_id` null)
   **or** `client_id = current_profile_client_id()`. Write: Stellaforce **or**

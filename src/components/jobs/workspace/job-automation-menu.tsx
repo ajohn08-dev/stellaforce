@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { ChevronDown, ChevronRight, Pause, Play, Square, Zap } from "lucide-react"
+import { toast } from "sonner"
 
 import {
   Dialog,
@@ -13,84 +14,66 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { AUTOMATION_EVENT_GROUPS } from "@/lib/automation-events"
 import { AUTOMATION_SECTIONS } from "@/lib/automation-sections"
 import { AutomationRuleFacets } from "@/components/automations/automation-rule-facets"
+import { AutomationStateSubtext } from "@/components/automations/automation-state-subtext"
+import {
+  resetAutomationToInherited,
+  setAutomationState,
+} from "@/app/(app)/automations/actions"
 import {
   AUTOMATION_RUN_STATE_LABEL,
-  AUTOMATION_SCOPE_LABEL,
-  automationState,
-  isLockedByGlobal,
-  rulesForEventGroup,
   type AutomationRunState,
-  type AutomationState,
 } from "@/lib/automation-rules"
+import type { ResolvedAutomation } from "@/lib/automation-resolve"
 
 /** The categories with rules behind them — `runs` is a log, not a set of rules. */
 const CATEGORIES = AUTOMATION_SECTIONS.filter((s) => s.eventGroup)
 
-const ALL_EVENTS = AUTOMATION_EVENT_GROUPS.flatMap((g) => g.events)
-
 const CONTROLS: { value: AutomationRunState; icon: typeof Play; title: string }[] = [
-  { value: "active", icon: Play, title: "Run this automation" },
+  { value: "active", icon: Play, title: "Run this automation on this job" },
   { value: "paused", icon: Pause, title: "Pause — keep the rule, stop it firing for now" },
-  { value: "stopped", icon: Square, title: "Stop — don't run this on this job" },
+  { value: "off", icon: Square, title: "Off — don't run this on this job" },
 ]
 
 /**
- * State and where it was decided, in one read — as subtext under the rule name
- * rather than a badge in its own column. It belongs to the rule, so it reads as
- * a caption; in a column of its own it competed with the control beside it and
- * pushed the names into a narrow, ragged strip.
- */
-function StateSubtext({ state }: { state: AutomationState }) {
-  return (
-    <span
-      className="text-xs text-muted-foreground"
-      title={`${AUTOMATION_RUN_STATE_LABEL[state.state]}, set at ${AUTOMATION_SCOPE_LABEL[state.source]} level`}
-    >
-      {AUTOMATION_RUN_STATE_LABEL[state.state]} · {AUTOMATION_SCOPE_LABEL[state.source]}
-    </span>
-  )
-}
-
-/**
- * Play / pause / stop, as a segmented control rather than a toggle — the
- * current state is one of three and stays visible, so the row reads the same
- * whether you're scanning or changing it.
+ * Play / pause / off, as a segmented control rather than a toggle — the current
+ * state is one of three and stays visible, so the row reads the same whether
+ * you're scanning or changing it.
  */
 function StateControl({
-  state,
-  locked,
+  automation,
+  pending,
   onChange,
 }: {
-  state: AutomationRunState
-  locked: boolean
+  automation: ResolvedAutomation
+  pending: boolean
   onChange: (next: AutomationRunState) => void
 }) {
+  const disabled = pending || automation.isLocked || !automation.isApplicable
   return (
     <div
       className={cn(
         "flex shrink-0 items-center rounded-md border border-border",
-        locked && "opacity-50"
+        disabled && "opacity-50"
       )}
     >
       {CONTROLS.map(({ value, icon: Icon, title }) => {
-        const current = state === value
+        const current = automation.effectiveState === value
         return (
           <button
             key={value}
             type="button"
-            disabled={locked}
+            disabled={disabled}
             aria-pressed={current}
-            title={locked ? "Stopped in the global library — change it there" : title}
+            title={automation.lockedReason ?? title}
             onClick={() => onChange(value)}
             className={cn(
               "flex size-7 items-center justify-center transition-colors first:rounded-l-[5px] last:rounded-r-[5px]",
               current
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              locked && "cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
+              disabled && "cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
             )}
           >
             <Icon className={cn("size-3.5", current && "fill-current")} />
@@ -106,44 +89,54 @@ function StateControl({
  * Per-job automations, as a dialog off the job header.
  *
  * It replaced a cascading dropdown whose every row opened a submenu. A menu
- * can't show how much is running without you reading fourteen rows, and it made
+ * can't show how much is running without you reading thirteen rows, and it made
  * every rule look like a local choice when most are inherited — the useful
  * question on a job isn't "what shall I set" but **"what's running here, and
- * where was that decided"**, which is why state and source are one badge.
+ * where was that decided"**, which is why state and source read as one line.
  *
  * The dialog is a **fixed size**. Its height used to follow the longest
  * category, so switching the left nav resized the window under the pointer —
  * the control you just clicked moved.
  *
- * **UI only.** Initial state is the fixture in `src/lib/automation-rules.ts`,
- * changes are component state and persist nothing. The event list is shared
- * with the workflow settings Automation tab and the company Operations section,
- * so none of the three can drift.
+ * Every state here comes from `resolveAutomations()` and every change is a
+ * sparse job-scoped binding. Nothing on this screen can touch the global,
+ * company, or workflow row it inherited from.
  */
-export function JobAutomationMenu() {
+export function JobAutomationMenu({
+  jobId,
+  automations,
+}: {
+  jobId: string
+  automations: ResolvedAutomation[]
+}) {
   const [category, setCategory] = React.useState(CATEGORIES[0].key)
-  /** One rule expanded at a time — a dialog of fourteen open explanations is a document, not a control. */
+  /** One rule expanded at a time — a dialog of thirteen open explanations is a document, not a control. */
   const [openId, setOpenId] = React.useState<string | null>(null)
-  /** Only rules changed in this dialog — everything else resolves from the fixture. */
-  const [overrides, setOverrides] = React.useState<Record<string, AutomationRunState>>({})
+  const [pendingId, setPendingId] = React.useState<string | null>(null)
+  const [isPending, startTransition] = React.useTransition()
 
-  function stateFor(eventId: string): AutomationState {
-    const base = automationState(eventId)
-    const override = overrides[eventId]
-    // Changing it here is a job-level decision, so the badge says so.
-    return override ? { state: override, source: "job" } : base
-  }
-
-  const counts = ALL_EVENTS.reduce(
-    (acc, e) => {
-      acc[stateFor(e.id).state] += 1
+  const counts = automations.reduce(
+    (acc, a) => {
+      acc[a.effectiveState] += 1
       return acc
     },
-    { active: 0, paused: 0, stopped: 0 } as Record<AutomationRunState, number>
+    { active: 0, paused: 0, off: 0 } as Record<AutomationRunState, number>
   )
 
   const current = CATEGORIES.find((c) => c.key === category) ?? CATEGORIES[0]
-  const rows = rulesForEventGroup(current.eventGroup!)
+  const rows = automations.filter((a) => a.category === current.key)
+
+  function run(definitionId: string, action: () => Promise<{ ok: boolean; error?: string }>) {
+    setPendingId(definitionId)
+    startTransition(async () => {
+      const result = await action()
+      setPendingId(null)
+      // The server re-checks every rule the disabled state implies, so a
+      // failure here is a real answer, not a race — surface it rather than
+      // leaving the row looking as though the click landed.
+      if (!result.ok) toast.error(result.error ?? "Couldn't change that automation.")
+    })
+  }
 
   return (
     <Dialog>
@@ -161,7 +154,7 @@ export function JobAutomationMenu() {
         <DialogHeader>
           <DialogTitle>Automations</DialogTitle>
           <DialogDescription>
-            {counts.active} active · {counts.paused} paused · {counts.stopped} stopped
+            {counts.active} active · {counts.paused} paused · {counts.off} off
           </DialogDescription>
         </DialogHeader>
 
@@ -188,10 +181,10 @@ export function JobAutomationMenu() {
             <p className="text-sm text-muted-foreground">{current.purpose}</p>
 
             <ul className="mt-2 divide-y divide-border">
-              {rows.map(({ id, label, rule }) => {
-                const state = stateFor(id)
-                const locked = isLockedByGlobal(state)
+              {rows.map((automation) => {
+                const id = automation.definitionId
                 const open = openId === id
+                const pending = isPending && pendingId === id
                 return (
                   <li key={id}>
                     <div className="flex items-center gap-3 py-3">
@@ -213,29 +206,59 @@ export function JobAutomationMenu() {
                           <span
                             className={cn(
                               "truncate text-sm",
-                              state.state === "active"
+                              automation.effectiveState === "active"
                                 ? "text-foreground"
                                 : "text-muted-foreground"
                             )}
                           >
-                            {label}
+                            {automation.name}
                           </span>
-                          <StateSubtext state={state} />
+                          <AutomationStateSubtext automation={automation} />
                         </span>
                       </button>
 
-                      <StateControl
-                        state={state.state}
-                        locked={locked}
-                        onChange={(next) => setOverrides((prev) => ({ ...prev, [id]: next }))}
-                      />
+                      <div className="flex shrink-0 items-center gap-2">
+                        {/* Reset is a separate button, not a fourth segment: the
+                            segments are states, and "inherited" is not one — it
+                            is the absence of a decision here. */}
+                        {automation.canResetToInherited && (
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() =>
+                              run(id, () =>
+                                resetAutomationToInherited({
+                                  definitionId: id,
+                                  target: { scope: "job", jobId },
+                                })
+                              )
+                            }
+                            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+                          >
+                            Reset
+                          </button>
+                        )}
+                        <StateControl
+                          automation={automation}
+                          pending={pending}
+                          onChange={(next) =>
+                            run(id, () =>
+                              setAutomationState({
+                                definitionId: id,
+                                target: { scope: "job", jobId },
+                                state: next,
+                              })
+                            )
+                          }
+                        />
+                      </div>
                     </div>
 
                     {open && (
                       <div className="pb-3 pl-5.5">
-                        {rule ? (
+                        {automation.isApplicable ? (
                           <div className="rounded-lg border border-border bg-muted/30 p-3">
-                            <AutomationRuleFacets rule={rule} brief />
+                            <AutomationRuleFacets automation={automation} brief />
                           </div>
                         ) : (
                           <div className="rounded-lg border border-dashed border-border p-3">

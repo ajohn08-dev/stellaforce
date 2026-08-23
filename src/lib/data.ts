@@ -1085,3 +1085,20 @@ export async function getAgentById(agentId: string): Promise<AgentRow | null> {
   const { data } = await supabase.from("agents").select("*").eq("id", agentId).maybeSingle()
   return data ?? null
 }
+
+/**
+ * Active screening agents, as pickable options.
+ *
+ * Active only: a stage assigned to a switched-off agent looks configured and
+ * then refuses to schedule, which is worse than not offering it.
+ */
+export async function getActiveAgentOptions(): Promise<{ id: string; name: string }[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from("agents")
+    .select("id, name")
+    .eq("status", "active")
+    .order("name")
+  return data ?? []
+}

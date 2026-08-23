@@ -73,40 +73,50 @@ const CUTOFF_OPTIONS = [
   "Custom",
 ]
 
+/**
+ * ⚠️ **No "Custom" option on any setting the booking engine reads.**
+ *
+ * These five — horizon, notice, link expiry, granularity, hold — used to offer
+ * one. It slugged to `"custom"` with nowhere to store the number it stood for,
+ * so every stage that chose it would resolve to `SCHEDULING_CONFIGURATION_INVALID`
+ * the first time a candidate opened a booking link. A horizon of "17 days" is
+ * not a product requirement; a setting that can't be honoured is a bug.
+ * `src/lib/scheduling-runtime.ts` is the exhaustive parser for what remains.
+ */
 export const BOOKING_SETTINGS: SchedulingSettingDef[] = [
   setting(
     "booking_horizon",
     "Candidate booking horizon",
     "How far ahead candidates can book",
-    ["7 days", "10 days", "14 days", "21 days", "30 days", "Custom"],
+    ["7 days", "10 days", "14 days", "21 days", "30 days"],
     "14 days"
   ),
   setting(
     "minimum_booking_notice",
     "Minimum booking notice",
     "How much notice interviewers need before a candidate can book",
-    ["No minimum", "2 hours", "4 hours", "8 hours", "12 hours", "24 hours", "48 hours", "Custom"],
+    ["No minimum", "2 hours", "4 hours", "8 hours", "12 hours", "24 hours", "48 hours"],
     "24 hours"
   ),
   setting(
     "link_expiry",
     "Candidate link expiry",
     "How long a self-scheduling link remains active",
-    ["24 hours", "3 days", "5 days", "7 days", "14 days", "Until candidate leaves stage", "Custom"],
+    ["24 hours", "3 days", "5 days", "7 days", "14 days", "Until candidate leaves stage"],
     "7 days"
   ),
   setting(
     "slot_granularity",
     "Booking slot granularity",
     "Increment between candidate-visible start times",
-    ["5 minutes", "10 minutes", "15 minutes", "20 minutes", "30 minutes", "Custom"],
+    ["5 minutes", "10 minutes", "15 minutes", "20 minutes", "30 minutes"],
     "15 minutes"
   ),
   setting(
     "slot_hold_duration",
     "Slot hold duration",
     "How long a selected slot is temporarily held during confirmation",
-    ["No hold", "2 minutes", "3 minutes", "5 minutes", "10 minutes", "Custom"],
+    ["No hold", "2 minutes", "3 minutes", "5 minutes", "10 minutes"],
     "5 minutes"
   ),
   setting(
@@ -120,6 +130,66 @@ export const BOOKING_SETTINGS: SchedulingSettingDef[] = [
       "Interviewer timezone",
     ],
     "Candidate browser timezone"
+  ),
+]
+
+/**
+ * What an **agent** interview needs that a human one doesn't.
+ *
+ * A human interviewer brings their own calendar, working hours and timezone; an
+ * agent has none of those, so the stage has to say when it may call, how many
+ * calls it can hold at once, and whether a candidate may start immediately.
+ *
+ * Kept as a separate group rather than folded into BOOKING_SETTINGS so the
+ * Scheduling Policy tab can show them only where they apply.
+ */
+export const AGENT_INTERVIEW_SETTINGS: SchedulingSettingDef[] = [
+  setting(
+    "allow_start_now",
+    "Allow “Start now”",
+    "Whether a candidate can begin the agent interview immediately instead of booking a time",
+    ["Allowed", "Not allowed"],
+    "Allowed"
+  ),
+  setting(
+    "agent_concurrency",
+    "Concurrent agent interviews",
+    "How many candidates this stage may have on the agent at the same time. Capped by the agent's own limit.",
+    ["1", "2", "3", "5", "10"],
+    "1"
+  ),
+  setting(
+    "operating_hours",
+    "Agent operating hours",
+    "The wall-clock window the agent will call inside",
+    ["9am to 5pm", "8am to 6pm", "10am to 4pm", "Around the clock"],
+    "9am to 5pm"
+  ),
+  setting(
+    "operating_days",
+    "Agent operating days",
+    "Which days the agent will call on",
+    ["Weekdays", "All days"],
+    "Weekdays"
+  ),
+  // Labels, not IANA strings: `slug()` lowercases and strips punctuation, so
+  // "America/Los_Angeles" would be stored as "america_los_angeles" anyway. The
+  // slug -> zone mapping lives in scheduling-runtime.ts, which is the only place
+  // that needs the real identifier.
+  setting(
+    "operating_timezone",
+    "Agent operating timezone",
+    "The timezone the operating hours are expressed in. Candidates always see their own.",
+    [
+      "US Pacific",
+      "US Eastern",
+      "UK",
+      "Central Europe",
+      "India",
+      "Singapore",
+      "Sydney",
+    ],
+    "US Pacific"
   ),
 ]
 
@@ -218,6 +288,7 @@ export const CALENDAR_SETTINGS: SchedulingSettingDef[] = [
 
 export const ALL_SCHEDULING_SETTINGS: SchedulingSettingDef[] = [
   ...BOOKING_SETTINGS,
+  ...AGENT_INTERVIEW_SETTINGS,
   ...RESCHEDULE_SETTINGS,
   ...AVAILABILITY_SETTINGS,
   ...CALENDAR_SETTINGS,
@@ -277,6 +348,17 @@ export const SUB_STAGE_SCHEDULING_KEYS = [
   "minimum_booking_notice",
   "link_expiry",
   "slot_granularity",
+  // The booking engine reads this per stage, and a 5-minute hold on a stage
+  // whose slots are 15 minutes apart behaves differently from one on a stage
+  // where they're 5 — so it belongs to the stage after all.
+  "slot_hold_duration",
+  // Agent-interview settings are inherently per stage: only some stages are run
+  // by an agent, and two that are may want different hours and concurrency.
+  "allow_start_now",
+  "agent_concurrency",
+  "operating_hours",
+  "operating_days",
+  "operating_timezone",
   "self_reschedule",
   "self_reschedule_cutoff",
   "self_cancel",

@@ -128,6 +128,7 @@ export type Database = {
           description: string | null
           external_agent_id: string | null
           id: string
+          max_concurrent_calls: number
           name: string
           provider: string
           status: Database["public"]["Enums"]["agent_status"]
@@ -139,6 +140,7 @@ export type Database = {
           description?: string | null
           external_agent_id?: string | null
           id?: string
+          max_concurrent_calls?: number
           name: string
           provider: string
           status?: Database["public"]["Enums"]["agent_status"]
@@ -150,6 +152,7 @@ export type Database = {
           description?: string | null
           external_agent_id?: string | null
           id?: string
+          max_concurrent_calls?: number
           name?: string
           provider?: string
           status?: Database["public"]["Enums"]["agent_status"]
@@ -691,50 +694,227 @@ export type Database = {
           },
         ]
       }
-      automation_rules: {
+      automation_bindings: {
+        Row: {
+          automation_definition_id: string
+          company_scope_client_id: string | null
+          created_at: string
+          id: string
+          job_id: string | null
+          note: string | null
+          scope: Database["public"]["Enums"]["settings_scope"]
+          set_by: string | null
+          state: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id: string | null
+          updated_at: string
+          workflow_template_id: string | null
+        }
+        Insert: {
+          automation_definition_id: string
+          company_scope_client_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          note?: string | null
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          set_by?: string | null
+          state: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id?: string | null
+          updated_at?: string
+          workflow_template_id?: string | null
+        }
+        Update: {
+          automation_definition_id?: string
+          company_scope_client_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          note?: string | null
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          set_by?: string | null
+          state?: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id?: string | null
+          updated_at?: string
+          workflow_template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_bindings_automation_definition_id_fkey"
+            columns: ["automation_definition_id"]
+            isOneToOne: false
+            referencedRelation: "automation_definitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_bindings_company_scope_client_id_fkey"
+            columns: ["company_scope_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "automation_bindings_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "automation_bindings_set_by_fkey"
+            columns: ["set_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_bindings_tenant_client_id_fkey"
+            columns: ["tenant_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "automation_bindings_workflow_template_id_fkey"
+            columns: ["workflow_template_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_definition_versions: {
         Row: {
           actions: Json
           client_id: string | null
-          conditions: Json
+          condition_text: string
           created_at: string
-          enabled: boolean
+          created_by: string | null
+          default_mode: Database["public"]["Enums"]["automation_mode"]
+          definition_id: string
+          exceptions: Json
           id: string
-          scope: Database["public"]["Enums"]["settings_scope"]
-          scope_id: string | null
-          trigger_event_type: Database["public"]["Enums"]["activity_event_type"]
+          notes: string | null
+          published_at: string | null
+          sla_type: string | null
+          status: Database["public"]["Enums"]["automation_version_status"]
+          tasks_and_reminders: Json
           updated_at: string
+          version: number
         }
         Insert: {
           actions?: Json
           client_id?: string | null
-          conditions?: Json
+          condition_text?: string
           created_at?: string
-          enabled?: boolean
+          created_by?: string | null
+          default_mode?: Database["public"]["Enums"]["automation_mode"]
+          definition_id: string
+          exceptions?: Json
           id?: string
-          scope: Database["public"]["Enums"]["settings_scope"]
-          scope_id?: string | null
-          trigger_event_type: Database["public"]["Enums"]["activity_event_type"]
+          notes?: string | null
+          published_at?: string | null
+          sla_type?: string | null
+          status?: Database["public"]["Enums"]["automation_version_status"]
+          tasks_and_reminders?: Json
           updated_at?: string
+          version: number
         }
         Update: {
           actions?: Json
           client_id?: string | null
-          conditions?: Json
+          condition_text?: string
           created_at?: string
-          enabled?: boolean
+          created_by?: string | null
+          default_mode?: Database["public"]["Enums"]["automation_mode"]
+          definition_id?: string
+          exceptions?: Json
           id?: string
-          scope?: Database["public"]["Enums"]["settings_scope"]
-          scope_id?: string | null
+          notes?: string | null
+          published_at?: string | null
+          sla_type?: string | null
+          status?: Database["public"]["Enums"]["automation_version_status"]
+          tasks_and_reminders?: Json
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_definition_versions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "automation_definition_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_definition_versions_definition_id_fkey"
+            columns: ["definition_id"]
+            isOneToOne: false
+            referencedRelation: "automation_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_definitions: {
+        Row: {
+          archived_at: string | null
+          category: string
+          client_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          key: string
+          name: string
+          system_managed: boolean
+          trigger_event_type: Database["public"]["Enums"]["activity_event_type"]
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          category: string
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key: string
+          name: string
+          system_managed?: boolean
+          trigger_event_type: Database["public"]["Enums"]["activity_event_type"]
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          category?: string
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key?: string
+          name?: string
+          system_managed?: boolean
           trigger_event_type?: Database["public"]["Enums"]["activity_event_type"]
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "automation_rules_client_id_fkey"
+            foreignKeyName: "automation_definitions_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "automation_definitions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -755,6 +935,7 @@ export type Database = {
           file_size: number | null
           filename: string | null
           id: string
+          interview_id: string | null
           interviewer_type: Database["public"]["Enums"]["interviewer_type"]
           is_test: boolean
           job_id: string | null
@@ -796,6 +977,7 @@ export type Database = {
           file_size?: number | null
           filename?: string | null
           id?: string
+          interview_id?: string | null
           interviewer_type: Database["public"]["Enums"]["interviewer_type"]
           is_test?: boolean
           job_id?: string | null
@@ -837,6 +1019,7 @@ export type Database = {
           file_size?: number | null
           filename?: string | null
           id?: string
+          interview_id?: string | null
           interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
           is_test?: boolean
           job_id?: string | null
@@ -896,6 +1079,13 @@ export type Database = {
             columns: ["evaluation_id"]
             isOneToOne: false
             referencedRelation: "application_stage_evaluations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_recordings_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "interviews"
             referencedColumns: ["id"]
           },
           {
@@ -1724,6 +1914,362 @@ export type Database = {
           },
         ]
       }
+      interview_scheduling_requests: {
+        Row: {
+          agent_concurrency_limit: number
+          agent_id: string
+          allow_start_now: boolean
+          application_id: string
+          booked_at: string | null
+          booking_horizon_days: number
+          candidate_id: string
+          candidate_timezone: string | null
+          client_id: string
+          created_at: string
+          created_by: string | null
+          dispatched_to_n8n_at: string | null
+          failure_event_id: string | null
+          failure_reason_code: string | null
+          hold_seconds: number
+          id: string
+          interview_id: string | null
+          job_id: string
+          minimum_notice_minutes: number
+          operating_days: number[]
+          operating_end_hour: number
+          operating_start_hour: number
+          operating_timezone: string
+          slot_granularity_minutes: number
+          slot_minutes: number
+          status: Database["public"]["Enums"]["scheduling_request_status"]
+          sub_stage_id: string
+          token_expires_at: string
+          token_hash: string
+          token_issued_at: string
+          updated_at: string
+        }
+        Insert: {
+          agent_concurrency_limit: number
+          agent_id: string
+          allow_start_now?: boolean
+          application_id: string
+          booked_at?: string | null
+          booking_horizon_days: number
+          candidate_id: string
+          candidate_timezone?: string | null
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          dispatched_to_n8n_at?: string | null
+          failure_event_id?: string | null
+          failure_reason_code?: string | null
+          hold_seconds?: number
+          id?: string
+          interview_id?: string | null
+          job_id: string
+          minimum_notice_minutes: number
+          operating_days?: number[]
+          operating_end_hour?: number
+          operating_start_hour?: number
+          operating_timezone?: string
+          slot_granularity_minutes: number
+          slot_minutes: number
+          status?: Database["public"]["Enums"]["scheduling_request_status"]
+          sub_stage_id: string
+          token_expires_at: string
+          token_hash: string
+          token_issued_at?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_concurrency_limit?: number
+          agent_id?: string
+          allow_start_now?: boolean
+          application_id?: string
+          booked_at?: string | null
+          booking_horizon_days?: number
+          candidate_id?: string
+          candidate_timezone?: string | null
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          dispatched_to_n8n_at?: string | null
+          failure_event_id?: string | null
+          failure_reason_code?: string | null
+          hold_seconds?: number
+          id?: string
+          interview_id?: string | null
+          job_id?: string
+          minimum_notice_minutes?: number
+          operating_days?: number[]
+          operating_end_hour?: number
+          operating_start_hour?: number
+          operating_timezone?: string
+          slot_granularity_minutes?: number
+          slot_minutes?: number
+          status?: Database["public"]["Enums"]["scheduling_request_status"]
+          sub_stage_id?: string
+          token_expires_at?: string
+          token_hash?: string
+          token_issued_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_scheduling_requests_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["application_id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_failure_event_id_fkey"
+            columns: ["failure_event_id"]
+            isOneToOne: false
+            referencedRelation: "activity_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_interview_fk"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "interviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_sub_stage_id_fkey"
+            columns: ["sub_stage_id"]
+            isOneToOne: false
+            referencedRelation: "job_workflow_sub_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interview_slot_holds: {
+        Row: {
+          agent_id: string
+          agent_slot_index: number
+          created_at: string
+          during: unknown
+          ends_at: string
+          expires_at: string
+          id: string
+          request_id: string
+          starts_at: string
+        }
+        Insert: {
+          agent_id: string
+          agent_slot_index: number
+          created_at?: string
+          during?: unknown
+          ends_at: string
+          expires_at: string
+          id?: string
+          request_id: string
+          starts_at: string
+        }
+        Update: {
+          agent_id?: string
+          agent_slot_index?: number
+          created_at?: string
+          during?: unknown
+          ends_at?: string
+          expires_at?: string
+          id?: string
+          request_id?: string
+          starts_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_slot_holds_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_slot_holds_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "interview_scheduling_request_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_slot_holds_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "interview_scheduling_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interviews: {
+        Row: {
+          agent_id: string | null
+          agent_slot_index: number
+          application_id: string
+          cancel_reason: string | null
+          canceled_at: string | null
+          candidate_id: string
+          candidate_timezone: string | null
+          client_id: string
+          completed_at: string | null
+          created_at: string
+          during: unknown
+          ends_at: string
+          format: Database["public"]["Enums"]["stage_format"] | null
+          id: string
+          interviewer_type: Database["public"]["Enums"]["interviewer_type"]
+          job_id: string
+          scheduled_at: string
+          scheduling_request_id: string | null
+          started_now: boolean
+          status: Database["public"]["Enums"]["interview_status"]
+          sub_stage_id: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id?: string | null
+          agent_slot_index?: number
+          application_id: string
+          cancel_reason?: string | null
+          canceled_at?: string | null
+          candidate_id: string
+          candidate_timezone?: string | null
+          client_id: string
+          completed_at?: string | null
+          created_at?: string
+          during?: unknown
+          ends_at: string
+          format?: Database["public"]["Enums"]["stage_format"] | null
+          id?: string
+          interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
+          job_id: string
+          scheduled_at: string
+          scheduling_request_id?: string | null
+          started_now?: boolean
+          status?: Database["public"]["Enums"]["interview_status"]
+          sub_stage_id: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string | null
+          agent_slot_index?: number
+          application_id?: string
+          cancel_reason?: string | null
+          canceled_at?: string | null
+          candidate_id?: string
+          candidate_timezone?: string | null
+          client_id?: string
+          completed_at?: string | null
+          created_at?: string
+          during?: unknown
+          ends_at?: string
+          format?: Database["public"]["Enums"]["stage_format"] | null
+          id?: string
+          interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
+          job_id?: string
+          scheduled_at?: string
+          scheduling_request_id?: string | null
+          started_now?: boolean
+          status?: Database["public"]["Enums"]["interview_status"]
+          sub_stage_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interviews_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interviews_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["application_id"]
+          },
+          {
+            foreignKeyName: "interviews_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "interviews_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "interviews_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "interviews_scheduling_request_id_fkey"
+            columns: ["scheduling_request_id"]
+            isOneToOne: false
+            referencedRelation: "interview_scheduling_request_status"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interviews_scheduling_request_id_fkey"
+            columns: ["scheduling_request_id"]
+            isOneToOne: false
+            referencedRelation: "interview_scheduling_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interviews_sub_stage_id_fkey"
+            columns: ["sub_stage_id"]
+            isOneToOne: false
+            referencedRelation: "job_workflow_sub_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_competencies: {
         Row: {
           created_at: string
@@ -2194,6 +2740,9 @@ export type Database = {
           questions: string | null
           rating_scale: Database["public"]["Enums"]["rating_scale"] | null
           required_questions: string | null
+          scheduling_mode:
+            | Database["public"]["Enums"]["scheduling_policy"]
+            | null
           visibility: Database["public"]["Enums"]["stage_visibility"]
         }
         Insert: {
@@ -2228,6 +2777,9 @@ export type Database = {
           questions?: string | null
           rating_scale?: Database["public"]["Enums"]["rating_scale"] | null
           required_questions?: string | null
+          scheduling_mode?:
+            | Database["public"]["Enums"]["scheduling_policy"]
+            | null
           visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
         Update: {
@@ -2262,6 +2814,9 @@ export type Database = {
           questions?: string | null
           rating_scale?: Database["public"]["Enums"]["rating_scale"] | null
           required_questions?: string | null
+          scheduling_mode?:
+            | Database["public"]["Enums"]["scheduling_policy"]
+            | null
           visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
         Relationships: [
@@ -2495,6 +3050,128 @@ export type Database = {
           },
         ]
       }
+      scheduled_agent_calls: {
+        Row: {
+          agent_id: string
+          application_id: string
+          attempts: number
+          campaign_id: string
+          canceled_at: string | null
+          candidate_id: string
+          client_id: string
+          created_at: string
+          dispatched_at: string | null
+          id: string
+          interview_id: string
+          job_id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          locked_until: string | null
+          max_attempts: number
+          run_at: string
+          status: Database["public"]["Enums"]["scheduled_call_status"]
+          sub_stage_id: string
+          suppressed_reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          application_id: string
+          attempts?: number
+          campaign_id?: string
+          canceled_at?: string | null
+          candidate_id: string
+          client_id: string
+          created_at?: string
+          dispatched_at?: string | null
+          id?: string
+          interview_id: string
+          job_id: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          locked_until?: string | null
+          max_attempts?: number
+          run_at: string
+          status?: Database["public"]["Enums"]["scheduled_call_status"]
+          sub_stage_id: string
+          suppressed_reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          application_id?: string
+          attempts?: number
+          campaign_id?: string
+          canceled_at?: string | null
+          candidate_id?: string
+          client_id?: string
+          created_at?: string
+          dispatched_at?: string | null
+          id?: string
+          interview_id?: string
+          job_id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          locked_until?: string | null
+          max_attempts?: number
+          run_at?: string
+          status?: Database["public"]["Enums"]["scheduled_call_status"]
+          sub_stage_id?: string
+          suppressed_reason?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_agent_calls_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_agent_calls_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["application_id"]
+          },
+          {
+            foreignKeyName: "scheduled_agent_calls_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "scheduled_agent_calls_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "scheduled_agent_calls_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "interviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_agent_calls_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "scheduled_agent_calls_sub_stage_id_fkey"
+            columns: ["sub_stage_id"]
+            isOneToOne: false
+            referencedRelation: "job_workflow_sub_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       skills: {
         Row: {
           category: string | null
@@ -2656,6 +3333,9 @@ export type Database = {
           question_source: Database["public"]["Enums"]["question_source"] | null
           rating_scale: Database["public"]["Enums"]["rating_scale"] | null
           required_questions: string | null
+          scheduling_mode:
+            | Database["public"]["Enums"]["scheduling_policy"]
+            | null
           template_id: string
           visibility: Database["public"]["Enums"]["stage_visibility"]
         }
@@ -2688,6 +3368,9 @@ export type Database = {
             | null
           rating_scale?: Database["public"]["Enums"]["rating_scale"] | null
           required_questions?: string | null
+          scheduling_mode?:
+            | Database["public"]["Enums"]["scheduling_policy"]
+            | null
           template_id: string
           visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
@@ -2720,6 +3403,9 @@ export type Database = {
             | null
           rating_scale?: Database["public"]["Enums"]["rating_scale"] | null
           required_questions?: string | null
+          scheduling_mode?:
+            | Database["public"]["Enums"]["scheduling_policy"]
+            | null
           template_id?: string
           visibility?: Database["public"]["Enums"]["stage_visibility"]
         }
@@ -2809,13 +3495,230 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      interview_scheduling_request_status: {
+        Row: {
+          agent_concurrency_limit: number | null
+          agent_id: string | null
+          allow_start_now: boolean | null
+          application_id: string | null
+          booked_at: string | null
+          booking_horizon_days: number | null
+          candidate_id: string | null
+          candidate_timezone: string | null
+          client_id: string | null
+          created_at: string | null
+          created_by: string | null
+          dispatched_to_n8n_at: string | null
+          failure_event_id: string | null
+          failure_reason_code: string | null
+          hold_seconds: number | null
+          id: string | null
+          interview_id: string | null
+          job_id: string | null
+          minimum_notice_minutes: number | null
+          operating_days: number[] | null
+          operating_end_hour: number | null
+          operating_start_hour: number | null
+          operating_timezone: string | null
+          slot_granularity_minutes: number | null
+          slot_minutes: number | null
+          status:
+            | Database["public"]["Enums"]["scheduling_request_status"]
+            | null
+          sub_stage_id: string | null
+          token_expires_at: string | null
+          token_issued_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          agent_concurrency_limit?: number | null
+          agent_id?: string | null
+          allow_start_now?: boolean | null
+          application_id?: string | null
+          booked_at?: string | null
+          booking_horizon_days?: number | null
+          candidate_id?: string | null
+          candidate_timezone?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          dispatched_to_n8n_at?: string | null
+          failure_event_id?: string | null
+          failure_reason_code?: string | null
+          hold_seconds?: number | null
+          id?: string | null
+          interview_id?: string | null
+          job_id?: string | null
+          minimum_notice_minutes?: number | null
+          operating_days?: number[] | null
+          operating_end_hour?: number | null
+          operating_start_hour?: number | null
+          operating_timezone?: string | null
+          slot_granularity_minutes?: number | null
+          slot_minutes?: number | null
+          status?:
+            | Database["public"]["Enums"]["scheduling_request_status"]
+            | null
+          sub_stage_id?: string | null
+          token_expires_at?: string | null
+          token_issued_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          agent_concurrency_limit?: number | null
+          agent_id?: string | null
+          allow_start_now?: boolean | null
+          application_id?: string | null
+          booked_at?: string | null
+          booking_horizon_days?: number | null
+          candidate_id?: string | null
+          candidate_timezone?: string | null
+          client_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          dispatched_to_n8n_at?: string | null
+          failure_event_id?: string | null
+          failure_reason_code?: string | null
+          hold_seconds?: number | null
+          id?: string | null
+          interview_id?: string | null
+          job_id?: string | null
+          minimum_notice_minutes?: number | null
+          operating_days?: number[] | null
+          operating_end_hour?: number | null
+          operating_start_hour?: number | null
+          operating_timezone?: string | null
+          slot_granularity_minutes?: number | null
+          slot_minutes?: number | null
+          status?:
+            | Database["public"]["Enums"]["scheduling_request_status"]
+            | null
+          sub_stage_id?: string | null
+          token_expires_at?: string | null
+          token_issued_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_scheduling_requests_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "applications"
+            referencedColumns: ["application_id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_failure_event_id_fkey"
+            columns: ["failure_event_id"]
+            isOneToOne: false
+            referencedRelation: "activity_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_interview_fk"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "interviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "interview_scheduling_requests_sub_stage_id_fkey"
+            columns: ["sub_stage_id"]
+            isOneToOne: false
+            referencedRelation: "job_workflow_sub_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      cancel_interview: {
+        Args: { p_interview_id: string; p_reason?: string }
+        Returns: {
+          canceled: boolean
+          reason_code: string
+        }[]
+      }
+      claim_due_agent_calls: {
+        Args: { p_lease_seconds?: number; p_limit?: number }
+        Returns: {
+          agent_id: string
+          application_id: string
+          attempts: number
+          call_id: string
+          campaign_id: string
+          candidate_id: string
+          client_id: string
+          interview_id: string
+          job_id: string
+          scheduled_at: string
+          sub_stage_id: string
+        }[]
+      }
+      confirm_interview_booking: {
+        Args: {
+          p_candidate_timezone?: string
+          p_hold_id?: string
+          p_request_id: string
+          p_start_now?: boolean
+        }
+        Returns: {
+          agent_slot_index: number
+          ends_at: string
+          interview_id: string
+          reason_code: string
+          scheduled_at: string
+          scheduled_call_id: string
+        }[]
+      }
       current_profile_client_id: { Args: never; Returns: string }
       current_profile_side: {
         Args: never
         Returns: Database["public"]["Enums"]["profile_side"]
+      }
+      hold_interview_slot: {
+        Args: { p_request_id: string; p_starts_at: string }
+        Returns: {
+          ends_at: string
+          expires_at: string
+          hold_id: string
+          reason_code: string
+          starts_at: string
+        }[]
       }
     }
     Enums: {
@@ -2859,6 +3762,13 @@ export type Database = {
         | "job_team_member_added"
         | "calendar_connected"
         | "calendar_connection_revoked"
+        | "decision_made"
+        | "automation_skipped_by_policy"
+        | "booking_link_sent"
+        | "booking_link_opened"
+        | "scheduling_failed"
+        | "scheduling_failure_resolved"
+        | "agent_call_dispatched"
       actor_type: "user" | "system" | "candidate"
       agent_status: "active" | "inactive"
       application_status:
@@ -2867,6 +3777,9 @@ export type Database = {
         | "rejected"
         | "withdrawn"
         | "on_hold"
+      automation_mode: "auto" | "approval_required"
+      automation_state: "active" | "paused" | "off"
+      automation_version_status: "draft" | "published" | "archived"
       candidate_tier: "gold" | "silver" | "bronze"
       client_plan: "basic" | "standard" | "premium"
       client_role: "reviewer" | "admin" | "hiring_manager" | "recruiter"
@@ -2886,6 +3799,12 @@ export type Database = {
       fit_proficiency_level: "aware" | "proficient" | "expert"
       hire_recommendation: "strong_hire" | "hire" | "no_hire" | "strong_no_hire"
       interaction_type: "call" | "email" | "interview" | "note"
+      interview_status:
+        | "scheduled"
+        | "in_progress"
+        | "completed"
+        | "canceled"
+        | "no_show"
       interviewer_type: "human" | "ai" | "external"
       job_status: "draft" | "open" | "paused" | "filled" | "closed"
       nurture_status: "active" | "dormant" | "re_engaging"
@@ -2895,10 +3814,24 @@ export type Database = {
       profile_side: "stellaforce" | "client"
       question_source: "manual" | "structured" | "ai_assisted"
       rating_scale: "star" | "ten-point" | "hundred-point"
+      scheduled_call_status:
+        | "pending"
+        | "claimed"
+        | "sent"
+        | "failed"
+        | "canceled"
+        | "suppressed"
       scheduling_policy:
         | "recruiter_led"
         | "candidate_self_scheduling"
         | "system_auto_schedule"
+      scheduling_request_status:
+        | "pending"
+        | "sent"
+        | "booked"
+        | "expired"
+        | "canceled"
+        | "failed"
       settings_scope: "global" | "client" | "workflow" | "job"
       skill_type: "technical" | "functional" | "behavioral"
       stage_entry_condition: "manual" | "automatic"
@@ -3074,6 +4007,13 @@ export const Constants = {
         "job_team_member_added",
         "calendar_connected",
         "calendar_connection_revoked",
+        "decision_made",
+        "automation_skipped_by_policy",
+        "booking_link_sent",
+        "booking_link_opened",
+        "scheduling_failed",
+        "scheduling_failure_resolved",
+        "agent_call_dispatched",
       ],
       actor_type: ["user", "system", "candidate"],
       agent_status: ["active", "inactive"],
@@ -3084,6 +4024,9 @@ export const Constants = {
         "withdrawn",
         "on_hold",
       ],
+      automation_mode: ["auto", "approval_required"],
+      automation_state: ["active", "paused", "off"],
+      automation_version_status: ["draft", "published", "archived"],
       candidate_tier: ["gold", "silver", "bronze"],
       client_plan: ["basic", "standard", "premium"],
       client_role: ["reviewer", "admin", "hiring_manager", "recruiter"],
@@ -3104,6 +4047,13 @@ export const Constants = {
       fit_proficiency_level: ["aware", "proficient", "expert"],
       hire_recommendation: ["strong_hire", "hire", "no_hire", "strong_no_hire"],
       interaction_type: ["call", "email", "interview", "note"],
+      interview_status: [
+        "scheduled",
+        "in_progress",
+        "completed",
+        "canceled",
+        "no_show",
+      ],
       interviewer_type: ["human", "ai", "external"],
       job_status: ["draft", "open", "paused", "filled", "closed"],
       nurture_status: ["active", "dormant", "re_engaging"],
@@ -3113,10 +4063,26 @@ export const Constants = {
       profile_side: ["stellaforce", "client"],
       question_source: ["manual", "structured", "ai_assisted"],
       rating_scale: ["star", "ten-point", "hundred-point"],
+      scheduled_call_status: [
+        "pending",
+        "claimed",
+        "sent",
+        "failed",
+        "canceled",
+        "suppressed",
+      ],
       scheduling_policy: [
         "recruiter_led",
         "candidate_self_scheduling",
         "system_auto_schedule",
+      ],
+      scheduling_request_status: [
+        "pending",
+        "sent",
+        "booked",
+        "expired",
+        "canceled",
+        "failed",
       ],
       settings_scope: ["global", "client", "workflow", "job"],
       skill_type: ["technical", "functional", "behavioral"],
@@ -3241,7 +4207,6 @@ export type WorkflowTemplateSubStageRow = SchemaTables["workflow_template_sub_st
 export type WorkflowTemplateSubStageInsert = SchemaTables["workflow_template_sub_stages"]["Insert"]
 export type WorkflowSettingRow = SchemaTables["workflow_settings"]["Row"]
 export type SlaPolicyRow = SchemaTables["sla_policies"]["Row"]
-export type AutomationRuleRow = SchemaTables["automation_rules"]["Row"]
 export type CommunicationTemplateRow = SchemaTables["communication_templates"]["Row"]
 export type ActivityEventRow = SchemaTables["activity_events"]["Row"]
 export type ActivityEventInsert = SchemaTables["activity_events"]["Insert"]
@@ -3252,9 +4217,43 @@ export type JobTargetCompanyRow = SchemaTables["job_target_companies"]["Row"]
 export type GoogleCalendarConnectionRow = SchemaTables["google_calendar_connections"]["Row"]
 export type GoogleCalendarConnectionInsert = SchemaTables["google_calendar_connections"]["Insert"]
 
+// ── Automations (control plane: library → versions → per-scope bindings) ─────
+// `automation_rules` was renamed to `automation_bindings`; the rule itself now
+// lives on a version, and a binding is a sparse per-scope override.
+export type AutomationStateValue = SchemaEnums["automation_state"]
+export type AutomationModeValue = SchemaEnums["automation_mode"]
+export type AutomationVersionStatus = SchemaEnums["automation_version_status"]
+
+export type AutomationDefinitionRow = SchemaTables["automation_definitions"]["Row"]
+export type AutomationDefinitionVersionRow =
+  SchemaTables["automation_definition_versions"]["Row"]
+export type AutomationBindingRow = SchemaTables["automation_bindings"]["Row"]
+export type AutomationBindingInsert = SchemaTables["automation_bindings"]["Insert"]
+
 // ── Agents / call recordings (screening-agent registry + interview/call log) ─
 export type AgentRow = SchemaTables["agents"]["Row"]
 export type AgentInsert = SchemaTables["agents"]["Insert"]
 export type AgentStatus = SchemaEnums["agent_status"]
 export type CallRecordingRow = SchemaTables["call_recordings"]["Row"]
 export type CallRecordingInsert = SchemaTables["call_recordings"]["Insert"]
+
+// ── Interview scheduling (agent-interview self-scheduling) ──────────────────
+// `interviews` is a deliberate re-creation: the original was dropped in
+// 20260807173038 with `interview_status`. Same names, one extra status value.
+export type InterviewStatus = SchemaEnums["interview_status"]
+export type SchedulingRequestStatus = SchemaEnums["scheduling_request_status"]
+export type ScheduledCallStatus = SchemaEnums["scheduled_call_status"]
+export type SchedulingPolicyMode = SchemaEnums["scheduling_policy"]
+
+export type InterviewRow = SchemaTables["interviews"]["Row"]
+export type InterviewInsert = SchemaTables["interviews"]["Insert"]
+export type InterviewSchedulingRequestRow =
+  SchemaTables["interview_scheduling_requests"]["Row"]
+export type InterviewSchedulingRequestInsert =
+  SchemaTables["interview_scheduling_requests"]["Insert"]
+export type InterviewSlotHoldRow = SchemaTables["interview_slot_holds"]["Row"]
+export type ScheduledAgentCallRow = SchemaTables["scheduled_agent_calls"]["Row"]
+
+/** The recruiter-facing projection — `token_hash` is deliberately absent. */
+export type InterviewSchedulingRequestStatusRow =
+  Database["public"]["Views"]["interview_scheduling_request_status"]["Row"]
