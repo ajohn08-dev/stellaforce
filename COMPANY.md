@@ -257,9 +257,11 @@ what the company page already says beside the thing that would fix it.
 `ready` and `ready_with_caveats` onto one **Ready**, leaving *Ready · Review ·
 Warning* — green, amber, red. Both are ready, and ready-versus-ready-with-caveats
 is not a distinction anyone scans a list by; the caveat belongs on the company,
-next to the topic that escalates. The four descriptive labels stay on the
-workspace header, where a tooltip carries the *why*. Same one-state-two-registers
-idea as `CLEARANCE_SHORT_LABELS`.
+next to the topic that escalates. The badge says the same three words
+everywhere — list, cards, and the company's own header — so a company can't
+appear to be in one state on the list and another on its page. The descriptive
+form lives in the header pill's **tooltip**, above the explanation, where it
+reads as detail rather than as a competing status.
 
 The filter pills group by tone too, so "Ready" isn't two pills that mean almost
 the same thing.

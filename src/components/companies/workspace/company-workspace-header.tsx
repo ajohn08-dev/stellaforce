@@ -9,7 +9,11 @@ import { ReadinessPill } from "@/components/companies/shared/readiness-pill"
 import { KnowledgePreview } from "@/components/companies/workspace/knowledge-preview"
 import { PublishButton } from "@/components/companies/workspace/publish-bar"
 import type { CompiledAgentContext } from "@/lib/company-agent-context"
-import { READINESS_SUMMARY, type CompanyReadiness } from "@/lib/company-readiness"
+import {
+  READINESS_LABELS,
+  READINESS_SUMMARY,
+  type CompanyReadiness,
+} from "@/lib/company-readiness"
 import {
   COMPANY_STAGE_LABELS,
   OPERATING_MODEL_LABELS,
@@ -77,14 +81,24 @@ export function CompanyWorkspaceHeader({
               <TooltipTrigger
                 render={
                   <span tabIndex={0} className="inline-flex">
-                    <ReadinessPill status={readiness.status} size="sm" />
+                    <ReadinessPill status={readiness.status} size="sm" short />
                   </span>
                 }
               />
+              {/* The badge says the same three words everywhere — Ready,
+                  Review, Warning — so a company can't appear to be in one state
+                  on the list and another on its own page. The descriptive form
+                  moves in here, where there's room for it and where it reads as
+                  detail rather than as a competing status. */}
               <TooltipContent className="max-w-xs">
-                {readiness.status === "ready"
-                  ? READINESS_SUMMARY.ready
-                  : readiness.headline}
+                <span className="block font-medium">
+                  {READINESS_LABELS[readiness.status]}
+                </span>
+                <span className="block">
+                  {readiness.status === "ready"
+                    ? READINESS_SUMMARY.ready
+                    : readiness.headline}
+                </span>
               </TooltipContent>
             </Tooltip>
           </div>
