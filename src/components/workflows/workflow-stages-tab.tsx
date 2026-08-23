@@ -25,7 +25,11 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
 import { RadioCardGroup } from "@/components/workflows/radio-card-group"
+import { SubStageSchedulingPanel } from "@/components/workflows/sub-stage-scheduling-panel"
+import { SubStageCommunicationPanel } from "@/components/workflows/sub-stage-communication-panel"
 import { useScrollbarOnScroll } from "@/lib/use-scrollbar-on-scroll"
+import type { StoredSchedulingPolicy } from "@/lib/scheduling-policy"
+import type { StoredCommunicationPolicy } from "@/lib/communication-policy"
 import {
   SCALE_OPTIONS,
   type MainStageKey,
@@ -90,6 +94,10 @@ type SubStage = {
   hireRecommendationEnabled: boolean
   overrideEnabled: boolean
   overrideRoles: string
+  /** Only what this stage overrides — undefined means it inherits scheduling wholesale. */
+  scheduling?: StoredSchedulingPolicy
+  /** Likewise for communication. */
+  communication?: StoredCommunicationPolicy
 }
 
 const OWNER_OPTIONS = ["Recruiter", "Hiring Manager", "Coordinator", "Sourcer"]
@@ -206,8 +214,35 @@ const DEFAULT_REQUIRED_QUESTIONS = [
   '"Describe a time you handled a difficult stakeholder."',
 ].join("\n")
 
-const SUB_NAV_ITEMS = ["Overview", "Setup", "Evaluation", "Decision", "Automation"] as const
-type SubNavItem = (typeof SUB_NAV_ITEMS)[number]
+type SubNavItem =
+  | "Overview"
+  | "Setup"
+  | "Evaluation"
+  | "Decision"
+  | "Scheduling"
+  | "Communication"
+  | "Automation"
+
+/**
+ * Scheduling and Communication sit between Decision and Automation, and only
+ * on Screening and Interview stages — those are the ones that put a candidate
+ * and an interviewer in a slot together. Sourcing, Offer and Close stages have
+ * nothing to book and nobody to remind, so the items would be empty rooms.
+ */
+const BOOKABLE_MAIN_STAGES: MainStageKey[] = ["screen", "interview"]
+
+function subNavItemsFor(mainStage: MainStageKey): SubNavItem[] {
+  return [
+    "Overview",
+    "Setup",
+    "Evaluation",
+    "Decision",
+    ...(BOOKABLE_MAIN_STAGES.includes(mainStage)
+      ? (["Scheduling", "Communication"] as const)
+      : []),
+    "Automation",
+  ]
+}
 
 function makeSubStage(
   mainStage: MainStageKey,
@@ -268,18 +303,22 @@ function formatFromInteractionMode(mode: InteractionMode): "phone" | "video" | "
 }
 
 /**
- * External Tool stages have no interaction mode, so their setup (a direct
- * URL, or a chosen third-party integration) rides in the sub-stage's
- * flexible `config` jsonb instead of a dedicated column — same pattern
- * CLAUDE.md documents for job_workflow_sub_stages.config.
+ * Two things have no column of their own and ride in the sub-stage's flexible
+ * `config` jsonb instead — same pattern CLAUDE.md documents for
+ * job_workflow_sub_stages.config. External Tool stages have no interaction
+ * mode, so their setup (a direct URL, or a chosen third-party integration)
+ * lives here; so do the stage's scheduling and communication overrides.
  */
-type ExternalToolConfig = {
+type SubStageConfig = {
   external_tool?: { mode: ExternalToolMode; url?: string; integration?: string }
+  scheduling?: StoredSchedulingPolicy
+  communication?: StoredCommunicationPolicy
 }
 
 /** Hydrates a sub-stage from a real, persisted workflow_template_sub_stages row. */
 function subStageFromTemplateRow(row: WorkflowTemplateSubStageWithStage): SubStage {
-  const externalTool = (row.config as ExternalToolConfig | null)?.external_tool
+  const config = row.config as SubStageConfig | null
+  const externalTool = config?.external_tool
   return {
     id: row.id,
     mainStage: (row.pipeline_stage?.key ?? "screen") as MainStageKey,
@@ -305,20 +344,27 @@ function subStageFromTemplateRow(row: WorkflowTemplateSubStageWithStage): SubSta
     hireRecommendationEnabled: row.hire_recommendation_enabled,
     overrideEnabled: row.override_enabled,
     overrideRoles: row.override_roles ?? OVERRIDE_ROLE_OPTIONS[0],
+    scheduling: config?.scheduling,
+    communication: config?.communication,
   }
 }
 
 /** Reverse of subStageFromTemplateRow, for saving back via saveTemplateSubStages. */
 function toTemplateSubStageInput(s: SubStage, displayOrder: number): TemplateSubStageInput {
-  const config: ExternalToolConfig =
-    s.interviewerType === "external"
-      ? {
-          external_tool:
-            s.externalToolMode === "integration"
-              ? { mode: "integration", integration: s.externalToolIntegrationId ?? undefined }
-              : { mode: "url", url: s.externalToolUrl },
-        }
-      : {}
+  const config: SubStageConfig = {
+    ...(s.interviewerType === "external" && {
+      external_tool:
+        s.externalToolMode === "integration"
+          ? { mode: "integration" as const, integration: s.externalToolIntegrationId ?? undefined }
+          : { mode: "url" as const, url: s.externalToolUrl },
+    }),
+    // Only stages that can be booked keep overrides — moving a stage out of
+    // Screening/Interview drops them rather than leaving them unreachable.
+    ...(s.scheduling &&
+      BOOKABLE_MAIN_STAGES.includes(s.mainStage) && { scheduling: s.scheduling }),
+    ...(s.communication &&
+      BOOKABLE_MAIN_STAGES.includes(s.mainStage) && { communication: s.communication }),
+  }
   return {
     pipeline_stage_key: s.mainStage,
     name: s.name,
@@ -570,7 +616,13 @@ export function WorkflowStagesTab({
 
       <div className="h-full min-w-0 flex-1 overflow-hidden py-4 pr-4">
         {selected ? (
-          <SubStageSettingsPanel key={selected.id} subStage={selected} onChange={updateSelected} />
+          <SubStageSettingsPanel
+            key={selected.id}
+            subStage={selected}
+            schedulingPolicy={workflow.scheduling_policy}
+            communicationPolicy={workflow.communication_policy}
+            onChange={updateSelected}
+          />
         ) : (
           <p className="text-sm text-muted-foreground">Select a sub-stage to view its settings.</p>
         )}
@@ -581,25 +633,36 @@ export function WorkflowStagesTab({
 
 function SubStageSettingsPanel({
   subStage,
+  schedulingPolicy,
+  communicationPolicy,
   onChange,
 }: {
   subStage: SubStage
+  /** The scopes directly above this stage in each cascade. */
+  schedulingPolicy: StoredSchedulingPolicy | undefined
+  communicationPolicy: StoredCommunicationPolicy | undefined
   onChange: (updater: (s: SubStage) => SubStage) => void
 }) {
   const [activeSubNav, setActiveSubNav] = React.useState<SubNavItem>("Overview")
   const contentScrollbar = useScrollbarOnScroll()
 
+  // Dragging a stage between main stages can take Scheduling away underneath
+  // the open panel — fall back rather than render a section that no longer
+  // applies to it.
+  const subNavItems = subNavItemsFor(subStage.mainStage)
+  const activeItem = subNavItems.includes(activeSubNav) ? activeSubNav : "Overview"
+
   return (
     <div className="flex h-full gap-8">
       <div className="flex w-40 shrink-0 flex-col gap-1">
-        {SUB_NAV_ITEMS.map((item) => (
+        {subNavItems.map((item) => (
           <button
             key={item}
             type="button"
             onClick={() => setActiveSubNav(item)}
             className={cn(
               "rounded-md px-3 py-2 text-left text-sm",
-              activeSubNav === item
+              activeItem === item
                 ? "bg-brand-orange-100 font-medium text-foreground"
                 : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             )}
@@ -616,7 +679,7 @@ function SubStageSettingsPanel({
           contentScrollbar.isScrolling && "is-scrolling"
         )}
       >
-        {activeSubNav === "Overview" ? (
+        {activeItem === "Overview" ? (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-1.5">
               <Label>Stage Name</Label>
@@ -706,7 +769,7 @@ function SubStageSettingsPanel({
               </Select>
             </div>
           </div>
-        ) : activeSubNav === "Setup" ? (
+        ) : activeItem === "Setup" ? (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-1.5">
               <Label>Entry Condition</Label>
@@ -817,7 +880,7 @@ function SubStageSettingsPanel({
               </div>
             )}
           </div>
-        ) : activeSubNav === "Evaluation" ? (
+        ) : activeItem === "Evaluation" ? (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
               <div className="flex flex-col gap-0.5">
@@ -902,7 +965,7 @@ function SubStageSettingsPanel({
               </label>
             </div>
           </div>
-        ) : activeSubNav === "Decision" ? (
+        ) : activeItem === "Decision" ? (
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
               <div className="flex flex-col gap-0.5">
@@ -1030,9 +1093,21 @@ function SubStageSettingsPanel({
               )}
             </div>
           </div>
+        ) : activeItem === "Scheduling" ? (
+          <SubStageSchedulingPanel
+            scheduling={subStage.scheduling}
+            workflowPolicy={schedulingPolicy}
+            onChange={(next) => onChange((s) => ({ ...s, scheduling: next }))}
+          />
+        ) : activeItem === "Communication" ? (
+          <SubStageCommunicationPanel
+            communication={subStage.communication}
+            workflowPolicy={communicationPolicy}
+            onChange={(next) => onChange((s) => ({ ...s, communication: next }))}
+          />
         ) : (
           <p className="pt-2 text-sm text-muted-foreground">
-            {activeSubNav} isn&apos;t wired up yet — coming later.
+            {activeItem} isn&apos;t wired up yet — coming later.
           </p>
         )}
       </div>

@@ -4,10 +4,10 @@ import * as React from "react"
 import { ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 
-import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 import { AUTOMATION_EVENT_GROUPS } from "@/lib/automation-events"
 import { Switch } from "@/components/ui/switch"
+import { WorkflowSubNav } from "@/components/workflows/workflow-sub-nav"
 
 const SUB_NAV_ITEMS = ["AI Capabilities", "SLA", "Automation"] as const
 type SubNavItem = (typeof SUB_NAV_ITEMS)[number]
@@ -94,23 +94,7 @@ export function WorkflowAiAutomationTab() {
 
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl gap-8">
-      <div className="flex w-40 shrink-0 flex-col gap-1">
-        {SUB_NAV_ITEMS.map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => setActiveSubNav(item)}
-            className={cn(
-              "rounded-md px-3 py-2 text-left text-sm",
-              activeSubNav === item
-                ? "bg-brand-orange-100 font-medium text-foreground"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-            )}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
+      <WorkflowSubNav items={SUB_NAV_ITEMS} value={activeSubNav} onValueChange={setActiveSubNav} />
 
       <div className="h-full min-w-0 flex-1 overflow-y-auto">
         {activeSubNav === "AI Capabilities" ? (
