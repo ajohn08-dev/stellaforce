@@ -1,10 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Play, Send } from "lucide-react"
+import { MessageCircle, Play, Send } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -65,6 +65,12 @@ export function KnowledgePreview({ company }: { company: Company }) {
   const [turns, setTurns] = React.useState<PreviewTurn[]>([])
   const [text, setText] = React.useState("")
   const nextId = React.useRef(0)
+  const endRef = React.useRef<HTMLDivElement>(null)
+
+  // Keep the latest exchange in view, the way any chat does.
+  React.useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+  }, [turns])
 
   const suggestions = React.useMemo(
     () => previewSuggestions(company, jobId || null),
@@ -104,7 +110,13 @@ export function KnowledgePreview({ company }: { company: Company }) {
           <div className="flex flex-wrap items-center gap-2">
             <Select value={jobId || "none"} onValueChange={(v) => setJobId(v === "none" ? "" : (v as string))}>
               <SelectTrigger size="sm" className="min-w-48 flex-1" aria-label="Role">
-                <SelectValue placeholder="Company-wide" />
+                {/* Base UI renders the raw value unless given a mapper, so this
+                    was showing "job-lg-01" where a job title belongs. */}
+                <SelectValue>
+                  {(value: string) =>
+                    jobs.find((j) => j.id === value)?.title ?? "No role in play"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No role in play</SelectItem>
@@ -151,50 +163,61 @@ export function KnowledgePreview({ company }: { company: Company }) {
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
             {turns.length === 0 ? (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Try one of these — each takes a different path through the
-                  knowledge base:
-                </p>
-                {suggestions.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => ask(s)}
-                    className="block w-full rounded-lg border border-border p-2.5 text-left text-sm transition-colors hover:bg-muted/60"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+              <p className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                Ask a question and you&apos;ll see the answer, which scope it came
+                from, and what happens when there isn&apos;t one.
+              </p>
             ) : (
               turns.map((turn) => <Turn key={turn.id} turn={turn} />)
             )}
+            <div ref={endRef} />
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              ask(text)
-            }}
-            className="flex items-center gap-2"
-          >
-            <Input
+          {/* Suggestions sit directly above the composer, the way the home chat
+              does — stacked rather than in a row, because the panel is narrow
+              and a horizontal strip would clip every prompt mid-question. */}
+          <div className="flex shrink-0 flex-col items-start gap-1.5">
+            {turns.length === 0 &&
+              suggestions.map((s) => (
+                <Button
+                  key={s}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="max-w-full gap-1.5 rounded-full"
+                  onClick={() => ask(s)}
+                >
+                  <MessageCircle className="size-3.5 shrink-0" />
+                  <span className="truncate">{s}</span>
+                </Button>
+              ))}
+          </div>
+
+          <div className="flex shrink-0 items-end gap-2 rounded-lg border border-input bg-white p-2 dark:bg-white">
+            <Textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  ask(text)
+                }
+              }}
               placeholder="Ask something a candidate would ask…"
               aria-label="Ask the knowledge base"
+              rows={2}
+              className="flex-1 resize-none border-0 bg-transparent field-sizing-fixed dark:bg-transparent"
             />
-            <Button type="submit" size="icon-sm" aria-label="Ask">
+            <Button
+              type="button"
+              size="icon"
+              disabled={!text.trim()}
+              onClick={() => ask(text)}
+              aria-label="Ask"
+            >
               <Send className="size-4" />
             </Button>
-          </form>
-
-          <p className="text-xs text-muted-foreground">
-            Intent matching here is a keyword stub — a live agent retrieves over
-            embeddings. Everything after the match is real: which scope wins,
-            whether this audience is cleared for it, and which fallback fires.
-          </p>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
