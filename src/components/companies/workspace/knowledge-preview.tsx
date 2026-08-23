@@ -106,7 +106,10 @@ export function KnowledgePreview({ company }: { company: Company }) {
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
+        {/* No padding of its own: SheetContent already has p-6. Adding px-4 pb-4
+            here inset the chat column further than the header above it and left
+            a 40px gutter down both sides of a panel that needs the width. */}
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Select value={jobId || "none"} onValueChange={(v) => setJobId(v === "none" ? "" : (v as string))}>
               <SelectTrigger size="sm" className="min-w-48 flex-1" aria-label="Role">
