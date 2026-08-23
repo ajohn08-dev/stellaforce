@@ -61,9 +61,13 @@ export function AutomationRuleRows({
                 </span>
                 <AutomationStateSubtext automation={automation} />
               </span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {automationModeLabel(automation.defaultMode)}
-              </span>
+              {/* The mode says how a rule behaves when it runs. For a rule with
+                  no executor there is no "when it runs", so it says nothing. */}
+              {automation.hasExecutor && (
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {automationModeLabel(automation.defaultMode)}
+                </span>
+              )}
             </button>
 
             {open && (
@@ -113,11 +117,13 @@ function RulePreview({ automation }: { automation: ResolvedAutomation }) {
     <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <InheritedFrom automation={automation} />
-        <span className="text-xs text-muted-foreground">
-          {automation.defaultMode === "auto"
-            ? "Runs automatically"
-            : "Asks for approval first"}
-        </span>
+        {automation.hasExecutor && (
+          <span className="text-xs text-muted-foreground">
+            {automation.defaultMode === "auto"
+              ? "Runs automatically"
+              : "Asks for approval first"}
+          </span>
+        )}
       </div>
 
       <AutomationRuleFacets automation={automation} />

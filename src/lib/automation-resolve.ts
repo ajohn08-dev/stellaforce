@@ -99,6 +99,16 @@ export type ResolvedAutomation = {
   /** False when the definition is archived or has no published version. */
   isApplicable: boolean
 
+  /**
+   * True when code exists that acts on this rule.
+   *
+   * Thirteen of the fourteen seeded definitions are configuration only: a
+   * published version describing intended behaviour, with nothing consuming the
+   * trigger. They are `off` and locked, so the UI can neither claim they are
+   * running nor offer a control that would do nothing.
+   */
+  hasExecutor: boolean
+
   /** The current actor/scope may not change this rule at all. */
   isLocked: boolean
   lockedReason: string | null
@@ -150,6 +160,9 @@ type ScopeLabels = {
 
 const LOCKED_SYSTEM_MANAGED =
   "System-managed safeguard — this can't be changed here."
+
+const LOCKED_NO_EXECUTOR =
+  "This automation isn't built yet, so turning it on wouldn't do anything."
 
 /**
  * Curated display order. The DB has no `display_order` column, and the order
@@ -276,7 +289,10 @@ export function resolveFromRows(input: {
 
     const isApplicable = definition.archived_at === null && version !== null
     const systemManaged = definition.system_managed
-    const isLocked = systemManaged
+    const hasExecutor = definition.has_executor
+    // Two reasons a rule can't be changed, and they are different problems: a
+    // safeguard nobody may touch, and a rule that isn't wired to anything yet.
+    const isLocked = systemManaged || !hasExecutor
     const jobLayer = layers.find((l) => l.scope === "job") ?? null
     const changeable = onJob && isApplicable && !isLocked
 
@@ -292,8 +308,13 @@ export function resolveFromRows(input: {
       sourceChain: layers,
 
       isApplicable,
+      hasExecutor,
       isLocked,
-      lockedReason: isLocked ? LOCKED_SYSTEM_MANAGED : null,
+      lockedReason: systemManaged
+        ? LOCKED_SYSTEM_MANAGED
+        : hasExecutor
+          ? null
+          : LOCKED_NO_EXECUTOR,
 
       // Always false in this pass. A dependency check needs something real to
       // read -- a missing google_calendar_connections row for a scheduling

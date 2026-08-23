@@ -621,6 +621,18 @@ company binding exists, but it can't become company-specific until a company
 profile carries a `clients.client_id` (`/companies` renders from
 `mock-companies.ts`, which shares no key with `clients`).
 
+**One of the fourteen actually runs.** `automation_definitions.has_executor`
+says whether code exists that acts on a rule. `send_booking_link` is `true` and
+`active`; the other thirteen are `false` and **off** at global scope, and the
+resolver reports them `isLocked` with *"This automation isn't built yet, so
+turning it on wouldn't do anything."* — so their controls disable and the library
+stops claiming a mode for behaviour that never happens. Before this, all fourteen
+read "Active · Global library" beside promises the system does not keep.
+
+The default is `false`, deliberately: a definition seeded tomorrow has no
+executor until someone writes one. **Flip it in the same migration that ships the
+executor**, alongside turning its binding on — so "on" can only ever mean "runs".
+
 **Seeded as global truth only**: 13 definitions, 13 published v1 versions, 13
 global bindings at `active`. The old fixture's Company/Workflow/Job provenance
 was visual dressing and is discarded — seeding it needs a tenant id the seed

@@ -97,6 +97,7 @@ const definition = {
   trigger_event_type: "interview_scheduled",
   category: "scheduling",
   system_managed: false,
+  has_executor: true,
   client_id: null,
   archived_at: null,
   created_by: null,
@@ -235,8 +236,28 @@ check(
   jobOverride.sourceChain.map((l) => `${l.scope}${l.wins ? "*" : ""}`).join(" → ")
 )
 
+const noExecutor = resolveFromRows({
+  definitions: [{ ...definition, has_executor: false }],
+  versions: [version],
+  bindings: [binding({ id: "b-off", state: "off", scope: "global" })],
+  ctx: JOB_CTX,
+})[0]
+check(
+  noExecutor.isLocked && !noExecutor.hasExecutor,
+  "a rule with no executor is locked",
+  noExecutor.lockedReason ?? ""
+)
+check(
+  !noExecutor.canActivateForJob && !noExecutor.canPauseForJob,
+  "…so a job cannot turn on something that isn't built"
+)
+check(
+  noExecutor.lockedReason !== null && !noExecutor.lockedReason.includes("System-managed"),
+  "…and the reason says why, not 'system-managed'"
+)
+
 const locked = resolveFromRows({
-  definitions: [{ ...definition, system_managed: true }],
+  definitions: [{ ...definition, system_managed: true, has_executor: true }],
   versions: [version],
   bindings: [GLOBAL_ACTIVE],
   ctx: JOB_CTX,

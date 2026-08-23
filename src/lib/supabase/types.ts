@@ -868,6 +868,7 @@ export type Database = {
           client_id: string | null
           created_at: string
           created_by: string | null
+          has_executor: boolean
           id: string
           key: string
           name: string
@@ -881,6 +882,7 @@ export type Database = {
           client_id?: string | null
           created_at?: string
           created_by?: string | null
+          has_executor?: boolean
           id?: string
           key: string
           name: string
@@ -894,6 +896,7 @@ export type Database = {
           client_id?: string | null
           created_at?: string
           created_by?: string | null
+          has_executor?: boolean
           id?: string
           key?: string
           name?: string
