@@ -15,7 +15,11 @@ export function CompaniesCards({ companies }: { companies: CompanyListItem[] }) 
         <li key={company.id}>
           <Link
             href={`/companies/${company.id}`}
-            className="flex h-full flex-col gap-3 rounded-lg border border-border p-4 transition-colors hover:border-foreground/20 hover:bg-muted/40"
+            // White surface, matching every other card in the app (agents
+            // analytics, the candidate and company workspaces). These sat
+            // transparent on the page's muted background, so the card read as a
+            // region of the page rather than an object you can pick up.
+            className="flex h-full flex-col gap-3 rounded-lg border border-border bg-white p-4 transition-colors hover:border-foreground/20 dark:bg-background"
           >
             <div className="flex items-start gap-3">
               <CompanyLogo name={company.name} logoPath={company.logoPath} />
@@ -23,7 +27,10 @@ export function CompaniesCards({ companies }: { companies: CompanyListItem[] }) 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{company.name}</span>
-                  <ReadinessPill status={company.readiness} size="sm" />
+                  {/* Same three-way form as the table — Ready / Review /
+                      Warning. The sentence below carries the detail, so the chip
+                      doesn't need to. */}
+                  <ReadinessPill status={company.readiness} size="sm" short />
                 </div>
                 <p className="mt-0.5 truncate text-sm text-muted-foreground">
                   {[
