@@ -176,10 +176,12 @@ export function KnowledgePreview({ company }: { company: Company }) {
             <div ref={endRef} />
           </div>
 
-          {/* Suggestions sit directly above the composer, the way the home chat
-              does — stacked rather than in a row, because the panel is narrow
-              and a horizontal strip would clip every prompt mid-question. */}
-          <div className="flex shrink-0 flex-col items-start gap-1.5">
+          {/* Directly above the composer, the way the home chat does — but
+              wrapped rather than in a scrolling strip, since the panel is narrow
+              and a horizontal strip clips every prompt mid-question. Wrapping
+              lets two short prompts share a line and gives a long one the whole
+              row, so four prompts cost two or three lines instead of four. */}
+          <div className="flex shrink-0 flex-wrap items-start gap-2">
             {turns.length === 0 &&
               suggestions.map((s) => (
                 <Button
