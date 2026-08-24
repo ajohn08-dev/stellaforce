@@ -72,6 +72,17 @@ async function main() {
     .single()
 
   const subStageId = app!.current_stage_id!
+
+  // Normalise before snapshotting. An aborted run leaves this stage configured,
+  // and a later run would otherwise capture that as "original" and faithfully
+  // restore it — quietly turning a real pipeline stage into a self-scheduling
+  // one for good. That happened once; hence this.
+  await db
+    .from("job_workflow_sub_stages")
+    .update({ scheduling_mode: null, agent_id: null })
+    .eq("id", subStageId)
+    .not("scheduling_mode", "is", null)
+
   const { data: originalStage } = await db
     .from("job_workflow_sub_stages")
     .select("interviewer_type, agent_id, entry_conditions, scheduling_mode, duration_minutes, config")
@@ -586,6 +597,15 @@ async function main() {
     .from("automation_bindings")
     .select("id", { count: "exact", head: true })
   check(bindings === 14, "the 14 global automation bindings are untouched", String(bindings))
+
+  // The stage must be handed back unconfigured. Leaving a real pipeline stage
+  // self-scheduling is the one side effect of this script that could reach a
+  // candidate.
+  const { count: configured } = await db
+    .from("job_workflow_sub_stages")
+    .select("id", { count: "exact", head: true })
+    .not("scheduling_mode", "is", null)
+  check(configured === 0, "no stage is left configured for self-scheduling", String(configured))
 }
 
 async function clearRequests() {
