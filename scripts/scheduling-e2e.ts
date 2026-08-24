@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
-import { createHash, randomBytes } from "node:crypto"
+import { createHash, randomBytes, randomUUID } from "node:crypto"
 
 import type { Database } from "@/lib/supabase/types"
 
@@ -35,6 +35,22 @@ function section(name: string) {
 }
 
 const PREFIX = "ZZ-e2e"
+
+/**
+ * This run's identity, and the reason it exists.
+ *
+ * `clearRequests()` used to delete every row in `interviews`,
+ * `interview_slot_holds` and `interview_scheduling_requests` — `.not("id","is",
+ * null)` matches everything — and the final assertion then checked those tables
+ * were *globally* empty and called it a pass. Run against a shared database,
+ * that destroys real bookings made by real people from real links. It did.
+ *
+ * So this run deletes only what it owns. Ownership is two things: ids captured
+ * as they are created, and every scheduling row on the fixture application,
+ * which the run monopolises for its duration. Nothing else is ever in scope.
+ */
+const RUN_ID = `${PREFIX}-${randomUUID().slice(0, 8)}`
+
 const created = {
   requestIds: [] as string[],
   interviewIds: [] as string[],
@@ -42,16 +58,54 @@ const created = {
   eventIds: [] as string[],
 }
 
+/** Set once the fixture is chosen. Every delete is scoped to it or to `created`. */
+let ownedApplicationId = ""
+
+/** PostgREST treats `.in(col, [])` as matching nothing, which is what we want. */
+function uniq(values: (string | null | undefined)[]): string[] {
+  return [...new Set(values.filter((v): v is string => !!v))]
+}
+
 async function main() {
+  console.log(`run ${RUN_ID}`)
+
   // ── Fixture: a real application on a real sub-stage, reconfigured to be a
   //    self-scheduling agent stage for the duration of the run.
-  const { data: app } = await db
+  //
+  // A QA fixture candidate is preferred, and not for tidiness: this run
+  // reconfigures the stage the application sits on and deletes every scheduling
+  // row belonging to it. Picking whichever application came back first is how
+  // that landed on a real candidate mid-demo.
+  const { data: fixtureApp } = await db
     .from("applications")
-    .select("application_id, candidate_id, client_id, job_id, current_stage_id, status")
+    .select(
+      "application_id, candidate_id, client_id, job_id, current_stage_id, status, candidates!inner(source)"
+    )
     .eq("status", "active")
     .not("current_stage_id", "is", null)
+    .eq("candidates.source", "qa_test_fixture")
     .limit(1)
-    .single()
+    .maybeSingle()
+
+  const { data: anyApp } = fixtureApp
+    ? { data: null }
+    : await db
+        .from("applications")
+        .select("application_id, candidate_id, client_id, job_id, current_stage_id, status")
+        .eq("status", "active")
+        .not("current_stage_id", "is", null)
+        .limit(1)
+        .maybeSingle()
+
+  const app = fixtureApp ?? anyApp
+  if (!app) throw new Error("no active application to run against")
+  if (!fixtureApp) {
+    console.log(
+      "  ⚠ no qa_test_fixture application found — running against a REAL candidate's application.\n" +
+        "    Its scheduling rows will be deleted and its stage reconfigured."
+    )
+  }
+  ownedApplicationId = app.application_id
   // Must be an ACTIVE agent — an inactive one is correctly refused, which is
   // how this script found the `agent_inactive` case in the first place.
   const { data: agent } = await db
@@ -518,6 +572,19 @@ async function main() {
   // fail for its own stated reason rather than a generic "no".
   section("6. Human interviewer")
   await clearRequests()
+
+  // This section needs a stage with no reviewers, and then with one, and then
+  // with two. Whether the stage *starts* with reviewers depends entirely on
+  // which application the fixture picked — so snapshot them, clear them for the
+  // duration, and put them back. The previous version assumed none and ended
+  // with an unscoped `delete().eq("sub_stage_id", …)`, which silently removed
+  // any that were already there.
+  const { data: originalReviewers } = await db
+    .from("job_workflow_sub_stage_reviewers")
+    .select("member_id")
+    .eq("sub_stage_id", subStageId)
+  await db.from("job_workflow_sub_stage_reviewers").delete().eq("sub_stage_id", subStageId)
+
   const before = await countEvents(app!.application_id)
   await db
     .from("job_workflow_sub_stages")
@@ -631,6 +698,113 @@ async function main() {
     console.log("  – no team members on this job; reviewer cases not exercised")
   }
 
+  // Hand the stage's reviewers back exactly as they were found.
+  if ((originalReviewers ?? []).length > 0) {
+    await db.from("job_workflow_sub_stage_reviewers").insert(
+      (originalReviewers ?? []).map((r) => ({
+        sub_stage_id: subStageId,
+        member_id: r.member_id,
+      }))
+    )
+  }
+
+  // ── 7. Blast radius ───────────────────────────────────────────────────────
+  // The regression test for the bug that destroyed a real booking: plant a
+  // scheduling request and an interview on a DIFFERENT application, run the
+  // cleanup, and require both to still be there. Written as a survival check
+  // rather than a code review because the failure is silent — an unscoped
+  // delete leaves every other assertion in this file passing.
+  section("7. Blast radius")
+  const { data: bystander } = await db
+    .from("applications")
+    .select("application_id, candidate_id, client_id, job_id, current_stage_id")
+    .eq("status", "active")
+    .not("current_stage_id", "is", null)
+    .neq("application_id", ownedApplicationId)
+    .limit(1)
+    .maybeSingle()
+
+  if (!bystander) {
+    console.log("  – only one application in this database; blast radius not exercised")
+  } else {
+    const far = new Date(Date.now() + 400 * 24 * 60 * 60 * 1000)
+    const { data: sentinelRequest, error: reqErr } = await db
+      .from("interview_scheduling_requests")
+      .insert({
+        application_id: bystander.application_id,
+        candidate_id: bystander.candidate_id,
+        client_id: bystander.client_id,
+        job_id: bystander.job_id,
+        sub_stage_id: bystander.current_stage_id!,
+        // `isr_one_resource` requires exactly one. A request reserves nothing,
+        // so naming the agent here costs no capacity.
+        agent_id: agent!.id,
+        // Not a real token: a sha256-shaped string nothing can resolve.
+        token_hash: createHash("sha256").update(`${RUN_ID}-sentinel`).digest("hex"),
+        token_expires_at: far.toISOString(),
+        slot_minutes: 30,
+        slot_granularity_minutes: 30,
+        minimum_notice_minutes: 0,
+        booking_horizon_days: 14,
+        agent_concurrency_limit: 1,
+      })
+      .select("id")
+      .single()
+
+    // Inserted second and cleaned up independently: a request that failed must
+    // not leave an interview behind, which is the exact class of leak this
+    // whole section exists to catch.
+    const { data: sentinelInterview, error: ivErr } = await db
+      .from("interviews")
+      .insert({
+        application_id: bystander.application_id,
+        candidate_id: bystander.candidate_id,
+        client_id: bystander.client_id,
+        job_id: bystander.job_id,
+        sub_stage_id: bystander.current_stage_id!,
+        // Human with no member: it must not occupy an agent lane, or the
+        // sentinel could fail a later booking 400 days from now.
+        interviewer_type: "human",
+        scheduled_at: far.toISOString(),
+        ends_at: new Date(far.getTime() + 30 * 60 * 1000).toISOString(),
+      })
+      .select("id")
+      .single()
+
+    check(
+      !reqErr && !ivErr,
+      "a bystander booking was planted",
+      reqErr?.message ?? ivErr?.message ?? ""
+    )
+
+    if (sentinelRequest && !sentinelInterview) {
+      await db.from("interview_scheduling_requests").delete().eq("id", sentinelRequest.id)
+    }
+    if (sentinelInterview && !sentinelRequest) {
+      await db.from("interviews").delete().eq("id", sentinelInterview.id)
+    }
+
+    if (sentinelRequest && sentinelInterview) {
+      await clearRequests()
+
+      const [{ data: stillRequest }, { data: stillInterview }] = await Promise.all([
+        db
+          .from("interview_scheduling_requests")
+          .select("id")
+          .eq("id", sentinelRequest.id)
+          .maybeSingle(),
+        db.from("interviews").select("id").eq("id", sentinelInterview.id).maybeSingle(),
+      ])
+
+      check(!!stillRequest, "another application's scheduling request SURVIVES the cleanup")
+      check(!!stillInterview, "another application's interview SURVIVES the cleanup")
+
+      await db.from("interviews").delete().eq("id", sentinelInterview.id)
+      await db.from("interview_scheduling_requests").delete().eq("id", sentinelRequest.id)
+      check(true, "…and the sentinel itself is removed")
+    }
+  }
+
   // ── Cleanup ───────────────────────────────────────────────────────────────
   section("Cleanup")
   await db.from("job_workflow_sub_stages").update(originalStage!).eq("id", subStageId)
@@ -649,15 +823,34 @@ async function main() {
     ])
     .eq("application_id", app!.application_id)
 
-  const [{ count: iv }, { count: rq }, { count: hd }, { count: sc }] = await Promise.all([
-    db.from("interviews").select("id", { count: "exact", head: true }),
-    db.from("interview_scheduling_requests").select("id", { count: "exact", head: true }),
-    db.from("interview_slot_holds").select("id", { count: "exact", head: true }),
-    db.from("scheduled_agent_calls").select("id", { count: "exact", head: true }),
+  // Scoped to this run's application — **not** to the tables. "Every table is
+  // empty" was the assertion that made an unscoped delete look correct: it can
+  // only pass on a database with no other bookings in it, and it passes most
+  // loudly right after destroying them.
+  const [{ count: iv }, { count: rq }, { count: sc }] = await Promise.all([
+    db
+      .from("interviews")
+      .select("id", { count: "exact", head: true })
+      .eq("application_id", ownedApplicationId),
+    db
+      .from("interview_scheduling_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("application_id", ownedApplicationId),
+    db
+      .from("scheduled_agent_calls")
+      .select("id", { count: "exact", head: true })
+      .eq("application_id", ownedApplicationId),
   ])
+  // Holds carry no application_id, so they are checked through their request.
+  const { data: leftoverHolds } = await db
+    .from("interview_slot_holds")
+    .select("id, request:interview_scheduling_requests!inner(application_id)")
+    .eq("interview_scheduling_requests.application_id", ownedApplicationId)
+  const hd = (leftoverHolds ?? []).length
+
   check(
     iv === 0 && rq === 0 && hd === 0 && sc === 0,
-    "every table is back to empty",
+    "this run's rows are gone",
     `interviews ${iv}, requests ${rq}, holds ${hd}, calls ${sc}`
   )
 
@@ -676,19 +869,52 @@ async function main() {
   check(configured === 0, "no stage is left configured for self-scheduling", String(configured))
 }
 
+/**
+ * Delete this run's scheduling rows. **Never anyone else's.**
+ *
+ * Scope is the fixture application plus the ids captured in `created` — the
+ * second half matters because some rows are created *inside* an RPC and never
+ * pass through this script. Rows on any other application are out of scope by
+ * construction, which is what `7. Blast radius` proves rather than assumes.
+ */
 async function clearRequests() {
-  const { data: rows } = await db
-    .from("interview_scheduling_requests")
-    .select("id, interview_id")
-  for (const r of rows ?? []) {
-    if (r.interview_id) {
-      await db.from("scheduled_agent_calls").delete().eq("interview_id", r.interview_id)
-    }
+  if (!ownedApplicationId) throw new Error("clearRequests called before the fixture was chosen")
+
+  const [{ data: ownedRequests }, { data: ownedInterviews }] = await Promise.all([
+    db
+      .from("interview_scheduling_requests")
+      .select("id, interview_id")
+      .eq("application_id", ownedApplicationId),
+    db.from("interviews").select("id").eq("application_id", ownedApplicationId),
+  ])
+
+  const requestIds = uniq([...(ownedRequests ?? []).map((r) => r.id), ...created.requestIds])
+  const interviewIds = uniq([
+    ...(ownedRequests ?? []).map((r) => r.interview_id),
+    ...(ownedInterviews ?? []).map((i) => i.id),
+    ...created.interviewIds,
+  ])
+
+  // Order matters: calls and holds point at interviews and requests, and a
+  // request's FK to its interview has to be dropped before the interview goes.
+  if (interviewIds.length > 0) {
+    await db.from("scheduled_agent_calls").delete().in("interview_id", interviewIds)
   }
-  await db.from("interview_slot_holds").delete().not("id", "is", null)
-  await db.from("interview_scheduling_requests").update({ interview_id: null }).not("id", "is", null)
-  await db.from("interviews").delete().not("id", "is", null)
-  await db.from("interview_scheduling_requests").delete().not("id", "is", null)
+  await db.from("scheduled_agent_calls").delete().eq("application_id", ownedApplicationId)
+  if (requestIds.length > 0) {
+    await db.from("interview_slot_holds").delete().in("request_id", requestIds)
+    await db
+      .from("interview_scheduling_requests")
+      .update({ interview_id: null })
+      .in("id", requestIds)
+  }
+  if (interviewIds.length > 0) {
+    await db.from("interviews").delete().in("id", interviewIds)
+  }
+  if (requestIds.length > 0) {
+    await db.from("interview_scheduling_requests").delete().in("id", requestIds)
+  }
+
   created.requestIds = []
   created.interviewIds = []
 }
