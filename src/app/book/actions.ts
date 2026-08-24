@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { agentSlotGrid, canStartNow, filterByCapacity } from "@/lib/agent-availability"
 import { logActivity, logSchedulingFailure } from "@/lib/server/activity"
 import { resolveBookingToken, type ResolvedBookingRequest } from "@/lib/server/booking-token"
+import { getCalendarPreview } from "@/lib/server/calendar-events"
 import {
   candidateMessageFor,
   isBenign,
@@ -349,19 +350,45 @@ async function loadAgentOccupancy(
 ): Promise<{ start: number; end: number }[]> {
   const from = new Date().toISOString()
   const to = new Date(Date.now() + request.booking_horizon_days * 86_400_000).toISOString()
+  const isAgent = request.agent_id !== null
+  const column = isAgent ? "agent_id" : "interviewer_member_id"
+  const resourceId = request.agent_id ?? request.interviewer_member_id!
+
+  // An interviewer is also busy with everything already in their own calendar,
+  // which Stellaforce does not store. `getCalendarPreview` reads it live and
+  // returns **intervals only** — never a title, attendee or location. That
+  // restraint is the whole reason it exists (see calendar-events.ts).
+  const external = isAgent
+    ? []
+    : await (async () => {
+        const { data: member } = await admin
+          .from("job_team_members")
+          .select("email")
+          .eq("id", request.interviewer_member_id!)
+          .maybeSingle()
+        if (!member?.email) return []
+        const preview = await getCalendarPreview(member.email)
+        // A calendar we can't read means we cannot promise the slot is free, so
+        // offer nothing rather than book someone over a meeting.
+        if (!preview.ok) return [{ start: Date.now(), end: new Date(to).getTime() }]
+        return preview.busy.map((b) => ({
+          start: new Date(b.start).getTime(),
+          end: new Date(b.end).getTime(),
+        }))
+      })()
 
   const [{ data: interviews }, { data: holds }] = await Promise.all([
     admin
       .from("interviews")
       .select("scheduled_at, ends_at")
-      .eq("agent_id", request.agent_id)
+      .eq(column, resourceId)
       .in("status", ["scheduled", "in_progress"])
       .lt("scheduled_at", to)
       .gt("ends_at", from),
     admin
       .from("interview_slot_holds")
       .select("starts_at, ends_at")
-      .eq("agent_id", request.agent_id)
+      .eq(column, resourceId)
       .gt("expires_at", from)
       .neq("request_id", request.id)
       .lt("starts_at", to)
@@ -369,6 +396,7 @@ async function loadAgentOccupancy(
   ])
 
   return [
+    ...external,
     ...(interviews ?? []).map((i) => ({
       start: new Date(i.scheduled_at).getTime(),
       end: new Date(i.ends_at).getTime(),

@@ -668,11 +668,29 @@ candidate reaches a self-scheduling agent stage
   → paused/off → `automation_skipped_by_policy`, no side effect, exit clean
 ```
 
-**Scope is deliberately narrow: agent interviews only.** No human free/busy
-booking, no panel scheduling, no external scheduler, no candidate reschedule —
-the first link is one-time. The extension path is the same route and the same
-booking API; `src/lib/availability.ts` (real busy-interval reads via the existing
-Google connection) is already there for when human scheduling lands.
+**Two bookable resources, exactly one per booking.** An **agent** has N
+concurrent lanes and gets dialled; an **interviewer** has a calendar and capacity
+one, because a person does one interview at a time. `isr_one_resource` enforces
+the "exactly one" — a booking is never both and never neither. A human booking
+queues **no** `scheduled_agent_calls` row at all: n8n writes the calendar event
+off `interview_scheduled` instead, because a bot must never dial a candidate for
+an interview a person was meant to run.
+
+A human interviewer's availability is their **live Google free/busy**
+(`getCalendarPreview`, which returns intervals only — never a title or attendee)
+minus their own working hours, now persisted on `job_team_members`
+(`timezone`, `working_hours_start/end`, `preferred_days`). Those lived in React
+state on the availability sheet and reset on reload; `docs/google-calendar-consent-plan.md`
+had already named persisting them as the next step. Their window beats the
+stage's where set — the stage says when the *company* books, the person says when
+they'll actually take an interview.
+
+**Who is the interviewer? The stage's single reviewer.** Exactly one, for now.
+**Panels resolve as `panel_not_supported`**, not as a guess:
+`job_workflow_sub_stage_reviewers` has no required-vs-optional flag, so "whose
+calendar counts" has no answer in the schema yet, and an N-way availability
+intersection is a different problem. Still out of scope: external schedulers and
+candidate reschedule — the first link is one-time.
 
 **Four tables, one of which is a lease.** `interview_scheduling_requests` (the
 link, its expiry, and a **frozen config snapshot**), `interviews` (the booking of

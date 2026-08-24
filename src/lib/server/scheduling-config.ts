@@ -32,7 +32,26 @@ export type StageSchedulingConfig = SchedulingRuntime & {
   subStageId: string
   jobId: string
   clientId: string
-  agentId: string
+  /**
+   * Exactly one of these two, matching the `isr_one_resource` constraint.
+   *
+   * An agent has N concurrent lanes and gets dialled; an interviewer has a
+   * calendar and capacity one. They are genuinely different resources, so the
+   * type says so rather than storing a nullable id and a kind flag.
+   */
+  resource:
+    | { kind: "agent"; agentId: string }
+    | {
+        kind: "interviewer"
+        memberId: string
+        email: string
+        name: string
+        /** Their own window, when they've set one; else the stage's. */
+        timezone: string | null
+        workingHoursStart: number | null
+        workingHoursEnd: number | null
+        preferredDays: number[] | null
+      }
   /** The interview length, from the stage; falls back to 30 minutes. */
   slotMinutes: number
   /** `least(stage setting, agents.max_concurrent_calls)` — see below. */
@@ -48,6 +67,16 @@ export type NotApplicableReason =
   | "no_agent_assigned"
   /** An agent IS assigned, but it has been switched off. A different problem. */
   | "agent_inactive"
+  /**
+   * More than one reviewer on the stage. Panels need an availability
+   * intersection and a required-vs-optional flag the schema doesn't have, so
+   * this resolves as not-applicable rather than guessing whose calendar counts.
+   */
+  | "panel_not_supported"
+  /** A human stage with nobody to interview the candidate. */
+  | "no_interviewer_assigned"
+  /** The interviewer hasn't connected a calendar, so nothing can be offered. */
+  | "interviewer_calendar_not_connected"
   | "not_automatic_entry"
   | "not_self_scheduling"
   | "scheduling_disabled"
@@ -82,10 +111,10 @@ export async function resolveStageSchedulingConfig(
     .maybeSingle()
 
   if (!stage) return { kind: "not_applicable", reason: "not_an_ai_stage" }
-  if (stage.interviewer_type !== "ai") {
+  // A third-party assessment isn't scheduled by us at all.
+  if (stage.interviewer_type === "external") {
     return { kind: "not_applicable", reason: "not_an_ai_stage" }
   }
-  if (!stage.agent_id) return { kind: "not_applicable", reason: "no_agent_assigned" }
   if (!(stage.entry_conditions ?? []).includes("automatic")) {
     return { kind: "not_applicable", reason: "not_automatic_entry" }
   }
@@ -136,35 +165,99 @@ export async function resolveStageSchedulingConfig(
     throw err
   }
 
-  // Capacity belongs to the agent: the voice provider refuses the N+1th
-  // concurrent conversation regardless of which stage asked for it. A stage
-  // number can only ever REDUCE it — two stages sharing one agent would
-  // otherwise each claim the stage's number and together exceed the real limit.
-  const { data: agent } = await supabase
-    .from("agents")
-    .select("id, max_concurrent_calls, status")
-    .eq("id", stage.agent_id)
+  const base = {
+    ...runtime,
+    subStageId: stage.id,
+    jobId: job.job_id,
+    clientId: job.client_id,
+    slotMinutes: stage.duration_minutes ?? DEFAULT_SLOT_MINUTES,
+    stageName: stage.name,
+    jobTitle: job.title,
+    format: stage.format,
+  }
+
+  if (stage.interviewer_type === "ai") {
+    // Capacity belongs to the agent: the voice provider refuses the N+1th
+    // concurrent conversation regardless of which stage asked for it. A stage
+    // number can only ever REDUCE it — two stages sharing one agent would
+    // otherwise each claim the stage's number and together exceed the real limit.
+    if (!stage.agent_id) return { kind: "not_applicable", reason: "no_agent_assigned" }
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id, max_concurrent_calls, status")
+      .eq("id", stage.agent_id)
+      .maybeSingle()
+    if (!agent) return { kind: "not_applicable", reason: "no_agent_assigned" }
+    if (agent.status !== "active") {
+      // Distinct from "none assigned": someone chose this agent and someone else
+      // turned it off, which is a configuration problem worth naming separately.
+      return { kind: "not_applicable", reason: "agent_inactive" }
+    }
+    return {
+      kind: "ok",
+      config: {
+        ...base,
+        resource: { kind: "agent", agentId: stage.agent_id },
+        agentConcurrencyLimit: Math.min(runtime.agentConcurrency, agent.max_concurrent_calls),
+      },
+    }
+  }
+
+  // ── Human interviewer ────────────────────────────────────────────────────
+  // Who runs the stage is its reviewer. Exactly one, for now: a panel needs an
+  // availability intersection across several calendars and a required-vs-optional
+  // flag that `job_workflow_sub_stage_reviewers` does not have, so two reviewers
+  // is an honest "not yet" rather than an arbitrary pick.
+  const { data: reviewers } = await supabase
+    .from("job_workflow_sub_stage_reviewers")
+    .select("member_id")
+    .eq("sub_stage_id", stage.id)
+
+  if (!reviewers || reviewers.length === 0) {
+    return { kind: "not_applicable", reason: "no_interviewer_assigned" }
+  }
+  if (reviewers.length > 1) {
+    return { kind: "not_applicable", reason: "panel_not_supported" }
+  }
+
+  const { data: member } = await supabase
+    .from("job_team_members")
+    .select("id, name, email, timezone, working_hours_start, working_hours_end, preferred_days")
+    .eq("id", reviewers[0].member_id)
     .maybeSingle()
-  if (!agent) return { kind: "not_applicable", reason: "no_agent_assigned" }
-  if (agent.status !== "active") {
-    // Distinct from "none assigned": someone chose this agent and someone else
-    // turned it off, which is a configuration problem worth naming separately.
-    return { kind: "not_applicable", reason: "agent_inactive" }
+  if (!member?.email) {
+    return { kind: "not_applicable", reason: "no_interviewer_assigned" }
+  }
+
+  // No connected calendar means no busy time to subtract, and offering a grid
+  // built on nothing would book people over their own meetings. Refused here so
+  // the caller can raise INTERVIEWER_CALENDAR_NOT_CONNECTED against a real name.
+  const { data: connection } = await supabase
+    .from("google_calendar_connections")
+    .select("id")
+    .ilike("email", member.email.trim().toLowerCase())
+    .is("revoked_at", null)
+    .maybeSingle()
+  if (!connection) {
+    return { kind: "not_applicable", reason: "interviewer_calendar_not_connected" }
   }
 
   return {
     kind: "ok",
     config: {
-      ...runtime,
-      subStageId: stage.id,
-      jobId: job.job_id,
-      clientId: job.client_id,
-      agentId: stage.agent_id,
-      slotMinutes: stage.duration_minutes ?? DEFAULT_SLOT_MINUTES,
-      agentConcurrencyLimit: Math.min(runtime.agentConcurrency, agent.max_concurrent_calls),
-      stageName: stage.name,
-      jobTitle: job.title,
-      format: stage.format,
+      ...base,
+      resource: {
+        kind: "interviewer",
+        memberId: member.id,
+        email: member.email,
+        name: member.name,
+        timezone: member.timezone,
+        workingHoursStart: member.working_hours_start,
+        workingHoursEnd: member.working_hours_end,
+        preferredDays: member.preferred_days,
+      },
+      // One person, one interview at a time.
+      agentConcurrencyLimit: 1,
     },
   }
 }

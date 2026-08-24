@@ -5,7 +5,10 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { resolveAutomationWithClient } from "@/lib/automation-settings"
 import { logActivity, logAutomationSkipped, logSchedulingFailure } from "@/lib/server/activity"
 import { mintBookingToken } from "@/lib/server/booking-token"
-import { resolveStageSchedulingConfig } from "@/lib/server/scheduling-config"
+import {
+  resolveStageSchedulingConfig,
+  type StageSchedulingConfig,
+} from "@/lib/server/scheduling-config"
 import type { SchedulingReasonCode } from "@/lib/scheduling-reason-codes"
 
 /**
@@ -151,7 +154,10 @@ async function run(input: {
       client_id: input.clientId,
       candidate_id: input.candidateId,
       job_id: input.jobId,
-      agent_id: config.agentId,
+      // Exactly one, per `isr_one_resource`.
+      agent_id: config.resource.kind === "agent" ? config.resource.agentId : null,
+      interviewer_member_id:
+        config.resource.kind === "interviewer" ? config.resource.memberId : null,
       status: "pending",
       token_hash: token.tokenHash,
       token_expires_at: expiresAt,
@@ -160,12 +166,15 @@ async function run(input: {
       minimum_notice_minutes: config.minimumNoticeMinutes,
       booking_horizon_days: config.bookingHorizonDays,
       hold_seconds: config.holdSeconds,
-      allow_start_now: config.allowStartNow,
+      // Start-now is an agent affordance: a person cannot be summoned this
+      // second, so it is never offered for an interviewer booking.
+      allow_start_now: config.resource.kind === "agent" && config.allowStartNow,
       agent_concurrency_limit: config.agentConcurrencyLimit,
-      operating_timezone: config.operatingTimezone,
-      operating_start_hour: config.operatingStartHour,
-      operating_end_hour: config.operatingEndHour,
-      operating_days: config.operatingDays,
+      // An interviewer's own window beats the stage default where they've set
+      // one — the stage says when the *company* books, the person says when
+      // they'll actually take an interview. Snapshotted like everything else, so
+      // editing a preference mid-flight can't move a live candidate's grid.
+      ...operatingWindow(config),
       created_by: input.createdBy ?? null,
     })
     .select("id")
@@ -234,6 +243,26 @@ async function run(input: {
   }
 
   return { kind: "created", requestId: created.id, sent }
+}
+
+/** The window slots are generated in, with the interviewer's own preferences applied. */
+function operatingWindow(config: StageSchedulingConfig) {
+  const r = config.resource
+  if (r.kind !== "interviewer") {
+    return {
+      operating_timezone: config.operatingTimezone,
+      operating_start_hour: config.operatingStartHour,
+      operating_end_hour: config.operatingEndHour,
+      operating_days: config.operatingDays,
+    }
+  }
+  return {
+    operating_timezone: r.timezone ?? config.operatingTimezone,
+    operating_start_hour: r.workingHoursStart ?? config.operatingStartHour,
+    operating_end_hour: r.workingHoursEnd ?? config.operatingEndHour,
+    operating_days:
+      r.preferredDays && r.preferredDays.length > 0 ? r.preferredDays : config.operatingDays,
+  }
 }
 
 /**

@@ -369,7 +369,17 @@ for dialling a real person. Recruiters read
 `interview_scheduling_request_status`, a view that omits `token_hash` and writes
 the tenant filter into its own WHERE (`security_invoker = false`).
 
-**interview_scheduling_requests** **[service-role only]** (33 cols) — one
+⚠️ **Two bookable resources.** `interview_scheduling_requests`, `interviews` and
+`interview_slot_holds` each carry both `agent_id` and `interviewer_member_id`
+(fk `job_team_members`), with **exactly one set** — `isr_one_resource` /
+`holds_one_resource`. An agent is lane-indexed with capacity N; an interviewer
+has capacity 1, so its exclusion constraints (`interviews_no_interviewer_overlap`,
+`holds_no_interviewer_overlap`) carry no lane. `scheduled_agent_calls` stays
+agent-only on purpose: a human interview must never queue a bot to dial.
+`job_team_members` gains `timezone`, `working_hours_start/end`, `preferred_days`
+(all nullable — absent falls back to the stage's window).
+
+**interview_scheduling_requests** **[service-role only]** (35 cols) — one
 booking-link attempt. FKs `application_id`, `sub_stage_id`, `client_id`,
 `candidate_id`, `job_id`, `agent_id`; `status` (scheduling_request_status);
 the token as `token_hash` (**unique** — sha256 hex; the token itself, 32 random

@@ -79,6 +79,11 @@ async function main() {
     .single()
 
   section("Setup")
+  // Clear anything an earlier aborted run left behind. Without this, one failure
+  // poisons every subsequent run via the one-live-request constraint — which is
+  // exactly what happened the first time this script found a real bug.
+  await clearRequests()
+
   await db
     .from("job_workflow_sub_stages")
     .update({
@@ -186,13 +191,18 @@ async function main() {
 
   // Pick something a few hours out so "now" can't drift past it mid-run.
   const target = grid.find((s) => s.start > Date.now() + 3 * 3_600_000) ?? grid[0]
-  const { data: hold } = await db
+  const { data: hold, error: holdErr } = await db
     .rpc("hold_interview_slot", {
       p_request_id: outcome.requestId,
       p_starts_at: new Date(target.start).toISOString(),
     })
     .maybeSingle()
-  check(!hold?.reason_code && !!hold?.hold_id, "a slot can be held", hold?.reason_code ?? "held")
+  check(
+    !!hold?.hold_id && !hold.reason_code,
+    "a slot can be held",
+    holdErr?.message ?? hold?.reason_code ?? "held"
+  )
+  if (!hold?.hold_id) throw new Error("hold did not return an id")
 
   // A second candidate cannot hold the same lane at capacity 1.
   const occupancyNow = [{ start: target.start, end: target.end }]
@@ -201,7 +211,7 @@ async function main() {
     "at capacity 1 the held slot stops being offered"
   )
 
-  const { data: confirmed } = await db
+  const { data: confirmed, error: confirmErr } = await db
     .rpc("confirm_interview_booking", {
       p_request_id: outcome.requestId,
       p_hold_id: hold!.hold_id!,
@@ -209,7 +219,15 @@ async function main() {
       p_start_now: false,
     })
     .maybeSingle()
-  check(!confirmed?.reason_code, "the booking confirmed", confirmed?.reason_code ?? "ok")
+  // Asserts a row came back, not merely that no reason code did — `!x?.y` is
+  // also true when the whole row is null, which is how a 42804 in the function
+  // passed this check silently.
+  check(
+    !!confirmed?.interview_id && !confirmed.reason_code,
+    "the booking confirmed",
+    confirmErr?.message ?? confirmed?.reason_code ?? "ok"
+  )
+  if (!confirmed?.interview_id) throw new Error("booking did not return an interview")
   created.interviewIds.push(confirmed!.interview_id!)
 
   const { data: interview } = await db
@@ -415,22 +433,124 @@ async function main() {
     console.log("  – this job runs no workflow template; workflow-scope proof skipped")
   }
 
-  // ── 6. Not-applicable stays silent ────────────────────────────────────────
-  section("6. Silence where it belongs")
+  // ── 6. The human-interviewer boundary ────────────────────────────────────
+  // v2 of the rule covers any interview stage, not only an AI one. What it does
+  // NOT cover is a stage with nobody to interview, or a panel — and each has to
+  // fail for its own stated reason rather than a generic "no".
+  section("6. Human interviewer")
+  await clearRequests()
   const before = await countEvents(app!.application_id)
-  await db.from("job_workflow_sub_stages").update({ interviewer_type: "human" }).eq("id", subStageId)
-  const human = await maybeCreateBookingRequest({
+  await db
+    .from("job_workflow_sub_stages")
+    .update({ interviewer_type: "human", agent_id: null })
+    .eq("id", subStageId)
+
+  const noReviewer = await maybeCreateBookingRequest({
     applicationId: app!.application_id,
     subStageId,
     candidateId: app!.candidate_id,
     jobId: app!.job_id,
     clientId: app!.client_id,
   })
-  check(human.kind === "not_applicable", "a human stage is not applicable", human.kind)
+  check(
+    noReviewer.kind === "not_applicable" && noReviewer.reason === "no_interviewer_assigned",
+    "a human stage with no reviewer names that as the reason",
+    noReviewer.kind === "not_applicable" ? noReviewer.reason : noReviewer.kind
+  )
   check(
     (await countEvents(app!.application_id)) === before,
-    "…and emits NOTHING — a non-interview stage must not fill the feed with skips"
+    "…and emits nothing — an unbookable stage is not an incident"
   )
+
+  // One reviewer, but no connected calendar: nothing can be offered, and
+  // guessing a grid would book someone over their own meetings.
+  const { data: members } = await db
+    .from("job_team_members")
+    .select("id, email")
+    .eq("job_id", app!.job_id)
+    .limit(2)
+
+  if (members && members.length >= 1) {
+    await db
+      .from("job_workflow_sub_stage_reviewers")
+      .insert({ sub_stage_id: subStageId, member_id: members[0].id })
+    // Whether this proves the happy path or the refusal depends on whether that
+    // person has actually connected Google — assert the right one rather than
+    // assuming, since a connected calendar makes this the real human booking.
+    const { data: conn } = await db
+      .from("google_calendar_connections")
+      .select("id")
+      .ilike("email", (members[0].email ?? "").trim().toLowerCase())
+      .is("revoked_at", null)
+      .maybeSingle()
+
+    const humanOutcome = await maybeCreateBookingRequest({
+      applicationId: app!.application_id,
+      subStageId,
+      candidateId: app!.candidate_id,
+      jobId: app!.job_id,
+      clientId: app!.client_id,
+    })
+
+    if (conn) {
+      check(
+        humanOutcome.kind === "created",
+        "a human stage with one connected interviewer books — no agent involved",
+        humanOutcome.kind
+      )
+      if (humanOutcome.kind === "created") {
+        const { data: req } = await db
+          .from("interview_scheduling_requests")
+          .select("agent_id, interviewer_member_id, allow_start_now")
+          .eq("id", humanOutcome.requestId)
+          .single()
+        check(
+          req!.agent_id === null && req!.interviewer_member_id === members[0].id,
+          "…the request holds the interviewer, not an agent"
+        )
+        check(
+          req!.allow_start_now === false,
+          "…and Start now is refused: a person can't be summoned this second"
+        )
+      }
+      await clearRequests()
+    } else {
+      check(
+        humanOutcome.kind === "not_applicable" &&
+          humanOutcome.reason === "interviewer_calendar_not_connected",
+        "one reviewer without a connected calendar is refused, and says why",
+        humanOutcome.kind === "not_applicable" ? humanOutcome.reason : humanOutcome.kind
+      )
+    }
+
+    if (members.length >= 2) {
+      await db
+        .from("job_workflow_sub_stage_reviewers")
+        .insert({ sub_stage_id: subStageId, member_id: members[1].id })
+      const beforePanel = await countEvents(app!.application_id)
+      const panel = await maybeCreateBookingRequest({
+        applicationId: app!.application_id,
+        subStageId,
+        candidateId: app!.candidate_id,
+        jobId: app!.job_id,
+        clientId: app!.client_id,
+      })
+      check(
+        panel.kind === "not_applicable" && panel.reason === "panel_not_supported",
+        "two reviewers is an honest 'not yet', not an arbitrary pick",
+        panel.kind === "not_applicable" ? panel.reason : panel.kind
+      )
+      check(
+        (await countEvents(app!.application_id)) === beforePanel,
+        "…and a panel emits nothing either"
+      )
+    } else {
+      console.log("  – only one team member on this job; panel case not exercised")
+    }
+    await db.from("job_workflow_sub_stage_reviewers").delete().eq("sub_stage_id", subStageId)
+  } else {
+    console.log("  – no team members on this job; reviewer cases not exercised")
+  }
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
   section("Cleanup")

@@ -67,6 +67,7 @@ const RESOLVE_COLUMNS = [
   "candidate_id",
   "job_id",
   "agent_id",
+  "interviewer_member_id",
   "status",
   "token_expires_at",
   "slot_minutes",
@@ -91,7 +92,8 @@ export type ResolvedBookingRequest = {
   client_id: string
   candidate_id: string
   job_id: string
-  agent_id: string
+  agent_id: string | null
+  interviewer_member_id: string | null
   status: Database["public"]["Enums"]["scheduling_request_status"]
   token_expires_at: string
   slot_minutes: number

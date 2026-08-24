@@ -1920,7 +1920,7 @@ export type Database = {
       interview_scheduling_requests: {
         Row: {
           agent_concurrency_limit: number
-          agent_id: string
+          agent_id: string | null
           allow_start_now: boolean
           application_id: string
           booked_at: string | null
@@ -1936,6 +1936,7 @@ export type Database = {
           hold_seconds: number
           id: string
           interview_id: string | null
+          interviewer_member_id: string | null
           job_id: string
           minimum_notice_minutes: number
           operating_days: number[]
@@ -1953,7 +1954,7 @@ export type Database = {
         }
         Insert: {
           agent_concurrency_limit: number
-          agent_id: string
+          agent_id?: string | null
           allow_start_now?: boolean
           application_id: string
           booked_at?: string | null
@@ -1969,6 +1970,7 @@ export type Database = {
           hold_seconds?: number
           id?: string
           interview_id?: string | null
+          interviewer_member_id?: string | null
           job_id: string
           minimum_notice_minutes: number
           operating_days?: number[]
@@ -1986,7 +1988,7 @@ export type Database = {
         }
         Update: {
           agent_concurrency_limit?: number
-          agent_id?: string
+          agent_id?: string | null
           allow_start_now?: boolean
           application_id?: string
           booked_at?: string | null
@@ -2002,6 +2004,7 @@ export type Database = {
           hold_seconds?: number
           id?: string
           interview_id?: string | null
+          interviewer_member_id?: string | null
           job_id?: string
           minimum_notice_minutes?: number
           operating_days?: number[]
@@ -2068,6 +2071,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "interview_scheduling_requests_interviewer_member_id_fkey"
+            columns: ["interviewer_member_id"]
+            isOneToOne: false
+            referencedRelation: "job_team_members"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "interview_scheduling_requests_job_id_fkey"
             columns: ["job_id"]
             isOneToOne: false
@@ -2085,35 +2095,38 @@ export type Database = {
       }
       interview_slot_holds: {
         Row: {
-          agent_id: string
-          agent_slot_index: number
+          agent_id: string | null
+          agent_slot_index: number | null
           created_at: string
           during: unknown
           ends_at: string
           expires_at: string
           id: string
+          interviewer_member_id: string | null
           request_id: string
           starts_at: string
         }
         Insert: {
-          agent_id: string
-          agent_slot_index: number
+          agent_id?: string | null
+          agent_slot_index?: number | null
           created_at?: string
           during?: unknown
           ends_at: string
           expires_at: string
           id?: string
+          interviewer_member_id?: string | null
           request_id: string
           starts_at: string
         }
         Update: {
-          agent_id?: string
-          agent_slot_index?: number
+          agent_id?: string | null
+          agent_slot_index?: number | null
           created_at?: string
           during?: unknown
           ends_at?: string
           expires_at?: string
           id?: string
+          interviewer_member_id?: string | null
           request_id?: string
           starts_at?: string
         }
@@ -2123,6 +2136,13 @@ export type Database = {
             columns: ["agent_id"]
             isOneToOne: false
             referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_slot_holds_interviewer_member_id_fkey"
+            columns: ["interviewer_member_id"]
+            isOneToOne: false
+            referencedRelation: "job_team_members"
             referencedColumns: ["id"]
           },
           {
@@ -2157,6 +2177,7 @@ export type Database = {
           ends_at: string
           format: Database["public"]["Enums"]["stage_format"] | null
           id: string
+          interviewer_member_id: string | null
           interviewer_type: Database["public"]["Enums"]["interviewer_type"]
           job_id: string
           scheduled_at: string
@@ -2181,6 +2202,7 @@ export type Database = {
           ends_at: string
           format?: Database["public"]["Enums"]["stage_format"] | null
           id?: string
+          interviewer_member_id?: string | null
           interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
           job_id: string
           scheduled_at: string
@@ -2205,6 +2227,7 @@ export type Database = {
           ends_at?: string
           format?: Database["public"]["Enums"]["stage_format"] | null
           id?: string
+          interviewer_member_id?: string | null
           interviewer_type?: Database["public"]["Enums"]["interviewer_type"]
           job_id?: string
           scheduled_at?: string
@@ -2242,6 +2265,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "interviews_interviewer_member_id_fkey"
+            columns: ["interviewer_member_id"]
+            isOneToOne: false
+            referencedRelation: "job_team_members"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "interviews_job_id_fkey"
@@ -2570,8 +2600,12 @@ export type Database = {
           id: string
           job_id: string
           name: string
+          preferred_days: number[] | null
           profile_id: string | null
           role: string
+          timezone: string | null
+          working_hours_end: number | null
+          working_hours_start: number | null
         }
         Insert: {
           created_at?: string
@@ -2579,8 +2613,12 @@ export type Database = {
           id?: string
           job_id: string
           name: string
+          preferred_days?: number[] | null
           profile_id?: string | null
           role: string
+          timezone?: string | null
+          working_hours_end?: number | null
+          working_hours_start?: number | null
         }
         Update: {
           created_at?: string
@@ -2588,8 +2626,12 @@ export type Database = {
           id?: string
           job_id?: string
           name?: string
+          preferred_days?: number[] | null
           profile_id?: string | null
           role?: string
+          timezone?: string | null
+          working_hours_end?: number | null
+          working_hours_start?: number | null
         }
         Relationships: [
           {
