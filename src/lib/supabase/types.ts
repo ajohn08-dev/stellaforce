@@ -3718,6 +3718,22 @@ export type Database = {
           reason_code: string
         }[]
       }
+      claim_agent_call_for_interview: {
+        Args: { p_interview_id: string; p_lease_seconds?: number }
+        Returns: {
+          agent_id: string
+          application_id: string
+          attempts: number
+          call_id: string
+          campaign_id: string
+          candidate_id: string
+          client_id: string
+          interview_id: string
+          job_id: string
+          scheduled_at: string
+          sub_stage_id: string
+        }[]
+      }
       claim_due_agent_calls: {
         Args: { p_lease_seconds?: number; p_limit?: number }
         Returns: {

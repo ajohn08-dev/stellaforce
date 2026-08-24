@@ -668,9 +668,33 @@ candidate reaches a self-scheduling agent stage
   → n8n re-checks the gate, then emails /book/<token>
   → candidate picks a time, or "Start now"
   → the interview is created atomically and a call is queued
-  → a cron tick hands the call to n8n at the right moment
+  → "Start now" dials from that request; a scheduled slot waits for the tick
   → paused/off → `automation_skipped_by_policy`, no side effect, exit clean
 ```
+
+**Two claimants, one runner.** A queued call is claimed either by the
+every-minute tick (`claim_due_agent_calls`) or, for "Start now", from inside the
+candidate's own confirm (`claim_agent_call_for_interview` — the same lease, one
+row, ignoring `run_at` because a start-now call is due by definition). What
+happens *after* the claim is `runClaimedCall`
+(`src/lib/server/agent-call-queue.ts`) in both cases: same guards, same four
+outcomes, same state transitions, same events. Splitting the claim without
+sharing the runner is how a row ends up `sent` with no `dispatched_at`, or gets
+retried by the cron after the inline attempt already rang a phone. The inline
+dispatch **never throws and its result is dropped** — the booking is already
+committed, and a candidate must see a confirmed interview whatever the dial did.
+A failed claim simply leaves the row for the tick.
+
+**Both call paths send the same payload.** `ScheduledCallPayload` and the
+Agents-page `CallDispatchPayload` reach the *same* n8n workflow, so they must
+differ only in `is_test`. The interview content — questions, prompt override,
+display name — comes from one exported `interviewFieldsFor`
+(`src/lib/interview-agent-config.ts`). It was private to the Agents page once,
+and the scheduled path silently sent no questions and no override: a booked
+interview ran the ElevenLabs agent's generic prompt while the test button, which
+is what everyone checks, looked perfect. **There is one ElevenLabs agent behind
+every screening agent row**, so the prompt override *is* the difference between
+one interview and another.
 
 **Two bookable resources, exactly one per booking.** An **agent** has N
 concurrent lanes and gets dialled; an **interviewer** has a calendar and capacity
@@ -902,12 +926,23 @@ carries `null`.
 The Agents-page test dialog offers **both** channels for every agent, since the
 channel is picked per job stage rather than baked into the agent.
 
-**⚠️ Missing link.** `job_workflow_sub_stages.agent_id` /
-`workflow_template_sub_stages.agent_id` exist in the schema but **no UI ever
-sets them** — the workflow stages tab lets you pick `interviewer_type = 'ai'`
-and a format, but not *which* agent. Until an agent picker exists, a real
-candidate can't be launched into either channel from a job; only the Agents-page
-test runs work.
+**⚠️ Missing link — still no picker, but no longer no rows.**
+`job_workflow_sub_stages.agent_id` / `workflow_template_sub_stages.agent_id`
+exist in the schema and **no UI sets them**: the workflow stages tab lets you
+pick `interviewer_type = 'ai'` and a format, but not *which* agent. One stage is
+now assigned by migration — Product Designer → Pre-Screening runs the **Product
+Designer Screening Agent** (`seed_product_designer_screening_agent`), whose
+prompt lives in `src/lib/interview-agent-config.ts` keyed by that agent's uuid.
+The uuid is written explicitly in the migration for exactly that reason: a
+generated id would have to be reconciled with the code by hand, and would differ
+per environment. Every other stage still has no agent, so a candidate reaching
+one gets `no_agent_assigned` until the picker exists.
+
+⚠️ Note what assigning an agent does *not* do, and what it turned out to do
+anyway. `scheduling_mode` is untouched by that migration — but **NULL inherits
+the cascade**, and `workflow_settings` carries `candidate_self_scheduling` at
+global scope, so that stage was already self-scheduling and was only missing an
+agent. Reading a null `scheduling_mode` as "off" is wrong; resolve it.
 
 ## App shell
 Left sidebar (`src/components/app-sidebar.tsx`) + top header

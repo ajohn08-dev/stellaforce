@@ -1,6 +1,7 @@
 import "server-only"
 
 import { serverEnv } from "@/lib/env"
+import { interviewFieldsFor } from "@/lib/interview-agent-config"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
@@ -42,7 +43,18 @@ export type AgentCallContext = {
   scheduledAt: string
 }
 
-/** What n8n needs to place the call. Mirrors the existing CallDispatchPayload. */
+/**
+ * What n8n needs to place the call. Mirrors the existing CallDispatchPayload —
+ * the *same* n8n workflow receives both, so a booked interview and a test run
+ * must be indistinguishable to it apart from `is_test`.
+ *
+ * The interview-content fields below were missing until they weren't, and the
+ * failure was invisible from the side anyone tests: the Agents-page button sent
+ * questions and a prompt override, while a real booked call sent neither and the
+ * ElevenLabs agent fell back to its own generic prompt. One agent serves every
+ * screen here, so the override *is* the difference between a Product Designer
+ * interview and a generic one.
+ */
 type ScheduledCallPayload = {
   to_number: string
   agent_id: string
@@ -61,8 +73,20 @@ type ScheduledCallPayload = {
   /** Stable per attempt, so n8n can tell a retry from a new call. */
   idempotency_key: string
   scheduled_at: string
-  interview_name: string
   candidate_timezone: string | null
+  // ── Interview content, from `src/lib/interview-agent-config.ts` ───────────
+  interview_name: string
+  agent_display_name: string
+  company_name: string
+  /** Numbered, newline-separated — ready to drop into a prompt as-is. */
+  questions: string
+  question_count: number
+  /** Non-null only for agents that opted into prompt overrides *and* have the
+   * matching flag enabled in ElevenLabs. n8n passes it through as
+   * `conversation_config_override.agent.prompt.prompt`, and must omit the
+   * override block entirely when null — an unpermitted override fails the call. */
+  prompt_override: string | null
+  first_message_override: string | null
 }
 
 /**
@@ -166,8 +190,10 @@ export async function dispatchAgentCall(
     // while `campaign_id` stays stable so the provider can dedupe across both.
     idempotency_key: `${ctx.callId}:attempt_${ctx.attempt}`,
     scheduled_at: ctx.scheduledAt,
-    interview_name: stage?.name ?? "Interview",
     candidate_timezone: interview.candidate_timezone,
+    // The stage name is the fallback rather than the agent's, since a booked
+    // call always has one and it is what the candidate was told they're joining.
+    ...interviewFieldsFor(agent.id, stage?.name ?? agent.name, candidate.full_name ?? ""),
   }
 
   const controller = new AbortController()

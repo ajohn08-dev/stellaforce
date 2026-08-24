@@ -3,6 +3,7 @@ import "server-only"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { agentSlotGrid, canStartNow, filterByCapacity } from "@/lib/agent-availability"
 import { logActivity, logSchedulingFailure } from "@/lib/server/activity"
+import { dispatchStartNowCall } from "@/lib/server/agent-call-queue"
 import { resolveBookingToken, type ResolvedBookingRequest } from "@/lib/server/booking-token"
 import { getCalendarPreview } from "@/lib/server/calendar-events"
 import {
@@ -331,10 +332,21 @@ export async function confirmBooking(input: {
     idempotency_key: `interview_scheduled:${data.interview_id}`,
   })
 
-  // Start-now still goes through the queue rather than dialling from here. One
-  // dispatcher means one set of guards, one retry policy and one place a call
-  // can be suppressed — and the tick runs every minute, so "immediately" is
-  // within a minute rather than within a request.
+  // Start-now dials from here rather than waiting for the tick, because a
+  // candidate who just pressed "Start now" is holding a phone. It still goes
+  // *through the queue*: the row is claimed by the same lease the cron uses and
+  // run by the same shared code, so there is still one set of guards, one retry
+  // policy and one place a call can be suppressed. What changes is only who
+  // claims it first.
+  //
+  // Awaited, but its result is deliberately dropped. The booking is already
+  // committed and the candidate must see it confirmed whatever the dial did —
+  // a failed claim leaves the row for the cron, which is exactly what a
+  // scheduled booking does anyway.
+  if (input.startNow) {
+    await dispatchStartNowCall(admin, data.interview_id)
+  }
+
   return {
     ok: true,
     // Non-null on success: the RPC only omits it when it also sets a reason code.

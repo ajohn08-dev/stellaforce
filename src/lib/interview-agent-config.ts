@@ -105,6 +105,35 @@ export const INTERVIEW_AGENT_CONFIGS: Record<string, InterviewAgentConfig> = {
     ].join(" "),
   },
 
+  // Product Designer Screening Agent — the only entry here whose agent is
+  // attached to a real job stage (Product Designer → Pre-Screening), rather
+  // than existing solely for Agents-page test runs. See the
+  // seed_product_designer_screening_agent migration.
+  "5c63f255-b827-45f1-bdbc-74a5a03ded04": {
+    interviewName: "Product Designer Screen",
+    // On, like every entry here. There is one ElevenLabs agent behind all of
+    // them, so the prompt override *is* the difference between one screen and
+    // another — without it this agent would run the generic prompt under a
+    // Product Designer label.
+    allowPromptOverride: true,
+    agentDisplayName: "Elena",
+    companyName: DEFAULT_COMPANY,
+    questions: [
+      "Walk me through a product you designed end to end — what was the problem, and what shipped?",
+      "How do you decide what to design next when the research is thin and the deadline is real?",
+      "Tell me about a time engineering said your design couldn't be built as drawn. What happened?",
+      "What does your handoff look like — what do engineers get from you, and in what form?",
+      "What tools do you work in day to day, and where does your process start?",
+      "What are you looking for in your next role, and what's your availability to start?",
+    ],
+    guidance: [
+      "This is a first-pass screen, not a portfolio review — the candidate has no screen to share, so ask them to describe work rather than show it.",
+      "The signal worth capturing is specificity: which decisions were theirs, what they'd do differently, and how they worked with engineering and research. A candidate who only describes visuals on a team project is the answer, not a failure to probe.",
+      "Do not evaluate or critique their work, and never indicate whether they're progressing — a recruiter reviews the transcript and decides.",
+      "If they ask about compensation, the interview process, or timelines, hand it to the recruiter rather than estimating.",
+    ].join(" "),
+  },
+
   // Engineering First-Pass Screen
   "696a04bd-4ae4-432a-896f-c62a1a077ef4": {
     interviewName: "Engineering First-Pass Screen",
@@ -201,6 +230,36 @@ export function buildInterviewPrompt(
   ]
     .filter(Boolean)
     .join("\n")
+}
+
+/**
+ * The interview content every dispatch carries, with fallbacks for an agent that
+ * has no fixture entry yet.
+ *
+ * Lives here rather than beside either caller because **both** paths to a real
+ * phone call need it and they are in different modules: the Agents-page test
+ * button (`src/app/(app)/agents/actions.ts`) and the scheduled-call dispatcher
+ * (`src/lib/server/agent-call.ts`). It was defined privately in the first of
+ * those, so the second silently sent no questions and no prompt override — a
+ * booked interview ran the ElevenLabs agent's own generic prompt while the test
+ * button, which is what everyone checks, worked perfectly.
+ */
+export function interviewFieldsFor(agentId: string, agentName: string, candidateName: string) {
+  const config = getInterviewAgentConfig(agentId)
+  return {
+    interview_name: config?.interviewName ?? agentName,
+    agent_display_name: config?.agentDisplayName ?? agentName,
+    company_name: config?.companyName ?? "Stella Force",
+    questions: config ? formatQuestions(config.questions) : "",
+    question_count: config?.questions.length ?? 0,
+    prompt_override: config?.allowPromptOverride
+      ? buildInterviewPrompt(config, candidateName)
+      : null,
+    // Null unless a config explicitly overrides it — the ElevenLabs agent's own
+    // first message is templated with the dynamic variables above and already
+    // differentiates per interview.
+    first_message_override: config?.allowPromptOverride ? (config.firstMessage ?? null) : null,
+  }
 }
 
 /**
