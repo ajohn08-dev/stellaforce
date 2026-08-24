@@ -1,20 +1,28 @@
 "use client"
 
 import * as React from "react"
-import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react"
+import { ArrowLeft, ArrowRight, Loader2, PauseCircle, RotateCcw, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { moveCandidate } from "@/app/(app)/jobs/actions"
+import {
+  holdCandidate,
+  moveCandidate,
+  rejectCandidate,
+  reopenApplication,
+} from "@/app/(app)/jobs/actions"
+import type { ApplicationStatus } from "@/lib/supabase/types"
 
 /**
- * Move a candidate one step along the pipeline.
+ * What a recruiter can do to a candidate from the pipeline header: move them one
+ * stage, park them, or end it.
  *
- * `moveCandidate` has existed and worked since the workflow-templates pass and
- * **had no caller** — the pipeline board was entirely read-only, so no candidate
- * could be advanced through the UI at all. That mattered more once stage entry
- * became a trigger: "candidate reaches an agent interview stage" is what sends a
- * booking link, and nothing could make it happen.
+ * `moveCandidate` and `rejectCandidate` both existed and worked since the
+ * workflow-templates pass and **had no caller** — the board was entirely
+ * read-only, so no candidate could be advanced or rejected through the UI at
+ * all. That mattered more once stage entry became a trigger: "candidate reaches
+ * an agent interview stage" is what sends a booking link, and nothing could make
+ * it happen.
  *
  * ── One step, not any step ──
  *
@@ -25,30 +33,37 @@ import { moveCandidate } from "@/app/(app)/jobs/actions"
  * entry is a *trigger* — jumping past Pre-Screening silently skips the screening
  * call rather than failing.
  *
- * So there are two buttons and no list. Forward is the primary action. Backward
- * exists because a demo has to be re-runnable and correcting a misclick is real
- * work, but it is deliberately quieter — it is a correction, not a step.
+ * So: two directions and no list. Forward is the primary action. Backward exists
+ * because a demo has to be re-runnable and correcting a misclick is real work,
+ * but it is deliberately quieter — a correction, not a step. The adjacency rule
+ * is re-checked in the Server Action, because a disabled control is a courtesy.
  *
- * The adjacency rule is re-checked in the Server Action. A disabled control is a
- * courtesy; the rule is enforced where it can't be bypassed.
+ * ── Hold and Reject are different kinds of thing ──
+ *
+ * Hold leaves the candidate on their stage with the clock running; Reject moves
+ * them out of the pipeline and closes the stage row. Both are reversible from
+ * here, which is what keeps this demoable — and Reopen is the only control
+ * offered once an application is no longer active, since every other action
+ * would be a lie about a closed application.
  *
  * `stages` **must arrive in pipeline order** — Tier-1 `display_order`, then the
- * sub-stage's. `sortByPipelineStage` in `src/lib/data.ts` is what produces it,
- * and every caller here is fed from it. Sorting on `display_order` alone is
- * wrong: sub-stages in different Tier-1 stages routinely share one, because that
- * column orders *within* a Tier-1 stage.
+ * sub-stage's. `sortByPipelineStage` in `src/lib/data.ts` is what produces it.
+ * Sorting on `display_order` alone is wrong: sub-stages in different Tier-1
+ * stages routinely share one, because that column orders *within* a Tier-1 stage.
  */
 export function MoveCandidateControl({
   applicationId,
   currentStageId,
+  status = "active",
   stages,
 }: {
   applicationId: string
   currentStageId: string | null
+  status?: ApplicationStatus
   /** In pipeline order. See the note above — this component trusts the order. */
   stages: { id: string; name: string }[]
 }) {
-  const [pendingId, setPendingId] = React.useState<string | null>(null)
+  const [pending, setPending] = React.useState<string | null>(null)
   const [isPending, startTransition] = React.useTransition()
 
   const index = currentStageId ? stages.findIndex((s) => s.id === currentStageId) : -1
@@ -56,22 +71,55 @@ export function MoveCandidateControl({
   const previous = index > 0 ? stages[index - 1] : undefined
   const next = index === -1 ? stages[0] : stages[index + 1]
 
-  if (!previous && !next) return null
-
-  function move(stage: { id: string; name: string }) {
-    setPendingId(stage.id)
+  function run(key: string, action: () => Promise<{ ok: boolean; error?: string }>, success: string) {
+    setPending(key)
     startTransition(async () => {
-      const result = await moveCandidate(applicationId, stage.id)
-      setPendingId(null)
+      const result = await action()
+      setPending(null)
       if (!result.ok) {
-        toast.error(result.error)
+        toast.error(result.error ?? "That didn't work.")
         return
       }
-      // Deliberately vague about the booking link: whether one goes out depends
-      // on the stage's configuration and the automation gate, and promising it
-      // here would be a second source of truth for a decision made server-side.
-      toast.success(`Moved to ${stage.name}.`)
+      toast.success(success)
     })
+  }
+
+  const spinner = <Loader2 className="size-3.5 animate-spin" />
+
+  if (status !== "active") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">
+          {status === "on_hold"
+            ? "On hold"
+            : status === "rejected"
+              ? "Rejected"
+              : status === "withdrawn"
+                ? "Withdrawn"
+                : "Hired"}
+        </span>
+        {status !== "hired" && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={() =>
+              run("reopen", () => reopenApplication(applicationId), "Back in the pipeline.")
+            }
+          >
+            {isPending && pending === "reopen" ? (
+              spinner
+            ) : (
+              <>
+                <RotateCcw data-icon="inline-start" className="size-3.5" />
+                Reopen
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -83,37 +131,85 @@ export function MoveCandidateControl({
           variant="ghost"
           className="text-muted-foreground"
           disabled={isPending}
-          onClick={() => move(previous)}
-          title={`Move back to ${previous.name}`}
+          onClick={() =>
+            run(
+              previous.id,
+              () => moveCandidate(applicationId, previous.id),
+              `Moved back to ${previous.name}.`
+            )
+          }
         >
-          {isPending && pendingId === previous.id ? (
-            <Loader2 className="size-3.5 animate-spin" />
+          {isPending && pending === previous.id ? (
+            spinner
           ) : (
             <>
               <ArrowLeft data-icon="inline-start" className="size-3.5" />
-              {previous.name}
+              Move back to {previous.name}
             </>
           )}
         </Button>
       )}
+
       {next && (
         <Button
           type="button"
           size="sm"
           variant="outline"
           disabled={isPending}
-          onClick={() => move(next)}
+          onClick={() =>
+            // Deliberately vague about the booking link: whether one goes out
+            // depends on the stage's configuration and the automation gate, and
+            // promising it here would be a second source of truth for a decision
+            // made server-side.
+            run(next.id, () => moveCandidate(applicationId, next.id), `Moved to ${next.name}.`)
+          }
         >
-          {isPending && pendingId === next.id ? (
-            <Loader2 className="size-3.5 animate-spin" />
+          {isPending && pending === next.id ? (
+            spinner
           ) : (
             <>
-              {next.name}
+              Move to {next.name}
               <ArrowRight data-icon="inline-end" className="size-3.5" />
             </>
           )}
         </Button>
       )}
+
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="text-muted-foreground"
+        disabled={isPending}
+        onClick={() => run("hold", () => holdCandidate(applicationId), "Put on hold.")}
+      >
+        {isPending && pending === "hold" ? (
+          spinner
+        ) : (
+          <>
+            <PauseCircle data-icon="inline-start" className="size-3.5" />
+            Hold
+          </>
+        )}
+      </Button>
+
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="text-muted-foreground hover:text-destructive"
+        disabled={isPending}
+        onClick={() => run("reject", () => rejectCandidate(applicationId), "Candidate rejected.")}
+      >
+        {isPending && pending === "reject" ? (
+          spinner
+        ) : (
+          <>
+            <X data-icon="inline-start" className="size-3.5" />
+            Reject
+          </>
+        )}
+      </Button>
     </div>
   )
 }

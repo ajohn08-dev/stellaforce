@@ -1,5 +1,5 @@
 import { SKILL_TAXONOMY } from "@/lib/constants"
-import type { CandidateTier } from "@/lib/supabase/types"
+import type { ApplicationStatus, CandidateTier } from "@/lib/supabase/types"
 import type { MockJob, PipelineCounts } from "@/lib/mock-jobs"
 
 export type StageKey = keyof PipelineCounts
@@ -20,6 +20,10 @@ export type PipelineCandidate = {
   application_id?: string
   /** Real applications.current_stage_id — see application_id note above. */
   current_stage_id?: string
+  /** Real applications.status. Undefined for the pseudo-candidates below, which
+   * are always treated as active. Drives whether stage actions are offered at
+   * all: a held or rejected application can only be reopened. */
+  application_status?: ApplicationStatus
   full_name: string
   tier: CandidateTier
   days_in_stage: number

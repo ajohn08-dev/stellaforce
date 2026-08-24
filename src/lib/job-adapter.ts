@@ -65,6 +65,7 @@ export function toBoardStages(pipeline: PipelineData, nowMs: number): SubStage[]
       candidate_id: c.candidate_id,
       application_id: app.application_id,
       current_stage_id: app.current_stage_id,
+      application_status: app.status,
       full_name: c.full_name ?? `${c.first_name} ${c.last_name}`.trim(),
       tier: (c.candidate_tier ?? "bronze") as CandidateTier,
       days_in_stage: days,

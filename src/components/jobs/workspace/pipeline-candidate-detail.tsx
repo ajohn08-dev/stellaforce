@@ -71,6 +71,7 @@ export function PipelineCandidateDetail({
             <MoveCandidateControl
               applicationId={candidate.application_id}
               currentStageId={candidate.current_stage_id ?? null}
+              status={candidate.application_status ?? "active"}
               stages={jobEvalContext.subStages.map((s) => ({ id: s.id, name: s.name }))}
             />
           )}
