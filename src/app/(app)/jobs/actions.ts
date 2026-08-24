@@ -1254,6 +1254,51 @@ export async function moveCandidate(
   if (!profile) return { ok: false, error: "Not signed in." }
   const supabase = await createClient()
 
+  // ── One step, forward or back ────────────────────────────────────────────
+  //
+  // Enforced here rather than in `moveApplicationToStage` on purpose. This is a
+  // rule about what a *recruiter* may do in this product: a pipeline whose
+  // stages can be skipped isn't a pipeline, and stage entry is a trigger, so
+  // jumping past Pre-Screening silently skips the screening call rather than
+  // failing. A system caller is different — an ATS sync reporting where a
+  // candidate actually is may legitimately land several stages along, and the
+  // domain command must stay able to represent that.
+  const { data: application } = await supabase
+    .from("applications")
+    .select("job_id, current_stage_id")
+    .eq("application_id", applicationId)
+    .maybeSingle()
+  if (!application) return { ok: false, error: "Application not found." }
+
+  const { data: subStages } = await supabase
+    .from("job_workflow_sub_stages")
+    .select("id, name, display_order, pipeline_stage:pipeline_stages(*)")
+    .eq("job_id", application.job_id)
+
+  const ordered = sortByPipelineStage(
+    (subStages ?? []) as {
+      id: string
+      name: string
+      display_order: number
+      pipeline_stage: PipelineStageRow | null
+    }[]
+  )
+  const from = ordered.findIndex((s) => s.id === application.current_stage_id)
+  const to = ordered.findIndex((s) => s.id === targetSubStageId)
+
+  if (to === -1) return { ok: false, error: "That stage is not part of this job's pipeline." }
+  // A candidate on no stage can only enter at the first one.
+  if (from === -1 && to !== 0) {
+    return { ok: false, error: `Start at ${ordered[0]?.name ?? "the first stage"}.` }
+  }
+  if (from !== -1 && Math.abs(to - from) !== 1) {
+    const step = ordered[to > from ? from + 1 : from - 1]
+    return {
+      ok: false,
+      error: `Candidates move one stage at a time — ${step?.name ?? "the next stage"} is the next step.`,
+    }
+  }
+
   const result = await moveApplicationToStage(supabase, {
     applicationId,
     targetSubStageId,
