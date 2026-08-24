@@ -42,12 +42,28 @@ export function mintBookingToken(): MintedToken {
   return {
     token,
     tokenHash: hashBookingToken(token),
-    url: `${serverEnv.siteUrl.replace(/\/$/, "")}/book/${token}`,
+    // Built here, in the app, and nowhere else. n8n receives a finished URL and
+    // has no way to derive one: it never sees the hash, and the hash could not
+    // be reversed into a token even if it did.
+    url: `${serverEnv.publicAppUrl}/book/${token}`,
   }
 }
 
 export function hashBookingToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex")
+}
+
+/**
+ * A stable, non-reversible handle for logs.
+ *
+ * The raw token must never reach a log line, but "some request failed" with no
+ * identifier is unusable when a candidate says their link is broken. The first
+ * 12 hex characters of the hash correlate every log line for one link without
+ * being a credential — 48 bits is plenty to join on and useless to guess with,
+ * and the full hash is what the database is actually keyed by.
+ */
+export function bookingTokenFingerprint(rawToken: string): string {
+  return hashBookingToken(rawToken).slice(0, 12)
 }
 
 /**

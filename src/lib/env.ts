@@ -129,6 +129,28 @@ export const serverEnv = {
     return required("SITE_URL", process.env.SITE_URL)
   },
 
+  /**
+   * The public origin candidate-facing links are built from, e.g.
+   * `https://app.stellaforce.ai`.
+   *
+   * Separate from `siteUrl` on purpose, even though they are usually the same
+   * string. `siteUrl` is the *app's* origin — it builds the Google OAuth
+   * `redirect_uri`, which has to match a value registered in the Google Cloud
+   * console exactly. This one is the origin **a candidate's browser must be able
+   * to reach**, and the two diverge the moment the app sits behind a vanity
+   * domain, a preview deployment, or a separate marketing host. Conflating them
+   * means changing one to fix the other and silently breaking an OAuth callback
+   * or mailing every candidate a dead link.
+   *
+   * Deliberately **not** `NEXT_PUBLIC_`: nothing in the browser needs it. The
+   * booking URL is composed server-side and travels to n8n, never to a client
+   * bundle. Falls back to `SITE_URL` so existing deployments keep working.
+   */
+  get publicAppUrl() {
+    const raw = process.env.PUBLIC_APP_URL ?? process.env.SITE_URL
+    return required("PUBLIC_APP_URL", raw).replace(/\/+$/, "")
+  },
+
   /** n8n workflow that emails a candidate their `/book/<token>` link. */
   get n8nBookingLinkWebhookUrl() {
     return (

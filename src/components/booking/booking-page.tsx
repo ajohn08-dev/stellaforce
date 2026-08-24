@@ -5,19 +5,19 @@ import { CalendarClock, Check, Loader2, Phone } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import {
-  confirmBooking,
-  holdSlot,
-  releaseHold,
-  type BookingView,
-  type SlotOption,
-} from "@/app/book/actions"
+import { GENERIC_CANDIDATE_MESSAGE } from "@/lib/scheduling-reason-codes"
+// Type-only, so nothing server-side is pulled into this bundle — `import type`
+// is erased before the bundler sees it, which is why importing from a
+// `server-only` module here is safe. The three interactive calls go over HTTP to
+// `/api/book/[token]/*` rather than through a Server Action — see
+// `callBookingApi` below.
+import type { BookingView, SlotOption } from "@/lib/server/booking-core"
 
 /**
  * What a candidate actually does: pick a timezone, pick a time (or start now),
  * and confirm.
  *
- * Two rules shape this component:
+ * Three rules shape this component:
  *
  *  1. **Everything is an absolute instant until it is rendered.** Slots arrive
  *     as ISO strings generated in the *agent's* operating timezone; the picker
@@ -28,6 +28,11 @@ import {
  *     the agent's lane for a few minutes, so the candidate reading the
  *     confirmation screen doesn't lose it to someone faster. Navigating away
  *     releases it — a browsing candidate must not consume an agent's capacity.
+ *  3. **The grid goes stale and is refreshed.** The server render is a snapshot
+ *     of live agent capacity; a tab left open over lunch is showing times other
+ *     candidates have since taken. Polling `/availability` costs one cheap read
+ *     and turns "that time was just taken" from the common case into the rare
+ *     one.
  */
 export function BookingPage({ token, view }: { token: string; view: BookingView }) {
   // `candidates.timezone` is nullable and is the only timezone column in the
@@ -53,11 +58,50 @@ export function BookingPage({ token, view }: { token: string; view: BookingView 
     startNow: boolean
   } | null>(null)
 
+  // The grid is live state, seeded from the server render rather than owned by
+  // it. Everything below refreshes it from `/availability`.
+  const [slots, setSlots] = React.useState<SlotOption[]>(view.slots)
+  const [canStartNowLive, setCanStartNowLive] = React.useState(view.canStartNow)
+
+  /**
+   * One key per confirmation *intent*, not per click.
+   *
+   * A retry after a dropped connection must carry the same key — that is the
+   * entire point — so it is generated once per attempt and only cleared when the
+   * server refuses in a way that sends the candidate back to the grid, where the
+   * next confirm is genuinely a different intent.
+   */
+  const idempotencyKey = React.useRef<string | null>(null)
+
+  const refreshAvailability = React.useCallback(async () => {
+    const data = await callBookingApi<AvailabilityResponse>(
+      `/api/book/${token}/availability`,
+      { method: "GET" }
+    )
+    if (!data?.ok) return
+    setSlots(data.slots)
+    setCanStartNowLive(data.can_start_now)
+  }, [token])
+
+  // Poll only while the candidate is deciding: a held slot is theirs, so
+  // refreshing under them would churn the grid for no gain, and a hidden tab
+  // does not need to be current.
+  React.useEffect(() => {
+    if (holdId || confirmed || view.booked) return
+    const tick = () => {
+      if (document.visibilityState === "visible") void refreshAvailability()
+    }
+    const id = setInterval(tick, 60_000)
+    return () => clearInterval(id)
+  }, [holdId, confirmed, view.booked, refreshAvailability])
+
   // Give the lane back if the candidate closes the tab mid-decision.
+  // `keepalive` is what lets the request outlive the page — a plain fetch is
+  // cancelled on unload and the hold would sit there until its TTL.
   React.useEffect(() => {
     if (!holdId) return
     const release = () => {
-      void releaseHold(token)
+      void fetch(`/api/book/${token}/hold`, { method: "DELETE", keepalive: true })
     }
     window.addEventListener("pagehide", release)
     return () => window.removeEventListener("pagehide", release)
@@ -75,42 +119,69 @@ export function BookingPage({ token, view }: { token: string; view: BookingView 
     )
   }
 
-  const byDay = groupByDay(view.slots, timezone)
+  const byDay = groupByDay(slots, timezone)
 
   function pick(slot: SlotOption) {
     setError(null)
     startTransition(async () => {
-      const result = await holdSlot(token, slot.start)
-      if (!result.ok) {
-        setError(result.message)
+      const result = await callBookingApi<HoldResponse>(`/api/book/${token}/hold`, {
+        method: "POST",
+        body: JSON.stringify({ start: slot.start }),
+      })
+
+      if (!result?.ok) {
+        setError(result?.error ?? GENERIC_CANDIDATE_MESSAGE)
         setSelected(null)
         setHoldId(null)
+        // Whatever went wrong, the grid on screen is no longer trustworthy —
+        // the usual cause is someone else taking the lane.
+        void refreshAvailability()
         return
       }
+
       setSelected(slot.start)
-      setHoldId(result.holdId)
-      setHoldExpiresAt(result.expiresAt)
+      setHoldId(result.hold_id)
+      setHoldExpiresAt(result.expires_at)
     })
   }
 
   function confirm(startNow: boolean) {
     setError(null)
     startTransition(async () => {
-      const result = await confirmBooking({
-        token,
-        holdId: startNow ? null : holdId,
-        timezone,
-        startNow,
+      idempotencyKey.current ??= newIdempotencyKey()
+
+      const result = await callBookingApi<ConfirmResponse>(`/api/book/${token}/confirm`, {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey.current },
+        body: JSON.stringify({
+          hold_id: startNow ? null : holdId,
+          timezone,
+          start_now: startNow,
+        }),
       })
-      if (!result.ok) {
-        setError(result.message)
-        // The held slot is gone either way; make the candidate re-pick rather
-        // than leaving a dead selection highlighted.
-        setSelected(null)
-        setHoldId(null)
+
+      // A transport failure is the one case where the key must survive: the
+      // request may well have committed, and retrying with the same key is what
+      // turns "did that work?" into a replay rather than a second booking. The
+      // selection stays too, so the retry has a hold to confirm.
+      if (result === null) {
+        setError("We couldn't reach the server. Please try again.")
         return
       }
-      setConfirmed({ scheduledAt: result.scheduledAt, startNow: result.startNow })
+
+      if (!result.ok) {
+        setError(result.error ?? GENERIC_CANDIDATE_MESSAGE)
+        // The held slot is gone; make the candidate re-pick rather than leaving
+        // a dead selection highlighted. The next confirm is a different intent,
+        // so it needs a new key — reusing this one would replay the refusal.
+        idempotencyKey.current = null
+        setSelected(null)
+        setHoldId(null)
+        void refreshAvailability()
+        return
+      }
+
+      setConfirmed({ scheduledAt: result.scheduled_at, startNow: result.start_now })
     })
   }
 
@@ -152,14 +223,14 @@ export function BookingPage({ token, view }: { token: string; view: BookingView 
                 Start now
               </h2>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                {view.canStartNow
+                {canStartNowLive
                   ? "We'll call you in the next minute or so."
                   : "Not available right now — pick a time below instead."}
               </p>
             </div>
             <Button
               type="button"
-              disabled={!view.canStartNow || pending}
+              disabled={!canStartNowLive || pending}
               onClick={() => confirm(true)}
               className="shrink-0"
             >
@@ -298,6 +369,68 @@ function HoldCountdown({ expiresAt }: { expiresAt: string }) {
 
 function remaining(expiresAt: string): number {
   return Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000))
+}
+
+// ── The API ─────────────────────────────────────────────────────────────────
+
+type ApiFailure = { ok: false; error?: string }
+
+// Only the two fields this component re-renders from. The route returns more
+// (slot_minutes, hold_seconds, operating_timezone); those are fixed for the life
+// of a link and were already rendered from the server load, so re-reading them
+// on a poll would be churn.
+type AvailabilityResponse =
+  | { ok: true; slots: SlotOption[]; can_start_now: boolean }
+  | ApiFailure
+
+type HoldResponse =
+  | { ok: true; hold_id: string; starts_at: string; expires_at: string }
+  | ApiFailure
+
+type ConfirmResponse =
+  | { ok: true; scheduled_at: string; start_now: boolean; replayed: boolean }
+  | ApiFailure
+
+/**
+ * One fetch wrapper for all three endpoints.
+ *
+ * Returns `null` for a **transport** failure and a parsed body for anything the
+ * server answered, including 4xx. The distinction is the whole reason this
+ * exists: a refusal is a decision the candidate must be shown and must not
+ * retry blindly, whereas an unreachable server is a retry that should carry the
+ * same idempotency key.
+ *
+ * `cache: "no-store"` on the client mirrors what the routes send back — belt and
+ * braces against a browser or service worker that decides a GET is fair game.
+ */
+async function callBookingApi<T extends { ok: boolean }>(
+  url: string,
+  init: RequestInit
+): Promise<T | null> {
+  try {
+    const res = await fetch(url, {
+      ...init,
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init.headers ?? {}),
+      },
+    })
+    return (await res.json()) as T
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `crypto.randomUUID` where it exists, which is every secure context — and this
+ * page is only ever served over HTTPS, because the URL is a credential. The
+ * fallback covers older Safari on plain HTTP in local development, where the
+ * key's uniqueness matters less than the page loading at all.
+ */
+function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID()
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
 
 /**

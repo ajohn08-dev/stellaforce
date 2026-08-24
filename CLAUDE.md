@@ -516,8 +516,12 @@ migrating the full app layer to V3.2 is an ongoing pass.
   Actions yet. Full spec: **[COMPANY.md](COMPANY.md)**.
 - `/automations` — the global automation library. See **Automations** below.
 - `/book/[token]` — the **candidate's** interview booking page. Public,
-  unauthenticated, token-gated; sits outside the `(app)` group and is excluded
-  from the proxy matcher. See **Interview scheduling** below.
+  unauthenticated, token-gated; sits outside the `(app)` group. Its three
+  interactive endpoints live at `/api/book/[token]/{availability,hold,confirm}`.
+  **Both `book` and `api/book` are excluded from the proxy matcher** — `book`
+  alone only covers the page, and the API paths start with `api`, so they would
+  be answered with a redirect to `/login` instead of JSON. See **Interview
+  scheduling** below.
 - `/settings` — signed-in user's email/role
 - `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)
 - `/interview-room/[agentId]` — browser interview room: a briefing/device-check
@@ -716,14 +720,76 @@ must not overlap an interview, and capacity is N rather than 1 —
 capacity-N pool. Lock order is fixed everywhere (request `FOR UPDATE`, then the
 agent), so deadlock is structurally impossible.
 
-**The token is opaque, hashed and single-use.** 32 random bytes base64url in the
-URL; only `sha256(token)` is stored. **Not** the HMAC `encodeState` pattern used
-for calendar consent: that is not revocable, puts its claims in the URL in
-plaintext, and has no single-use semantics — all three unacceptable for a
-capability that causes a real phone call. Confirm sets `token_expires_at = now()`,
-which is what makes the link one-time without a separate column. Every failure
-renders **one identical message**: the difference between "expired" and "never
-existed" is precisely what confirms a token existed.
+**The token is opaque, hashed and single-use, and the app mints it.** 32 random
+bytes base64url in the URL; only `sha256(token)` is stored. The raw token exists
+in exactly two places — the URL in the candidate's email, and the
+`booking_url` field of the authenticated POST to
+`N8N_BOOKING_LINK_WEBHOOK_URL`. It is **never** written to the database, an
+`activity_event`, the `audit_log`, or a log line; `booking_link_sent` deliberately
+records the request id and expiry and not the URL, because that feed is read by
+every recruiter on the account and the token in it is a capability. **n8n emails
+the link and never generates or modifies a token** — it has no way to, since it
+never sees the hash and could not reverse one. Logs carry
+`bookingTokenFingerprint()` instead: the first 12 hex characters of the hash,
+enough to correlate a candidate's complaint to a set of log lines and useless as
+a credential.
+
+**Not** the HMAC `encodeState` pattern used for calendar consent: that is not
+revocable, puts its claims in the URL in plaintext, and has no single-use
+semantics — all three unacceptable for a capability that causes a real phone
+call. Confirm sets `token_expires_at = now()`, which is what makes the link
+one-time without a separate column. Every failure renders **one identical
+message**: the difference between "expired" and "never existed" is precisely what
+confirms a token existed.
+
+**The URL is built from `PUBLIC_APP_URL`**, not `SITE_URL`. They are usually the
+same string and are deliberately separate columns of config: `SITE_URL` builds
+the Google OAuth `redirect_uri` and must match a value registered in the Google
+Cloud console *exactly*, while `PUBLIC_APP_URL` is the origin a candidate's
+browser has to reach. Conflating them means changing one to fix the other and
+silently breaking either an OAuth callback or every booking link in flight. It
+falls back to `SITE_URL` when unset, and is **not** `NEXT_PUBLIC_` — nothing in
+the browser needs it.
+
+**Three public HTTP endpoints, one implementation.** `src/lib/server/booking-core.ts`
+holds every rule; `src/app/book/actions.ts` (Server Actions, for the server
+render) and `src/app/api/book/[token]/*` (routes, for everything the client does)
+are transports over it, so there is one answer to "may this token do this".
+The client uses the routes rather than the actions because a Server Action cannot
+carry `Cache-Control: no-store`, a `Retry-After`, or an `Idempotency-Key`.
+
+| Route | Does |
+|---|---|
+| `GET …/availability` | The live bookable grid. Occupancy is folded in server-side, so a slot the candidate can't have simply isn't listed — the response never says *why*, because "busy" is a fact about someone else's interview. Polled every 60s while deciding. |
+| `POST …/hold` | Takes (or moves) the link's single lease. Body carries a **start instant, not a slot id** — there are no slot ids, the grid is generated. `DELETE` releases, sent with `keepalive` on `pagehide`. |
+| `POST …/confirm` | The atomic commit. Honours `Idempotency-Key`. |
+
+Shared plumbing is `src/lib/server/booking-http.ts` — one place that decides what
+"public booking endpoint" means, so the fourth route added later can't forget the
+`no-store` or the rate limit. Every one of them hashes the token before lookup,
+re-resolves it rather than trusting any identifier from the client, sends
+`no-store` + `no-referrer`, and collapses every invalid-token condition onto one
+404 with a byte-identical body.
+
+**Idempotency on confirm is two layers, and the durable one is the database.**
+`confirm_interview_booking` takes `FOR UPDATE` on the request row and a replay
+finds `status = 'booked'`, so it returns the interview that already exists —
+across instances, deploys, and a link reopened next week. The `Idempotency-Key`
+header (`src/lib/server/idempotency.ts`) is an in-process optimisation on top:
+it collapses the double-click and the flaky-signal retry so they don't each take
+the per-agent advisory lock. Correctness does not depend on the caller sending
+it. A malformed key is **refused with a 400**, never silently ignored — that
+would let a caller believe it has replay protection it doesn't have.
+
+⚠️ **Rate limiting is in-process** (`src/lib/server/rate-limit.ts`), so on Vercel
+it is enforced per instance, not globally. Keyed on the token fingerprint **and**
+the IP, both of which must pass. It is still the first thing every public route
+does: the realistic attack is enumeration, which is high-volume from few sources,
+and it bounds the damage a retry loop in a candidate's browser can do to the
+advisory lock. The failure mode is safe — too little limiting under scale-out,
+never too much. The durable version belongs in Postgres or Upstash and would
+replace the module wholesale; the call sites take a key and a budget and would
+not change.
 
 **Slots are generated in the agent's operating timezone and rendered in the
 candidate's.** Generating per viewer would give two candidates in different zones
@@ -774,8 +840,15 @@ webhook produce identical rows and identical events.
 
 **Guards:** `npm run scheduling-check` (pure — slug parsing, grid generation,
 capacity, DST across a spring-forward boundary, backwards compatibility of
-`availability.ts`) and `npm run scheduling-e2e` (the whole loop against the real
-database, asserting no call is placed and every table is left empty).
+`availability.ts`), `npm run scheduling-e2e` (the whole loop against the real
+database, asserting no call is placed and every table is left empty), and
+`npm run booking-check` (the public endpoints, calling the **real route
+handlers** with hand-built `NextRequest`s). The last one uses tokens that were
+never issued, deliberately: the properties worth guarding live on the failure
+path, which no happy-path test reaches. It asserts a malformed token and a
+never-issued one are byte-identical on all three routes, that `no-store` and
+`no-referrer` are set, that the budget is enforced to the exact request, and
+that a rejected idempotent attempt is evicted so a retry can still succeed.
 
 ## Interview channels (phone vs. room)
 

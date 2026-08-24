@@ -16,6 +16,7 @@
     "diff-check": "tsx scripts/publish-diff-check.ts",
     "automation-check": "tsx scripts/automation-seed-check.ts",
     "scheduling-check": "tsx scripts/scheduling-check.ts",
+    "booking-check": "tsx --conditions=react-server --env-file=.env.local scripts/booking-endpoint-check.ts",
     "scheduling-e2e": "tsx --conditions=react-server --env-file=.env.local scripts/scheduling-e2e.ts"
   },
   "dependencies": {
