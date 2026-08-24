@@ -1,10 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { ArrowLeft, ArrowRight, Loader2, PauseCircle, RotateCcw, X } from "lucide-react"
+import { ArrowLeft, ArrowRight, Loader2, MoreHorizontal, PauseCircle, RotateCcw, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   holdCandidate,
   moveCandidate,
@@ -33,10 +39,12 @@ import type { ApplicationStatus } from "@/lib/supabase/types"
  * entry is a *trigger* — jumping past Pre-Screening silently skips the screening
  * call rather than failing.
  *
- * So: two directions and no list. Forward is the primary action. Backward exists
- * because a demo has to be re-runnable and correcting a misclick is real work,
- * but it is deliberately quieter — a correction, not a step. The adjacency rule
- * is re-checked in the Server Action, because a disabled control is a courtesy.
+ * So: two directions and no list. Forward is the primary button. Backward lives
+ * in the overflow menu — a demo has to be re-runnable and correcting a misclick
+ * is real work, but it is the only one of these four actions that *undoes*
+ * rather than decides, and it should not be reachable by reflex next to the
+ * button a recruiter presses all day. The adjacency rule is re-checked in the
+ * Server Action, because a disabled control is a courtesy.
  *
  * ── Hold and Reject are different kinds of thing ──
  *
@@ -122,59 +130,12 @@ export function MoveCandidateControl({
     )
   }
 
+  // Order is deliberate, and reads right to left by weight: the primary action
+  // sits where the eye lands last, the two quiet outcomes lead into it, and
+  // going backwards — the only one of the four that undoes rather than
+  // decides — is behind the overflow so it can't be hit by reflex.
   return (
     <div className="flex items-center gap-2">
-      {previous && (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="text-muted-foreground"
-          disabled={isPending}
-          onClick={() =>
-            run(
-              previous.id,
-              () => moveCandidate(applicationId, previous.id),
-              `Moved back to ${previous.name}.`
-            )
-          }
-        >
-          {isPending && pending === previous.id ? (
-            spinner
-          ) : (
-            <>
-              <ArrowLeft data-icon="inline-start" className="size-3.5" />
-              Move back to {previous.name}
-            </>
-          )}
-        </Button>
-      )}
-
-      {next && (
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={isPending}
-          onClick={() =>
-            // Deliberately vague about the booking link: whether one goes out
-            // depends on the stage's configuration and the automation gate, and
-            // promising it here would be a second source of truth for a decision
-            // made server-side.
-            run(next.id, () => moveCandidate(applicationId, next.id), `Moved to ${next.name}.`)
-          }
-        >
-          {isPending && pending === next.id ? (
-            spinner
-          ) : (
-            <>
-              Move to {next.name}
-              <ArrowRight data-icon="inline-end" className="size-3.5" />
-            </>
-          )}
-        </Button>
-      )}
-
       <Button
         type="button"
         size="sm"
@@ -210,6 +171,70 @@ export function MoveCandidateControl({
           </>
         )}
       </Button>
+
+      {next && (
+        <Button
+          type="button"
+          size="sm"
+          disabled={isPending}
+          onClick={() =>
+            // Deliberately vague about the booking link: whether one goes out
+            // depends on the stage's configuration and the automation gate, and
+            // promising it here would be a second source of truth for a decision
+            // made server-side.
+            run(next.id, () => moveCandidate(applicationId, next.id), `Moved to ${next.name}.`)
+          }
+        >
+          {isPending && pending === next.id ? (
+            spinner
+          ) : (
+            <>
+              Move to {next.name}
+              <ArrowRight data-icon="inline-end" className="size-3.5" />
+            </>
+          )}
+        </Button>
+      )}
+
+      {/* Only rendered when it would hold something. An overflow menu whose one
+          item is unavailable is worse than no menu: it promises an action the
+          candidate's position doesn't have. */}
+      {previous && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                disabled={isPending}
+                aria-label="More stage actions"
+              >
+                {isPending && pending === previous.id ? (
+                  spinner
+                ) : (
+                  <MoreHorizontal className="size-4" />
+                )}
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() =>
+                run(
+                  previous.id,
+                  () => moveCandidate(applicationId, previous.id),
+                  `Moved back to ${previous.name}.`
+                )
+              }
+            >
+              <ArrowLeft data-icon="inline-start" className="size-3.5" />
+              Move back to {previous.name}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
