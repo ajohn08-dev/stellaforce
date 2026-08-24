@@ -6,11 +6,7 @@ import { revalidatePath } from "next/cache"
 
 import { getCurrentProfile } from "@/lib/auth"
 import { serverEnv } from "@/lib/env"
-import {
-  buildInterviewPrompt,
-  formatQuestions,
-  getInterviewAgentConfig,
-} from "@/lib/interview-agent-config"
+import { interviewFieldsFor } from "@/lib/interview-agent-config"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -57,27 +53,6 @@ type CallDispatchPayload = {
    * block entirely when null — sending an unpermitted override fails the call. */
   prompt_override: string | null
   first_message_override: string | null
-}
-
-/** Interview content for a dispatch, with fallbacks for an agent that has no
- * fixture entry yet. */
-function interviewFieldsFor(agentId: string, agentName: string, candidateName: string) {
-  const config = getInterviewAgentConfig(agentId)
-  return {
-    interview_name: config?.interviewName ?? agentName,
-    agent_display_name: config?.agentDisplayName ?? agentName,
-    company_name: config?.companyName ?? "Stella Force",
-    questions: config ? formatQuestions(config.questions) : "",
-    question_count: config?.questions.length ?? 0,
-    prompt_override:
-      config?.allowPromptOverride ? buildInterviewPrompt(config, candidateName) : null,
-    // Null unless a config explicitly overrides it — the ElevenLabs agent's own
-    // first message is templated with the dynamic variables above and already
-    // differentiates per interview.
-    first_message_override: config?.allowPromptOverride
-      ? (config.firstMessage ?? null)
-      : null,
-  }
 }
 
 async function dispatchCall(payload: CallDispatchPayload): Promise<TriggerAgentCallResult> {

@@ -333,6 +333,74 @@ async function main() {
     .single()
   check(afterCancel!.status === "canceled", "cancelling the interview cancelled its queued call")
 
+  // ── 4b. Start now dials from the request, not from the tick ───────────────
+  // The risk this covers is a double dial: the inline claim and the cron's
+  // batch claim both target the same row, and nothing un-rings a phone.
+  section("4b. Start now")
+  await clearRequests()
+  const nowOutcome = await maybeCreateBookingRequest({
+    applicationId: app!.application_id,
+    subStageId,
+    candidateId: app!.candidate_id,
+    jobId: app!.job_id,
+    clientId: app!.client_id,
+    correlationId: `${PREFIX}-startnow`,
+  })
+  if (nowOutcome.kind !== "created") throw new Error("start-now fixture could not be created")
+  created.requestIds.push(nowOutcome.requestId)
+
+  const { data: startNowBooking } = await db
+    .rpc("confirm_interview_booking", {
+      p_request_id: nowOutcome.requestId,
+      p_candidate_timezone: "America/New_York",
+      p_start_now: true,
+    })
+    .maybeSingle()
+  check(!startNowBooking?.reason_code, "start now was allowed", startNowBooking?.reason_code ?? "")
+
+  // Everything below is guarded rather than asserted-and-thrown. An abort here
+  // skips the cleanup at the bottom, and what it would leave behind is a live
+  // `scheduled` interview holding the agent's only lane — which then fails the
+  // *next* run with a capacity error that looks nothing like the real cause.
+  const startNowInterviewId = startNowBooking?.interview_id ?? null
+  if (startNowInterviewId) {
+    created.interviewIds.push(startNowInterviewId)
+
+    const { dispatchStartNowCall } = await import("@/lib/server/agent-call-queue")
+    const inline = await dispatchStartNowCall(db, startNowInterviewId)
+    check(inline === "suppressed", "the inline dispatch ran and was suppressed", String(inline))
+
+    const { data: afterInline } = await db
+      .from("scheduled_agent_calls")
+      .select("id, status, suppressed_reason, attempts, locked_until")
+      .eq("interview_id", startNowInterviewId)
+      .maybeSingle()
+    check(
+      afterInline?.status === "suppressed" &&
+        afterInline.suppressed_reason === "outbound_disabled",
+      "NO CALL WAS PLACED — the kill switch suppressed it inline too",
+      `${afterInline?.status}/${afterInline?.suppressed_reason}`
+    )
+    check(afterInline?.attempts === 1, "exactly one attempt was counted", `${afterInline?.attempts}`)
+    check(afterInline?.locked_until === null, "the lease was released")
+
+    // The tick must find nothing: a terminal row is not claimable, which is what
+    // stops the cron re-dialling a call the candidate's own request placed.
+    const { data: reclaimed } = await db.rpc("claim_due_agent_calls", {
+      p_limit: 25,
+      p_lease_seconds: 60,
+    })
+    check(
+      !(reclaimed ?? []).some((c) => c.interview_id === startNowInterviewId),
+      "the tick cannot claim it a second time"
+    )
+
+    const second = await dispatchStartNowCall(db, startNowInterviewId)
+    check(second === null, "a replayed start-now claims nothing", String(second))
+
+    await db.rpc("cancel_interview", { p_interview_id: startNowInterviewId, p_reason: "e2e" })
+  }
+
   // ── 5. Gate proofs ────────────────────────────────────────────────────────
   section("5. The gate")
   await clearRequests()
