@@ -26,6 +26,56 @@ export type CommandActor = {
   systemSource?: string | null
 }
 
+/**
+ * Cancel whatever a stage had scheduled, because the candidate has left it.
+ *
+ * Both halves matter and for different reasons. The **request** must stop being
+ * live or the partial unique on (application, sub_stage) blocks the next entry,
+ * and the candidate keeps a working link to a stage they are no longer in. The
+ * **interview** must stop being scheduled or an agent lane stays occupied, a
+ * queued call still fires, and a recruiter sees an interview for a stage that
+ * isn't happening.
+ *
+ * Deliberately quiet: no `scheduling_failed`. A recruiter moved this candidate
+ * on purpose seconds ago, and `CANDIDATE_LEFT_STAGE` is classed benign so this
+ * never reaches the Actions list.
+ */
+async function releaseStageScheduling(
+  supabase: ActivityClient,
+  applicationId: string,
+  subStageId: string
+): Promise<void> {
+  await supabase
+    .from("interview_scheduling_requests")
+    .update({
+      status: "canceled",
+      failure_reason_code: "CANDIDATE_LEFT_STAGE",
+      // Burns the link itself rather than relying on status alone — the token
+      // resolver checks expiry, and a link that reads "no longer valid" the
+      // moment it is opened is the honest outcome.
+      token_expires_at: new Date().toISOString(),
+    })
+    .eq("application_id", applicationId)
+    .eq("sub_stage_id", subStageId)
+    .in("status", ["pending", "sent"])
+
+  // Via the RPC, not an UPDATE: cancelling an interview also has to cancel its
+  // queued call, and that logic already exists in one place.
+  const { data: live } = await supabase
+    .from("interviews")
+    .select("id")
+    .eq("application_id", applicationId)
+    .eq("sub_stage_id", subStageId)
+    .in("status", ["scheduled", "in_progress"])
+
+  for (const interview of live ?? []) {
+    await supabase.rpc("cancel_interview", {
+      p_interview_id: interview.id,
+      p_reason: "candidate_left_stage",
+    })
+  }
+}
+
 // ── Move an application to another sub-stage ────────────────────────────────
 
 export async function moveApplicationToStage(
@@ -75,9 +125,22 @@ export async function moveApplicationToStage(
     .eq("application_id", input.applicationId)
     .is("exited_at", null)
 
-  await supabase
+  // Leaving a stage releases whatever that stage had scheduled. A booking link
+  // outlives the stage it belongs to otherwise: `interview_scheduling_requests`
+  // has a partial unique on (application, sub_stage) while the request is live,
+  // so a candidate moved back and forward again would hit that constraint and
+  // silently get **no second link** — the whole automation would appear to have
+  // stopped working. Worse, the first link would still be valid, and they could
+  // book an interview for a stage they are no longer in.
+  if (app.current_stage_id) {
+    await releaseStageScheduling(supabase, input.applicationId, app.current_stage_id)
+  }
+
+  const { data: entry } = await supabase
     .from("application_stage_history")
     .insert({ application_id: input.applicationId, sub_stage_id: input.targetSubStageId })
+    .select("id")
+    .single()
 
   await supabase
     .from("applications")
@@ -93,7 +156,14 @@ export async function moveApplicationToStage(
     actor_profile_id: input.actor.profileId,
     system_source: input.actor.profileId ? null : (input.actor.systemSource ?? "n8n:pipeline"),
   }
-  const keyBase = input.idempotencyKey ?? `${input.applicationId}:${input.targetSubStageId}`
+  // The *entry*, not the destination. Keyed on (application, stage) these events
+  // deduplicate across a round trip: move A→B→A→B and the second arrival at B
+  // writes nothing, so the timeline shows one visit to a stage the candidate
+  // reached twice. The history row is the occurrence, so its id is the natural
+  // key. An explicit `idempotencyKey` still wins — that is a caller with an
+  // external event id saying "this delivery and the last one are the same
+  // event", which is a different claim entirely.
+  const keyBase = input.idempotencyKey ?? entry?.id ?? `${input.applicationId}:${input.targetSubStageId}`
 
   await logActivity(supabase, {
     ...base,

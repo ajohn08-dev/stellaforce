@@ -40,7 +40,10 @@ function NavLink({
       href={href}
       title={collapsed ? label : undefined}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+        // Fixed `h-8` rather than vertical padding: a padded row is 20px of
+        // text line-height expanded but a 16px icon collapsed, so every row
+        // would shrink 4px and the whole rail would creep upwards.
+        "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors",
         collapsed && "justify-center px-0",
         active
           ? "bg-accent text-accent-foreground font-medium"
@@ -65,8 +68,16 @@ function NavGroup({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      {!collapsed && (
-        <span className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+      {/* Collapsed trades the words for a rule, in a row of exactly the same
+          height: dropping the row would pull every icon below the group up by
+          its height plus the gap, and leaving it empty would lose the grouping
+          the label was carrying. */}
+      {collapsed ? (
+        <div className="flex h-7 items-center px-1" aria-hidden>
+          <span className="h-px w-full bg-border" />
+        </div>
+      ) : (
+        <span className="flex h-7 items-center px-2.5 text-xs font-medium text-muted-foreground">
           {section.label}
         </span>
       )}
@@ -101,14 +112,16 @@ export function AppSidebar({
         collapsed ? "w-16" : "w-[200px]"
       )}
     >
+      {/* `h-9` is the expanded height (a 24px logo in a `py-1.5` link). Fixed,
+          because collapsed leaves only the 32px toggle button behind. */}
       <div
         className={cn(
-          "flex items-center",
+          "flex h-9 items-center",
           collapsed ? "justify-center" : "justify-between"
         )}
       >
         {!collapsed && (
-          <Link href="/home" className="px-2.5 py-1.5">
+          <Link href="/home" className="flex items-center px-2.5">
             <Logo />
           </Link>
         )}

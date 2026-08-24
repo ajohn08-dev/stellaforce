@@ -1254,6 +1254,51 @@ export async function moveCandidate(
   if (!profile) return { ok: false, error: "Not signed in." }
   const supabase = await createClient()
 
+  // ── One step, forward or back ────────────────────────────────────────────
+  //
+  // Enforced here rather than in `moveApplicationToStage` on purpose. This is a
+  // rule about what a *recruiter* may do in this product: a pipeline whose
+  // stages can be skipped isn't a pipeline, and stage entry is a trigger, so
+  // jumping past Pre-Screening silently skips the screening call rather than
+  // failing. A system caller is different — an ATS sync reporting where a
+  // candidate actually is may legitimately land several stages along, and the
+  // domain command must stay able to represent that.
+  const { data: application } = await supabase
+    .from("applications")
+    .select("job_id, current_stage_id")
+    .eq("application_id", applicationId)
+    .maybeSingle()
+  if (!application) return { ok: false, error: "Application not found." }
+
+  const { data: subStages } = await supabase
+    .from("job_workflow_sub_stages")
+    .select("id, name, display_order, pipeline_stage:pipeline_stages(*)")
+    .eq("job_id", application.job_id)
+
+  const ordered = sortByPipelineStage(
+    (subStages ?? []) as {
+      id: string
+      name: string
+      display_order: number
+      pipeline_stage: PipelineStageRow | null
+    }[]
+  )
+  const from = ordered.findIndex((s) => s.id === application.current_stage_id)
+  const to = ordered.findIndex((s) => s.id === targetSubStageId)
+
+  if (to === -1) return { ok: false, error: "That stage is not part of this job's pipeline." }
+  // A candidate on no stage can only enter at the first one.
+  if (from === -1 && to !== 0) {
+    return { ok: false, error: `Start at ${ordered[0]?.name ?? "the first stage"}.` }
+  }
+  if (from !== -1 && Math.abs(to - from) !== 1) {
+    const step = ordered[to > from ? from + 1 : from - 1]
+    return {
+      ok: false,
+      error: `Candidates move one stage at a time — ${step?.name ?? "the next stage"} is the next step.`,
+    }
+  }
+
   const result = await moveApplicationToStage(supabase, {
     applicationId,
     targetSubStageId,
@@ -1357,4 +1402,124 @@ export async function withdrawCandidate(
   reason: string | null = null
 ): Promise<ActionResult> {
   return closeApplication(applicationId, "withdrawn", "candidate_withdraws", reason)
+}
+
+/**
+ * Pause an application where it stands.
+ *
+ * Deliberately **not** `closeApplication`. A hold is not an outcome: the
+ * candidate stays on their stage, so the open `application_stage_history` row is
+ * left open and the clock keeps running — which is the whole point, since "how
+ * long has this been parked" is the question a hold creates. Reject closes that
+ * row because the candidate really did leave the stage.
+ *
+ * Logged as `decision_made` rather than a dedicated event. There is no
+ * `application_on_hold` in `activity_event_type`, and adding an enum value for
+ * one UI button — before anything reads it — would be inventing vocabulary
+ * ahead of a reader.
+ */
+export async function holdCandidate(
+  applicationId: string,
+  reason: string | null = null
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+
+  const { data: app } = await supabase
+    .from("applications")
+    .select("application_id, candidate_id, job_id, client_id, current_stage_id, status")
+    .eq("application_id", applicationId)
+    .single()
+  if (!app) return { ok: false, error: "Application not found." }
+  if (app.status === "on_hold") return { ok: true }
+  if (app.status !== "active") return { ok: false, error: "This application is already closed." }
+
+  await supabase
+    .from("applications")
+    .update({ status: "on_hold", status_reason: reason })
+    .eq("application_id", applicationId)
+
+  await logActivity(supabase, {
+    client_id: app.client_id,
+    candidate_id: app.candidate_id,
+    job_id: app.job_id,
+    application_id: applicationId,
+    actor_profile_id: profile.id,
+    event_type: "decision_made",
+    sub_stage_id: app.current_stage_id,
+    severity: "action_needed",
+    payload: { decision: "on_hold", ...(reason ? { reason } : {}) },
+    idempotency_key: `decision_made:on_hold:${applicationId}`,
+  })
+
+  revalidatePath(`/jobs/${app.job_id}`)
+  return { ok: true }
+}
+
+/**
+ * Put a held or closed application back into play.
+ *
+ * The terminal events are **removed**, not compensated. They assert something
+ * that is no longer true, and their idempotency keys are scoped to the
+ * application — so leaving them behind would silently swallow the *next*
+ * rejection's events, and a recruiter who rejected, reopened and rejected again
+ * would see the second one vanish from the timeline. That matters here because
+ * reopening is how this loop gets re-run.
+ */
+export async function reopenApplication(applicationId: string): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+  const supabase = await createClient()
+
+  const { data: app } = await supabase
+    .from("applications")
+    .select("application_id, candidate_id, job_id, client_id, current_stage_id, status")
+    .eq("application_id", applicationId)
+    .single()
+  if (!app) return { ok: false, error: "Application not found." }
+  if (app.status === "active") return { ok: true }
+  if (app.status === "hired") return { ok: false, error: "A hired application can't be reopened." }
+
+  await supabase
+    .from("applications")
+    .update({ status: "active", status_reason: null })
+    .eq("application_id", applicationId)
+
+  // Reject closed the stage row; a hold never did. Reopening the one that
+  // matches where they actually stand covers both without branching on status.
+  if (app.current_stage_id) {
+    await supabase
+      .from("application_stage_history")
+      .update({ exited_at: null, outcome: null, decided_by: null })
+      .eq("application_id", applicationId)
+      .eq("sub_stage_id", app.current_stage_id)
+  }
+
+  await supabase
+    .from("activity_events")
+    .delete()
+    .eq("application_id", applicationId)
+    .in("idempotency_key", [
+      `candidate_rejected:${applicationId}`,
+      `candidate_withdraws:${applicationId}`,
+      `application_closed:${applicationId}`,
+      `decision_made:on_hold:${applicationId}`,
+    ])
+
+  await logActivity(supabase, {
+    client_id: app.client_id,
+    candidate_id: app.candidate_id,
+    job_id: app.job_id,
+    application_id: applicationId,
+    actor_profile_id: profile.id,
+    event_type: "application_reopened",
+    sub_stage_id: app.current_stage_id,
+    // Not idempotent on the application alone: reopening twice is two events,
+    // and the previous one has just been deleted anyway.
+    idempotency_key: `application_reopened:${applicationId}:${new Date().toISOString()}`,
+  })
+
+  revalidatePath(`/jobs/${app.job_id}`)
+  return { ok: true }
 }
