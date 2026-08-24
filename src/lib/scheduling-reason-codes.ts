@@ -22,6 +22,7 @@ export const SCHEDULING_REASON_CODES = [
   "CANDIDATE_BOOKING_TOKEN_INVALID",
   "CANDIDATE_BOOKING_TOKEN_EXPIRED",
   "CANDIDATE_ALREADY_BOOKED",
+  "CANDIDATE_LEFT_STAGE",
   // Capacity and slots
   "AGENT_CAPACITY_UNAVAILABLE",
   "NO_BOOKABLE_AGENT_SLOT",
@@ -120,6 +121,15 @@ export const SCHEDULING_REASONS: Record<SchedulingReasonCode, ReasonMeta> = {
     retryable: false,
     candidateMessage: "This booking link is no longer valid.",
   },
+  CANDIDATE_LEFT_STAGE: {
+    message: "The candidate moved out of this stage, so their booking link was cancelled.",
+    recommendedAction: null,
+    retryable: false,
+    // Same sentence as every other dead link. A candidate holding a link must
+    // never learn from it that they were moved back a stage — that is a
+    // conversation for a recruiter to have, not a page.
+    candidateMessage: "This booking link is no longer valid.",
+  },
 
   AGENT_CAPACITY_UNAVAILABLE: {
     message: "Every one of the interviewer agent's lines was busy at that moment.",
@@ -198,5 +208,12 @@ export function isPolicySkip(code: SchedulingReasonCode): boolean {
  * Refreshing a confirmation page is not an incident.
  */
 export function isBenign(code: SchedulingReasonCode): boolean {
-  return code === "CANDIDATE_ALREADY_BOOKED" || code === "CANDIDATE_BOOKING_TOKEN_INVALID"
+  return (
+    code === "CANDIDATE_ALREADY_BOOKED" ||
+    code === "CANDIDATE_BOOKING_TOKEN_INVALID" ||
+    // A recruiter moved them; the cancelled link is the consequence, not an
+    // incident. Raising it would put an alert in the Actions list for something
+    // that recruiter did on purpose seconds earlier.
+    code === "CANDIDATE_LEFT_STAGE"
+  )
 }
