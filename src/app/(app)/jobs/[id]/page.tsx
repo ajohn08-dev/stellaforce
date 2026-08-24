@@ -22,6 +22,7 @@ import {
   getWorkflowTemplates,
 } from "@/lib/data"
 import { getCurrentProfile } from "@/lib/auth"
+import { resolveAutomations } from "@/lib/automation-settings"
 import { buildJobEvalContext, toBoardStages, toMockJob } from "@/lib/job-adapter"
 import {
   buildPulseActions,
@@ -103,15 +104,30 @@ export default async function JobWorkspacePage({
   }
 
   // Published/open → the pipeline board fed by real applications.
-  const [pipeline, candidates, teamMembers, subStages, competencies, scorecardCategories] =
-    await Promise.all([
-      getJobPipeline(id),
-      getCandidates(),
-      getJobTeamMembers(id),
-      getJobWorkflowSubStages(id),
-      getJobCompetencies(id),
-      getJobScorecard(id),
-    ])
+  const [
+    pipeline,
+    candidates,
+    teamMembers,
+    subStages,
+    competencies,
+    scorecardCategories,
+    automations,
+  ] = await Promise.all([
+    getJobPipeline(id),
+    getCandidates(),
+    getJobTeamMembers(id),
+    getJobWorkflowSubStages(id),
+    getJobCompetencies(id),
+    getJobScorecard(id),
+    // The full cascade for this job: global library → its company → the Flow it
+    // runs → its own overrides. Resolved here so the ⚡ dialog can say where
+    // each rule's state was decided, not just what it is.
+    resolveAutomations({
+      companyId: job.client_id,
+      flowId: job.workflow_template_id,
+      jobId: id,
+    }),
+  ])
   const applicationIds = pipeline.applications.map((a) => a.application_id)
   const [evaluations, scorecards, activity, jobActivity, stageHistory] = await Promise.all([
     getApplicationEvaluations(applicationIds),
@@ -166,6 +182,7 @@ export default async function JobWorkspacePage({
           jobId={id}
           candidateOptions={candidateOptions}
           teamMembers={teamMembers}
+          automations={automations}
         />
       </div>
       <div className="min-h-0 flex-1">

@@ -105,6 +105,9 @@ dispatcher to build) · **⛔ Blocked** (needs a follow-on runtime table).
 | 10 | **Candidate enrichment** | webhook + callback | manual/scheduled enrich request | `POST /api/candidates/ingest` (or a dedicated route) | Updates `candidates.*` + child tables; inserts `candidate_data_updated`; re-embeds vector | 🟡 Ready (route reuse) |
 | 11 | **Voice-agent pre-screen** | outbox → voice agent + callback | candidate enters a `interviewer_type='ai'` **Pre-Screening** sub-stage | Voice-agent platform; STT | Produces an `interviews` row + transcript; logs `ai_interactions` (model/tokens/confidence); sets `applications.human_review_flag=true` (never auto-advances) | ⛔ needs `interviews`/`interview_transcripts` |
 | 12 | **Voice-agent "Who" interview** | outbox → voice agent + callback | candidate enters the `interviewer_type='ai'` **Who Interview** (video) sub-stage | Voice-agent platform; STT | Same as #11 (video) | ⛔ needs `interviews`/`interview_transcripts` |
+| 14 | **Booking link send** | webhook | App POSTs on stage entry → `maybeCreateBookingRequest` | `src/lib/server/booking-request.ts`; must call back `POST /api/scheduling/booking-link` **before sending** | Emails the candidate their `/book/<token>` link. The gate route writes `automation_skipped_by_policy` and cancels the request when policy says no | 🟡 Ready (app side live) |
+| 15 | **Agent call dispatch** | cron (`n8n:agent_call_cron`, every minute) → `POST /api/cron/agent-call-dispatch` | due rows in `scheduled_agent_calls` | `src/app/api/cron/agent-call-dispatch/route.ts` — claims *and* dispatches inline | Marks calls `sent`/`failed`/`suppressed`; inserts `agent_call_dispatched`; flips the interview to `in_progress` | 🟡 Ready (needs the Schedule node) |
+| 16 | **Scheduling sweep** | cron (`n8n:scheduling_sweep`, hourly) → `POST /api/cron/scheduling-sweep` | expired links, dead holds | `src/app/api/cron/scheduling-sweep/route.ts` | Expires unbooked requests with one `scheduling_failed` alert each; purges stale `interview_slot_holds` | 🟡 Ready |
 | 13 | **Calendar consent invite** | webhook (3 triggers) | `reason='added'` — team member added → `addJobTeamMember`/`publishJob`; `reason='resend'` — recruiter clicks **Resend invite** in the job workspace Team dialog → `resendCalendarConnectInvite`; `reason='reconnect'` — `/api/calendar/token` refresh failure | `sendCalendarConnectInvite` (`src/lib/server/calendar-invite.ts`), `resendCalendarConnectInvite` (`src/app/(app)/jobs/actions.ts`), `/api/calendar/oauth/callback`, `/api/calendar/token` | Emails the "connect your Google Calendar" invite (direct webhook, like #1 — no-op if that email already has an active connection); Google's own redirect back to `/api/calendar/oauth/callback` writes `google_calendar_connections` + `calendar_connected`; `/api/calendar/token` refresh failures write `calendar_connection_revoked` + re-fire this same invite. Resends write **nothing** — no `activity_events` row, no per-send column; the n8n execution log is the record | 🟡 Live-ish (app side live; webhook responding, but the Webhook node has no Header Auth and there's no Respond node — see spec below) |
 
 ### Implemented: Stage SLA breached (#7) — the reference pattern
@@ -253,15 +256,70 @@ job/application runtime.
 
 ---
 
+## Agent-interview self-scheduling (workflows 14–16)
+
+The first automation that actually runs. The loop:
+
+```
+candidate reaches a self-scheduling agent stage   (moveCandidate, or #17 below)
+  → the app checks the gate and creates a scheduling request + a one-time token
+  → POST to n8n (workflow 14) with { scheduling_request_id, booking_url, … }
+  → n8n calls POST /api/scheduling/booking-link  ← THE GATE, every time
+       allowed:false → exit successfully. Do not email. The route has already
+                       logged automation_skipped_by_policy and cancelled the row.
+       allowed:true  → email the candidate their /book/<token> link
+  → candidate books, or chooses "Start now"      (public route, no login)
+  → a row lands in scheduled_agent_calls
+  → workflow 15 ticks every minute and places the call
+  → the voice workflow finishes and calls
+       POST /api/interviews/<id>/complete        → emits interview_completed
+```
+
+**Policy lives in Stellaforce and n8n asks every time.** Do not reimplement the
+`global → company → workflow → job` cascade in a workflow node: two answers to
+"is this on for this job?" is worse than none, because a recruiter pausing it in
+the ⚡ dialog would not stop the emails.
+
+**Every one of these routes is bearer-authed with `N8N_WEBHOOK_SECRET`** via
+`isN8nAuthorized` (`src/lib/server/n8n-auth.ts`).
+
+⚠️ **None of them stamps `activity_events.dispatched_at`, and none of them may.**
+That column is the shared outbox marker for workflows 2–6 and 8–12; claiming it
+here would silently starve every one of them. Workflow 15 dedupes on
+`scheduled_agent_calls` state instead.
+
+⚠️ **`SCHEDULING_OUTBOUND_ENABLED` defaults to `false`.** With it off the whole
+loop runs and the call is recorded `suppressed` rather than placed. Turn it on
+deliberately, and note `SCHEDULING_ALLOW_FIXTURE_CALLS` guards the QA fixture
+candidates separately — all fourteen share one real phone number.
+
+### Also new: lifecycle entry points (#17)
+
+| Route | Purpose |
+|---|---|
+| `POST /api/applications/<id>/move-stage` | Move a candidate between sub-stages |
+| `POST /api/interviews/<id>/complete` | Mark an interview happened (`completed` \| `no_show`) |
+
+Both are **thin wrappers** over the domain commands in
+`src/lib/server/pipeline-commands.ts` — the same ones the recruiter UI calls.
+n8n must never update `applications`, `application_stage_history` or `interviews`
+directly: two writers means two sets of events for one transition, and the
+booking automation hangs off those events.
+
+---
+
 ## Dependencies & follow-on (to unblock the ⛔ workflows)
 
 1. **Outbox dispatcher** — a Supabase Database Webhook on `activity_events`
    INSERT (or an n8n polling cron over `dispatched_at IS NULL`) that routes to
    the right workflow and stamps `dispatched_at`. Nothing event-driven fires
    until this exists.
-2. **Runtime tables** (planned in the workflow-templates plan's follow-on):
-   `interviews`, `interview_transcripts`, `offers`, `application_notes` — unblock
-   workflows 2–6, 8–9, 11–12.
+2. **Runtime tables.** `interviews` now **exists** (re-created for agent-interview
+   scheduling — see CLAUDE.md), along with `interview_scheduling_requests`,
+   `interview_slot_holds` and `scheduled_agent_calls`. Still missing:
+   `interview_transcripts`, `offers`, `application_notes` — which still block
+   workflows 5, 8–9, 11–12. Workflows 2–4 and 6 are now unblocked on the table
+   and blocked only on the outbox dispatcher.
 3. **Callback routes** to build: `/api/interviews/transcript` (STT),
    `/api/calendar/sync` (calendar webhooks), enrichment result (reuse
    `/api/candidates/ingest` or add `/api/candidates/enrich`).

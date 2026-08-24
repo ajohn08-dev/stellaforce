@@ -5,7 +5,8 @@ import { WorkflowDetailHeader } from "@/components/workflows/workflow-detail-hea
 import { WorkflowDetailTabs } from "@/components/workflows/workflow-detail-tabs"
 import { WorkflowEditProvider } from "@/components/workflows/workflow-edit-provider"
 import { MOCK_WORKFLOWS, type MockWorkflow } from "@/lib/mock-workflows"
-import { getWorkflowTemplate } from "@/lib/data"
+import { resolveAutomations } from "@/lib/automation-settings"
+import { getActiveAgentOptions, getWorkflowTemplate } from "@/lib/data"
 
 // Layout/content beyond the Basic tab is a placeholder — Stages, Scheduling
 // Policy, AI & Automation, and Communication are stubs to be specified
@@ -50,6 +51,18 @@ export default async function WorkflowDetailPage({
     : MOCK_WORKFLOWS.find((w) => w.workflow_id === id)
   if (!workflow) notFound()
 
+  // Resolved at this Flow's scope: global library → the client that owns the
+  // template (null for a Stellaforce-global one) → this template. Only real
+  // templates have a scope to resolve against; a legacy `wf-*` fixture id has
+  // no row for a binding to point at.
+  const automations = template
+    ? await resolveAutomations({ companyId: template.client_id, flowId: template.id })
+    : []
+
+  // Active agents only: assigning a stage to a switched-off agent produces a
+  // pipeline that silently refuses to schedule.
+  const agents = await getActiveAgentOptions()
+
   return (
     <div
       className="flex flex-col overflow-hidden bg-white"
@@ -61,6 +74,8 @@ export default async function WorkflowDetailPage({
         <WorkflowDetailTabs
           workflow={workflow}
           initialSubStages={template ? template.sub_stages : null}
+          automations={automations}
+          agents={agents}
         />
       </WorkflowEditProvider>
     </div>

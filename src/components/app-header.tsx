@@ -28,7 +28,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { logout } from "@/app/login/actions"
 import { switchToUser, returnToMyAccount } from "@/app/(app)/switch-user-actions"
-import { NAV_ITEMS, AGENTS_NAV_ITEMS, BOTTOM_NAV_ITEMS } from "@/lib/nav"
+import { allNavItemsFor, type NavItem } from "@/lib/nav"
+import type { CompanyAccess } from "@/lib/company-access"
 import { useBreadcrumbItems } from "@/lib/breadcrumb-context"
 import { useHeaderActionsContent } from "@/lib/header-actions-context"
 import type { CurrentProfile } from "@/lib/auth"
@@ -56,8 +57,8 @@ function groupSwitchableUsers(users: SwitchableUser[], excludeId: string) {
   return { stellaforce, clientGroups: Array.from(byClient.entries()) }
 }
 
-function currentTitle(pathname: string): string {
-  const item = [...NAV_ITEMS, ...AGENTS_NAV_ITEMS, ...BOTTOM_NAV_ITEMS].find(
+function currentTitle(pathname: string, navItems: NavItem[]): string {
+  const item = navItems.find(
     (i) => pathname === i.href || pathname.startsWith(i.href + "/")
   )
   return item?.label ?? ""
@@ -79,12 +80,16 @@ export function AppHeader({
   user,
   switchableUsers = [],
   isImpersonating = false,
+  companyAccess = { scope: "all" },
 }: {
   user: CurrentProfile | null
   switchableUsers?: SwitchableUser[]
   isImpersonating?: boolean
+  /** Must match the sidebar's, or the page title won't match the nav entry. */
+  companyAccess?: CompanyAccess
 }) {
   const pathname = usePathname()
+  const navItems = allNavItemsFor(companyAccess)
   const breadcrumbItems = useBreadcrumbItems()
   const headerActions = useHeaderActionsContent()
 
@@ -120,7 +125,7 @@ export function AppHeader({
           </BreadcrumbList>
         </Breadcrumb>
       ) : (
-        <span className="text-sm font-medium">{currentTitle(pathname)}</span>
+        <span className="text-sm font-medium">{currentTitle(pathname, navItems)}</span>
       )}
 
       {headerActions ? (

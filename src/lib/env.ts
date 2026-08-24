@@ -128,6 +128,62 @@ export const serverEnv = {
   get siteUrl() {
     return required("SITE_URL", process.env.SITE_URL)
   },
+
+  /**
+   * The public origin candidate-facing links are built from, e.g.
+   * `https://app.stellaforce.ai`.
+   *
+   * Separate from `siteUrl` on purpose, even though they are usually the same
+   * string. `siteUrl` is the *app's* origin — it builds the Google OAuth
+   * `redirect_uri`, which has to match a value registered in the Google Cloud
+   * console exactly. This one is the origin **a candidate's browser must be able
+   * to reach**, and the two diverge the moment the app sits behind a vanity
+   * domain, a preview deployment, or a separate marketing host. Conflating them
+   * means changing one to fix the other and silently breaking an OAuth callback
+   * or mailing every candidate a dead link.
+   *
+   * Deliberately **not** `NEXT_PUBLIC_`: nothing in the browser needs it. The
+   * booking URL is composed server-side and travels to n8n, never to a client
+   * bundle. Falls back to `SITE_URL` so existing deployments keep working.
+   */
+  get publicAppUrl() {
+    const raw = process.env.PUBLIC_APP_URL ?? process.env.SITE_URL
+    return required("PUBLIC_APP_URL", raw).replace(/\/+$/, "")
+  },
+
+  /** n8n workflow that emails a candidate their `/book/<token>` link. */
+  get n8nBookingLinkWebhookUrl() {
+    return (
+      process.env.N8N_BOOKING_LINK_WEBHOOK_URL ??
+      "https://stellaforce.app.n8n.cloud/webhook/booking-link-send"
+    )
+  },
+
+  /**
+   * ⚠️ **The outbound kill switch, and it defaults to OFF.**
+   *
+   * A cron that dispatches agent calls on a schedule is categorically more
+   * dangerous than the manual test-call button it reuses: nobody has to click.
+   * All fourteen QA fixture candidates share one real phone number and one real
+   * inbox (see CLAUDE.md), so an accidental run reaches a person.
+   *
+   * With this off, the whole loop — link → book → interview → queued call —
+   * still runs end to end and the call is marked `suppressed` instead of
+   * placed. That is the correct default for every environment except the one
+   * where someone has decided to make a real call.
+   */
+  get schedulingOutboundEnabled() {
+    return process.env.SCHEDULING_OUTBOUND_ENABLED === "true"
+  },
+
+  /**
+   * Second guard, independent of the first: even with outbound enabled, refuse
+   * to dial a candidate whose `source = 'qa_test_fixture'` unless this is also
+   * set. `source` is the documented deletion key for those rows.
+   */
+  get schedulingAllowFixtureCalls() {
+    return process.env.SCHEDULING_ALLOW_FIXTURE_CALLS === "true"
+  },
 }
 
 /** True when the public Supabase config is present (used to guard demo UI). */

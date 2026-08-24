@@ -1,38 +1,12 @@
-import { SetSidebarCollapsed } from "@/components/set-sidebar-collapsed"
-import { getCurrentProfile } from "@/lib/auth"
+import { redirect } from "next/navigation"
 
-export default async function SettingsPage() {
-  const profile = await getCurrentProfile()
-
-  return (
-    <div className="space-y-6 p-4">
-      <SetSidebarCollapsed />
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Your account details.
-        </p>
-      </div>
-
-      {profile && (
-        <div className="max-w-md rounded-lg border border-border p-5">
-          <dl className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Email</dt>
-              <dd className="font-medium">{profile.email}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Role</dt>
-              <dd className="font-medium capitalize">{profile.role}</dd>
-            </div>
-          </dl>
-        </div>
-      )}
-
-      <p className="text-sm text-muted-foreground">
-        Role management is coming soon — for now, roles are assigned manually
-        in Supabase.
-      </p>
-    </div>
-  )
+/**
+ * Settings is a nav *section* now, not a page — its two entries are Team Access
+ * and Platform settings. This keeps old `/settings` links (and anything still
+ * pointing here) working by landing on the first real page, and keeps the
+ * sidebar's active-state check honest: with a page at `/settings` and another
+ * at `/settings/team-access`, the prefix match would light up both.
+ */
+export default function SettingsIndexPage() {
+  redirect("/settings/platform")
 }

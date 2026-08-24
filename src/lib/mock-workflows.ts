@@ -4,6 +4,9 @@
  * Client names match MOCK_JOBS (src/lib/mock-jobs.ts); `client_name: null`
  * marks a generic template reusable across any client.
  */
+import type { StoredCommunicationPolicy } from "@/lib/communication-policy"
+import type { StoredSchedulingPolicy } from "@/lib/scheduling-policy"
+
 export type WorkflowStatus = "draft" | "published"
 
 /** Fixed Tier-1 stages, mirrors the pipeline_stage enum (source|screen|interview|offer|close). */
@@ -58,6 +61,15 @@ export type MockWorkflow = {
   created_at: string
   updated_at: string
   stages: MockWorkflowStage[]
+  /**
+   * Only what this workflow has changed away from DEFAULT_SCHEDULING_POLICY.
+   * Nothing writes it yet — every workflow, new or existing, therefore opens
+   * the Scheduling Policy tab on the full set of recommended defaults
+   * (src/lib/scheduling-policy.ts).
+   */
+  scheduling_policy?: StoredSchedulingPolicy
+  /** Same deal for communication — see DEFAULT_COMMUNICATION_POLICY (src/lib/communication-policy.ts). */
+  communication_policy?: StoredCommunicationPolicy
 }
 
 export const MOCK_WORKFLOWS: MockWorkflow[] = [

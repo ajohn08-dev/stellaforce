@@ -3,19 +3,26 @@
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs"
 import { WorkflowAiAutomationTab } from "@/components/workflows/workflow-ai-automation-tab"
 import { WorkflowBasicTab } from "@/components/workflows/workflow-basic-tab"
+import { WorkflowCommunicationTab } from "@/components/workflows/workflow-communication-tab"
 import { WorkflowSchedulingPolicyTab } from "@/components/workflows/workflow-scheduling-policy-tab"
 import { WorkflowStagesTab } from "@/components/workflows/workflow-stages-tab"
-import { WorkflowStubTab } from "@/components/workflows/workflow-stub-tab"
 import type { MockWorkflow } from "@/lib/mock-workflows"
+import type { ResolvedAutomation } from "@/lib/automation-resolve"
 import type { WorkflowTemplateSubStageWithStage } from "@/lib/data"
 
 export function WorkflowDetailTabs({
   workflow,
   initialSubStages,
+  automations,
+  agents,
 }: {
   workflow: MockWorkflow
   /** Real DB sub-stage rows for the Stages tab to save against — null for the MOCK_WORKFLOWS fallback, which has nothing real to persist to. */
   initialSubStages: WorkflowTemplateSubStageWithStage[] | null
+  /** Resolved at this Flow's scope, so each rule can say where its state was set. */
+  automations: ResolvedAutomation[]
+  /** Active screening agents an AI stage can be assigned to. */
+  agents: { id: string; name: string }[]
 }) {
   return (
     <Tabs defaultValue="basic" className="min-h-0 flex-1 gap-0">
@@ -40,28 +47,32 @@ export function WorkflowDetailTabs({
         <WorkflowBasicTab workflow={workflow} />
       </TabsPanel>
       <TabsPanel value="stages" keepMounted className="min-h-0 flex-1 overflow-hidden">
-        <WorkflowStagesTab workflow={workflow} initialSubStages={initialSubStages} />
+        <WorkflowStagesTab
+          workflow={workflow}
+          initialSubStages={initialSubStages}
+          agents={agents}
+        />
       </TabsPanel>
       <TabsPanel
         value="scheduling-policy"
         keepMounted
-        className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-4"
+        className="min-h-0 flex-1 overflow-hidden px-6 pt-6 pb-4"
       >
-        <WorkflowSchedulingPolicyTab />
+        <WorkflowSchedulingPolicyTab policy={workflow.scheduling_policy} />
       </TabsPanel>
       <TabsPanel
         value="ai-automation"
         keepMounted
         className="min-h-0 flex-1 overflow-hidden px-6 pt-6 pb-4"
       >
-        <WorkflowAiAutomationTab />
+        <WorkflowAiAutomationTab automations={automations} />
       </TabsPanel>
       <TabsPanel
         value="communication"
         keepMounted
-        className="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-4"
+        className="min-h-0 flex-1 overflow-hidden px-6 pt-6 pb-4"
       >
-        <WorkflowStubTab label="Communication" />
+        <WorkflowCommunicationTab policy={workflow.communication_policy} />
       </TabsPanel>
     </Tabs>
   )

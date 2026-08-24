@@ -12,6 +12,18 @@ of n8n workflows (triggers, dependent app functions, runtime-DB consequences).
 content, and example copy for the recruiter mission-control, client-admin
 oversight-console, internal-admin operations-command-center, and
 client-recruiter delivery-workbench layouts.
+[COMPANY.md](COMPANY.md) — the `/companies` workspace: information architecture,
+screen-by-screen spec, component inventory, target data model, agent-context
+assembly rules, and UX copy for the company knowledge base.
+[DB_COMPANY_KNOWLEDGE.md](DB_COMPANY_KNOWLEDGE.md) — the target schema for that
+knowledge base, audited against what the app already does: the contract, the
+tables, the three queries that carry the cascade, a scenario-by-scenario run, and
+five places the design is **not** clean. **No migrations exist for any of it**, but the UI has been
+adjusted to match: draft keys are built and parsed by
+`src/lib/company-draft-keys.ts` so a staging table can dispatch them
+(`npm run draft-key-check`), ask counts are per role, and catalog variants are
+read-only because that row is global. One decision remains — `clients` versus a
+new `companies` table.
 
 ## Stack
 - **Next.js (App Router) + TypeScript**, `src/` dir, `@/*` alias
@@ -53,7 +65,7 @@ client-recruiter delivery-workbench layouts.
 
 Postgres + pgvector on Supabase. UUID PKs (`gen_random_uuid()`), `created_at`
 everywhere, `updated_at` (trigger-maintained) where rows mutate, snake_case,
-Postgres enums for every controlled vocabulary. **47 tables.**
+Postgres enums for every controlled vocabulary. **56 tables.**
 
 **Shape.** A two-tier pipeline (fixed Tier-1 `pipeline_stages` → variable
 per-job Tier-2 `job_workflow_sub_stages`) and a four-layer evaluation model —
@@ -68,9 +80,10 @@ domain; `applications` is the **sole** candidate↔job link
 `workflow_template_sub_stages` (Stellaforce-global or per-client) are
 **snapshotted** into a job's `job_workflow_sub_stages` at publish, freezing the
 job's pipeline so later template edits don't touch live jobs. Cross-cutting
-settings (`workflow_settings`, `sla_policies`, `automation_rules`,
-`communication_templates`) inherit via a **global → client → workflow → job**
-cascade (resolver: `src/lib/workflow-settings.ts`). `activity_events` is the
+settings (`workflow_settings`, `sla_policies`, `communication_templates`)
+inherit via a **global → client → workflow → job** cascade (resolver:
+`src/lib/workflow-settings.ts`). **Automations use the same cascade but their
+own three tables and their own resolver** — see **Automations** below. `activity_events` is the
 unified append-only log + transactional outbox (realizes the V3 doc's
 `application_events` with wider scope), with `audit_log` + `ai_interactions` for
 governance / AI-activity. These template/settings/activity/AI/audit tables use
@@ -170,7 +183,345 @@ migrating the full app layer to V3.2 is an ongoing pass.
   (`src/lib/job-pulse.ts`, all computed server-side) — followed by one tab per
   sub-stage of the job's snapshotted pipeline, each listing the applications
   parked there. A draft job renders the 5-step setup wizard instead.
-- `/clients` — list
+- `/companies` — the company knowledge base (formerly `/clients`, which now
+  redirects; the nav entry stays **bottom-pinned** with Integrations/Workflows,
+  since a company profile is edited occasionally, not daily). A list page —
+  **table by default**, `?view=grid` for cards — plus a per-company workspace at
+  `/companies/[id]`. Company knowledge is reusable across every job for that
+  company and is the grounding context candidate-facing screening agents are
+  compiled from.
+
+  The workspace sits in **one white card** (matching `/candidates/[id]`) and
+  navigates by a **left rail of four collapsible groups**, not tabs (`?section=`
+  drives it, so every section is deep-linkable). Only the group you're in is open
+  on load: **Unanswered questions** (an inbox, above the groups) → *About the
+  company* (Profile · What they do · Culture & working style · Why
+  join) → *Pay, benefits & policies* (Locations & work model · Benefits · Work
+  authorization · Compensation approach) → *Teams & jobs* (Departments & teams ·
+  Jobs) → *Internal notes* (Recruiter brief · Activity log), the last group
+  omitted entirely for profiles without the capability.
+  Section order and labels live in
+  `src/components/companies/workspace/company-sections.ts`.
+
+  **There is no FAQ library.** Candidate questions live inside the section that
+  answers them, routed by `faqSection()` — sponsorship questions under Work
+  authorization, size questions under Profile — because editing a fact and
+  editing the answer about that fact is one job. Only the unanswered queue is its
+  own destination.
+
+  **The knowledge base serves two audiences, not one.** `agentCanUse(item,
+  audience)` takes `'candidate' | 'internal'`: `cleared_for_candidates` passes
+  both, `recruiters_only` passes internal only, `restricted` passes neither. The
+  ladder always meant that; reading it as a boolean is what made agents working
+  *alongside* recruiters invisible in this model. The `agentUse` dial
+  (proactive / on_request / reference_only / escalate) is candidate-only by
+  construction, so an `escalate` item reaches an internal agent in full while a
+  candidate agent gets only the topic and the handoff. `compileAgentContext(company,
+  job, audience)` compiles per audience through that one gate — no second code
+  path.
+
+  **"What the agent knows" is a real surface** (`shared/agent-knowledge-panel.tsx`),
+  on the job drilldown, with a Candidate / Internal toggle: says proactively ·
+  answers if asked · policies · hands back to you · never says · withheld. Flip
+  the toggle and the withheld items move up into the list, which explains the
+  clearance ladder better than any badge. It replaced a collapsed disclosure that
+  was company-scoped, candidate-only, and reachable solely inside the Publish
+  dialog — so *"what will the agent say on this job?"* had no destination.
+
+  **Some answers are derived, never stored** (`derivedAnswers` / `withDerived`).
+  A job's reporting line, travel, location, typical week, role purpose, and
+  **pipeline stages** are already typed on the job and are word-for-word the
+  answers to six catalog questions. They synthesise at job scope marked
+  `derivedFrom`, and any answer a recruiter actually writes for that job beats
+  them. This is what stops the interview process being authored twice: the
+  company's prose and the stages the pipeline will really run could disagree, and
+  the candidate — not the recruiter — is who finds out.
+
+  **Publish says what agents still can't answer** per active job
+  (`jobAnswerGaps`), sensitive topics first. A warning, never a gate: a screen
+  with gaps is normal and escalation is a designed outcome, but silence was
+  worse than either.
+
+  **⚠️ The compiled bundle still doesn't reach a live agent.**
+  `interviewConfigFromContext()` (`src/lib/interview-agent-config.ts`) is the
+  seam — it turns a candidate bundle into the agent's company name, permitted
+  answers, handoff topics, prohibitions, and fallback — but nothing calls it yet,
+  because it needs a `Company` for the job being screened and company profiles are
+  still mock with no key shared with `job_orders`. Real screening calls read the
+  hand-written fixture in that file, where `companyName` defaults to the literal
+  "Stellaforce". Until that join exists, **none of this affects what a candidate
+  hears.**
+
+  **The nav passes the same test.** *"Why they're hiring"* was two questions in
+  one label — a company growth story (real, company-level) and *"why is **this**
+  req open?"* (backfill vs new territory, no honest company-wide answer). The
+  question moved to the role, the section became **Why join** — the pitch: EVP,
+  why they're growing, what makes them distinct, why now. Two leaks got fixed on
+  the way: `evp` sat in *Culture & working style* while `why_join_now` sat in the
+  other section, though both are pitch; and `role_family_context` moved to Teams,
+  where `Team.commonRoleFamilies` already lived. `market_positioning` joined
+  *What they do*, pairing with the competition question. `Locations` keeps
+  remote and travel — a company default is genuinely true there and the job
+  override handles the rest, which is the cascade doing its job rather than the
+  nav needing to.
+
+  **One rule places everything: a question lives where its answer can be true.**
+  `Question.answerableAt` is `'company'` or `'job'`. Company-answerable questions
+  render in the topical section that answers them (`faqSection`); **job-only
+  questions never appear in a company section at all** — they live on the role,
+  beside the pipeline and overrides that decide them (`questionsForJob`). There
+  is no Interview process section: the process is a per-job snapshot, so a
+  company page about it could only host a sentence that's wrong for every role
+  that doesn't match. Its pieces went where each was true — the pipelines to the
+  job, the never-promise-a-date rule into the catalog as locked prohibitions on
+  both process questions, the client-reliability note to the Recruiter brief, and
+  the readiness check from a company-level "is there an interview answer" to a
+  per-job `role_process` ("does this role have stages").
+
+  **Fallbacks are first-class, and there are four of them**
+  (`src/lib/fallbacks.ts`, rail section *When the agent can't answer*). One
+  sentence used to cover every case — *"I don't have a confirmed answer"* — which
+  is a lie when we know the band and won't quote it, and cold when the candidate
+  isn't asking a question at all. The four are keyed on **why** the agent can't
+  answer: `unknown` (nobody confirmed it — don't guess, promise a follow-up),
+  `withheld` (we know, it isn't the agent's to share — decline warmly, hand to a
+  person), `out_of_scope` (not discussed at all — decline and offer what we *can*
+  help with), `reassure` (not a question, a worry — acknowledge and give the next
+  step). They cascade `global → company` and **no further**: a company may reword
+  them, a team or role may not, because an agent that declines differently on two
+  roles at the same company reads as two different companies. Deliberately **not
+  per section or per question** — that's a hundred sentences nobody maintains and
+  an agent whose voice changes with the subject. `withheld` is the counterpart to
+  the prohibitions: "never confirm a figure" without a sentence to say instead
+  leaves the agent improvising at exactly the moment it must not, so
+  `interviewConfigFromContext` emits the prohibitions and the fallbacks together.
+
+  **A candidate only ever hears about the teams their own role sits under.**
+  `compileAgentContext` walks `teamPath(job.teamId)`, so a sibling team the
+  candidate isn't applying to never enters the bundle — for either audience. The
+  compile always did this; what was missing was the UI saying it, so "Cleared for
+  candidates" on a team read as *every* candidate when it has only ever meant
+  candidates on the roles beneath it. Team cards now carry that reach
+  (`jobsUnderTeam`) as the audience, not a statistic: *"Cleared for candidates on
+  1 role"*, and a team with no role under it says *"— but no role sits under
+  this, so no candidate hears it"* in amber. The dry run plants a sentinel
+  sibling team and fails if its content reaches the bundle.
+
+  **`npm run knowledge-dryrun`** walks a job from wizard fields to a live
+  instance and back out through edits (`scripts/company-knowledge-dryrun.ts`),
+  calling the same functions the UI renders from. It's how the model gets
+  checked without a browser; it caught three real bugs on its first run —
+  derived answers being pasted field fragments rather than sentences, a
+  role-specific custom question leaking onto every role, and the Jobs list
+  saying "nothing missing" for a job whose publish dialog listed two unanswered
+  sensitive topics.
+
+  **A new req arrives with its knowledge space already populated.** The catalog
+  is projected onto the company and `withDerived` fills in what the job's own
+  fields answer, so there is nothing to seed and nothing to assign — the gaps a
+  new job shows are real gaps, not setup. **Only active roles (open/draft) are
+  ever listed**, in the Jobs section, the scope menus, the inbox, and the
+  publish warnings: nothing is screening for a closed req, so its gaps aren't
+  work.
+
+  **The inbox counts the way the work divides** (`unansweredItems`): a
+  company-answerable question is one row — answer it once, every role is covered
+  — while a job-only question is **one row per active role**, labelled with the
+  role. Answering "how long will this take?" for the Central AE says nothing
+  about the Data Engineer, and a single row claiming otherwise is how two of
+  three roles stay uncovered.
+
+  **Questions are global; answers are scoped.** The catalog
+  (`src/lib/question-catalog.ts`) is the one thing shared across *every*
+  customer — intent, phrasings, category, `sensitive` risk class, default agent
+  posture, and standing prohibitions. Companies own only answers. That split is
+  what makes this scale past one customer: a new company inherits the whole
+  catalog with no answers, so its Unanswered inbox is the intake checklist on
+  day one; a `sensitive` question arrives escalate-by-default carrying its
+  prohibitions, so company #40 is safe because the catalog is; a question first
+  asked at one company is promoted once and every other company sees it; and
+  "sponsorship unanswered at 7 of 12 companies" is one query. **Answers are
+  never shared between customers** — not as templates, not as "copy from a
+  similar company" — because that is exactly how an agent states another
+  client's policy.
+
+  **The cascade is `global → company → team … team → job`**, resolved by
+  `src/lib/company-inheritance.ts` — the same shape
+  `src/lib/workflow-settings.ts` already uses for workflow settings. Three
+  entity types, not four levels: **`Department` merged into a self-nesting
+  `Team`** (`parentTeamId`), so Go-to-Market › Channel Growth is two teams and
+  depth is data. That removes a decision nobody could make correctly ("is this a
+  department or a team?") and lets a customer have one tier or four with no
+  schema change. Two rules, deliberately different: **answers override**
+  (nearest scope wins, `resolveAnswer`), **prohibitions accumulate**
+  (`effectiveProhibitions` — unioned, never removable, or a job-level answer
+  could quietly drop "never guarantee sponsorship"). Every surface — the stack
+  on screen, readiness, and `compileAgentContext` — calls that one module, so
+  the badge saying where an answer comes from and the answer the agent uses
+  can't diverge.
+
+  **On screen it's an indented stack**, widest first, narrowest marked as the
+  winner, under one sentence: *"The most specific answer wins."* Nobody learns
+  the word "scope". "Answer differently…" lists each scope with its blast radius
+  ("For everyone in Go-to-Market · 3 jobs"), because choosing a scope is only
+  answerable if you can see what it reaches. On a job the same data reads
+  inverted — one resolved answer per question with a `From company` /
+  `From Channel Growth` / `Set for this role` badge, and an override can only be
+  written directly underneath the answer it replaces.
+
+  **There is also no separate "knowledge gap" type.** An unanswered question is
+  a `CompanyQuestion` with no written answer at any scope — same type, same
+  list, already sitting in the section `faqSection()` routes it to. `isUnanswered()` / `unansweredQuestions()`
+  (`src/lib/company-readiness.ts`) are the entire test, derived and never
+  stored, so nothing has to be *filed* into a section when it's answered: the
+  row was there all along and simply stops matching the filter. Draft state also
+  means every published-only sweep (agent context, staleness, unverified claims)
+  skips it for free — a question with no answer asserts nothing. **Unanswered
+  questions** is therefore a *filter over `company.faq`*, not a store: it renders
+  the same `QuestionRow` as the section does, bound to the same draft keys, so
+  answering it in either place is one edit (and each inbox row is scoped to its
+  owning section, so the publish review lists it under Work authorization rather
+  than under the inbox). The gone-for-good fields are `status` (a five-state
+  enum nothing advanced), `assignedOwner` (assignment with no queue,
+  notification, or "mine" filter — the assignee was always the account owner in
+  the header), and `proposedLevel` (asked before the answer was written; the
+  level is inferred from where you answer it). What replaces ownership is
+  `askedClientAt` — *we're blocked on someone outside the tool, and since when*.
+  The two non-answer exits are "Ask the client" (sets that date) and "Hand to a
+  recruiter" (sets `agentUse: 'escalate'`, giving the agent defined behaviour on
+  the topic rather than a hole).
+
+  **Readiness measures the candidate-facing bar**, and its labels say so —
+  *Ready for candidates* / *Ready — some topics escalate* / *Re-confirm before
+  candidates hear it* / *Not ready for candidates*. Not "screening": the same
+  knowledge feeds phone screens, video interviews, and chat, and modality is a
+  property of the job stage. Not "agents" either — every check is about what a
+  candidate may be told, and an internal agent is cleared for everything the
+  company has, so there's no internal bar that can fail. On the list page the
+  completeness bar and the status pill are **one** column: they can disagree
+  (89% written, still not ready) in a way that only makes sense read together.
+
+  **Publish shows diffs, not field names.** The draft buffer always held the
+  baseline and the new value and the change list threw one away, so the review
+  could only name what changed — the wrong altitude for a candidate-facing claim,
+  since the most consequential edits here are one word inside a paragraph
+  ("may be considered" → "will be provided" is a different legal position and an
+  identical field name). `src/lib/text-diff.ts` does word-level LCS;
+  `workspace/publish-diff.tsx` renders it inline when most of the text survived
+  and as *was* / *now* blocks below 30% similarity, where interleaving shreds the
+  two texts together. **Deletions are struck through and muted, not red** — the
+  page spends red only on "something is wrong right now" (see the message
+  vocabulary below), and a diff is data, not an alarm. `npm run diff-check`.
+
+  **Preview** (header, between Create job and Publish —
+  `workspace/knowledge-preview.tsx`, logic in `src/lib/company-preview.ts`) is
+  the only place the agent's behaviour can be *observed* rather than described.
+  Ask what a candidate would ask, pick a role and an audience, and see the
+  answer, which scope produced it, and — when there isn't one — which of the four
+  fallbacks fires and why. **Published-only, deliberately**: `publishedOnly:
+  true` and nothing reads the draft buffer, because the question people have
+  mid-edit is *"what are candidates being told right now?"*, not *"what will they
+  hear after I publish?"* — and those diverge exactly when you're least sure. A
+  banner names how many changes are excluded. Intent matching is a keyword stub
+  and says so on screen; everything after the match is the real resolver, so the
+  cascade, the audience gate and the fallbacks are genuinely exercised.
+  `npm run preview-check` runs it headless.
+
+  **Four kinds of message, and only four** (`shared/section-note.tsx`), separated
+  by what the reader can do: `rule` (always true, can't be switched off — quiet,
+  no colour), `attention` (needs you, nothing broken — amber), `blocking` (an
+  agent can't run — **red, and only here**), `empty` (dashed). Red used to mean
+  four different things and amber four more; a standing prohibition shouting as
+  loudly as a failed check is how both stop being read. Orientation isn't on the
+  list — it lives in `SectionDef.purpose`. Status isn't either: `restricted` is
+  the strictest rung, not a failure, so it renders muted with a lock everywhere.
+
+  **Activity is a projection of `activity_events`**, not a company-owned history,
+  and there is deliberately **no per-item history drawer and no per-item
+  provenance strip**. Both were answering rarely-asked questions with
+  always-present chrome. The `VisibilityBlock` still stores `source` /
+  `verifiedBy` / `lastVerifiedAt` / `nextReviewAt` / `owner` — readiness needs
+  them — but the only thing rendered on an item is `TrustWarning`, which is
+  silent unless the item is stale or an unconfirmed candidate-facing claim. Its
+  `needsAttention()` predicate is shared with the rail's attention dots so the
+  two can't disagree. Everything else is answered by filtering the one
+  append-only log.
+
+  **Every field is editable in place** (`shared/editable-field.tsx` — text,
+  textarea, select, and add/remove pills, all styled to look like plain text
+  until hovered). Edits are batched across the **whole company**, not per
+  section: the buffer lives in `companies/[id]/layout.tsx` (a `?section=` change
+  re-renders the page but preserves the layout, so unsaved edits survive moving
+  between sections), and **Publish in the header is the primary CTA** — the only
+  thing that applies them, showing a review list grouped by section first.
+  Version history is company-wide, since a publish is atomic across every
+  section; it is **UI-only** in this pass. Leaving the company with unpublished
+  edits warns first (`UnsavedChangesGuard` — `beforeunload` plus a capture-phase
+  click interceptor, since the App Router has no navigation guard); moving
+  between sections never warns, because the buffer survives it.
+
+  **Vocabulary matches between code and UI**: `Clearance` is
+  `cleared_for_candidates` / `recruiters_only` / `restricted`, rendered with
+  exactly those words. Don't reintroduce "audience" or "candidate-safe" — the
+  earlier mismatch is what let "Candidates can see this" survive in the UI while
+  the type said something else. Visibility reads as a
+  sentence with inline dropdowns — *"Cleared for candidates, and the agent
+  answers only if asked"* — not as a pair of jargon badges. The audience axis is
+  worded as a **clearance ladder** (Cleared for candidates / Recruiters only /
+  Restricted), not as "who can see this": candidates have no login and only ever
+  hear things from an agent.
+
+  Every knowledge item carries a two-axis visibility block — **clearance**
+  (`cleared_for_candidates` / `recruiters_only` / `restricted`) and **agent use** (`proactive` /
+  `on_request` / `reference_only` / `escalate`) — plus a separate publication
+  state. The agent gate is the single predicate `agentCanUse()` in
+  `src/lib/company-visibility.ts`; note it is deliberately distinct from
+  `isPublishedCleared()`, which the readiness *existence* checks use so
+  stale knowledge reports as "needs review" rather than as missing.
+
+  There is **no Readiness screen** and **no "Deploy agent" action** — both were
+  redundant. Readiness duplicated the header's completeness meter; deploy was
+  fiction, since agents attach to a job stage
+  (`job_workflow_sub_stages.agent_id`), never to a company, and publishing is
+  already what makes company knowledge available to every agent on that
+  company's jobs. Gap counts now ride on the rail (`gapCountsBySection()`),
+  items needing re-confirmation on rail dots (`attentionSections()`), the
+  specific problem inside the section it concerns, the readiness explanation in the
+  header pill's tooltip, and the compiled agent context as a collapsed
+  disclosure inside Publish. The header itself is **identity and actions only** —
+  completeness percentages live on the list page, where comparing companies is
+  the actual job. The real agent gate belongs on the job stage — see
+  the Missing link note under **Interview channels**.
+
+  Departments and teams are optional and created only when an active job needs
+  them (`createdBecauseJobId` records which); each team shows how many jobs still
+  use its context, so an orphaned one is visible.
+
+  **The Jobs section is coverage, not a directory.** `/jobs` is already the jobs
+  dashboard and owns that data; what a knowledge base can answer instead is
+  *which roles an agent still can't screen for, and why* — so each row carries
+  the job's open problems (`jobCoverage()`, derived from the same `JOB_CHECKS`
+  array as the readiness checks, so a row and a rail badge can't disagree) and
+  links out to `/jobs/[id]`, with "What it inherits" opening the inheritance
+  drilldown. **⚠️ The two job models aren't linked yet**: `/jobs` reads
+  `job_orders` joined to `clients`, this reads `CompanyJob[]` from
+  `mock-companies.ts`, and they share no key — so the link is real markup against
+  fixture ids that won't resolve until the DB pass, where `CompanyJob.id` becomes
+  `job_orders.job_id`. Two more things to reconcile there: there is no
+  `companies` table (the DB has `clients`), and `Company.stakeholders` describes
+  the same humans as the real `job_team_members` rows — the company should own
+  the *person* (bio, clearance, notes), the job the *assignment*.
+
+  **UI only** — renders from `src/lib/mock-companies.ts`, no tables or Server
+  Actions yet. Full spec: **[COMPANY.md](COMPANY.md)**.
+- `/automations` — the global automation library. See **Automations** below.
+- `/book/[token]` — the **candidate's** interview booking page. Public,
+  unauthenticated, token-gated; sits outside the `(app)` group. Its three
+  interactive endpoints live at `/api/book/[token]/{availability,hold,confirm}`.
+  **Both `book` and `api/book` are excluded from the proxy matcher** — `book`
+  alone only covers the page, and the API paths start with `api`, so they would
+  be answered with a redirect to `/login` instead of JSON. See **Interview
+  scheduling** below.
 - `/settings` — signed-in user's email/role
 - `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)
 - `/interview-room/[agentId]` — browser interview room: a briefing/device-check
@@ -181,6 +532,323 @@ migrating the full app layer to V3.2 is an ongoing pass.
   never transmitted. Reached from the Agents page test-run dialog. See
   **Interview channels** below.
 - `/login` — email/password sign-in
+
+## Automations
+
+**⚠️ This is a control plane, not an engine. Nothing executes yet.** There is no
+runtime, no queue, no scheduler, no worker, no n8n wiring — and deliberately no
+empty tables reserving their names. What exists is the configuration: what a rule
+is, where it applies, what state it's in there, and who decided that.
+
+**Three tables, because a rule and its scope are different things.**
+`automation_definitions` is one stable logical automation;
+`automation_definition_versions` is the immutable rule (its condition sentence,
+actions, tasks, exceptions, SLA, authored approval posture);
+`automation_bindings` is a **sparse override** saying "at this scope, this rule's
+state is X". Nothing is ever copied down the cascade. That split is the whole
+design: without it, pausing one rule on one job means cloning a definition, and
+every later fix to the library becomes invisible to every job that ever
+overrode anything. `automation_bindings` *is* the old `automation_rules`,
+renamed — it was empty, had no unique constraint, and had one reader and zero
+writers.
+
+**The cascade is `global → company → workflow → job`**, most-specific wins,
+resolved by `src/lib/automation-resolve.ts` (pure) +
+`src/lib/automation-settings.ts` (loading). It shares `rankOf` with
+`src/lib/workflow-settings.ts` via `src/lib/settings-scope.ts` so two resolvers
+can't disagree about what "more specific" means. The split into a pure half is
+what lets `npm run automation-check` drive the real inheritance logic headless
+rather than a re-implementation of it.
+
+**Provenance is the product, not a detail.** The useful question on a job isn't
+"what shall I set" but *"what's running here, and where was that decided"* — so
+`ResolvedAutomation.sourceChain` keeps **every** applicable layer with the winner
+marked, and the source label is the layer's own name (*"Off · Acme Robotics"*,
+*"Paused · Standard Hiring Workflow"*), because naming where a setting came from
+is only useful if it names somewhere you can go and change it. This is why
+`overrideByKey()` in `workflow-settings.ts` couldn't be reused — it discards the
+losing rows, and it keys on `trigger_event_type`, which would silently collapse
+two rules that share a trigger. **Its automations branch has been deleted**;
+there is exactly one cascade in the codebase that answers this question.
+
+**State, lock and block are three independent axes.** `automation_state` is
+`active | paused | off` — three, not a boolean, because an automation switched
+off for a fortnight while a hiring manager is away is a different thing from one
+this company never runs. `off` is *not* a lock: it means a source layer set the
+default, and **a job may turn an inherited-off rule back on**, which is exactly
+what `canActivateForJob` is for. A lock is a permission — today only
+`automation_definitions.system_managed`, which the resolver *and* the server
+action both refuse. `isBlocked` (active but a dependency is missing) is
+**always false in this pass**: the two real checks — a missing
+`google_calendar_connections` row, an `sla_type` resolving to no enabled
+`sla_policies` row — belong with the executor that would act on them, and
+inventing runtime health would put an amber warning on screen that means nothing.
+`off` rather than `stopped` deliberately: runtime verbs stay reserved so a
+configuration state and an execution outcome never share a word.
+
+**`automation_mode` is a second, orthogonal axis and not a disable switch.**
+`auto | approval_required` on a *version* — does a person sign off before
+something externally consequential leaves the building. It replaced
+`auto | manual | off`, where `off` duplicated the state axis (what does *Active +
+Off* mean?) and `manual` described the machine rather than who does what. Five of
+the thirteen are `approval_required`: rejection wording, a cancellation to a
+candidate, a no-show follow-up, a fast-track past required stages, creating an
+offer. Descriptive only until an executor exists; there is deliberately **no
+per-scope mode override**, which would need its own inheritance, provenance badge
+and reset for a field nothing reads yet.
+
+**Writes are job-scoped and sparse** (`src/app/(app)/automations/actions.ts`):
+`setAutomationState` covers pause / resume / turn-on, `resetAutomationToInherited`
+is a **DELETE**, not a row of nulls — `state` is NOT NULL precisely so a binding
+that overrides nothing cannot exist, the same rule `pruneStoredPolicy` follows in
+`src/lib/policy-settings.ts`. Both take a discriminated `target` union so the
+one-scope CHECK is unrepresentable in TS; the job dialog only ever constructs
+`{ scope: "job" }`, so nothing on a job screen can touch a wider layer. Every
+write **re-resolves and re-checks server-side** — a disabled button is a courtesy,
+not the rule — and writes one `audit_log` row (`entity_type:
+'automation_binding'`), *not* an `activity_event`: that log is what happened to
+people, this is what an admin configured.
+
+**Tenant ownership and company scope are separate columns** on
+`automation_bindings` — `tenant_client_id` (who owns the row, the RLS partition
+key) and `company_scope_client_id` (what it targets). One column answering both
+meant `where client_id is not null` looked like "company-scoped" while being true
+of every job row too. **All scope logic reads the generated `scope` column.**
+
+**Read surfaces:** `/automations` (global library, no context), the job
+workspace ⚡ dialog (the only place with controls), and the workflow **AI &
+Automation** tab (read-only — a control there writes a Flow-scoped binding
+affecting every job that runs it, which deserves its own confirmation rather
+than a segmented control). **⚠️ The company Operations section resolves with no
+company scope**, so every row reads *From Global library* — accurate, since no
+company binding exists, but it can't become company-specific until a company
+profile carries a `clients.client_id` (`/companies` renders from
+`mock-companies.ts`, which shares no key with `clients`).
+
+**One of the fourteen actually runs.** `automation_definitions.has_executor`
+says whether code exists that acts on a rule. `send_booking_link` is `true` and
+`active`; the other thirteen are `false` and **off** at global scope, and the
+resolver reports them `isLocked` with *"This automation isn't built yet, so
+turning it on wouldn't do anything."* — so their controls disable and the library
+stops claiming a mode for behaviour that never happens. Before this, all fourteen
+read "Active · Global library" beside promises the system does not keep.
+
+The default is `false`, deliberately: a definition seeded tomorrow has no
+executor until someone writes one. **Flip it in the same migration that ships the
+executor**, alongside turning its binding on — so "on" can only ever mean "runs".
+
+**Seeded as global truth only**: 13 definitions, 13 published v1 versions, 13
+global bindings at `active`. The old fixture's Company/Workflow/Job provenance
+was visual dressing and is discarded — seeding it needs a tenant id the seed
+doesn't have, and at job scope would fabricate a decision on a real req.
+`candidate_data_updated` is **not** seeded: "a field that feeds search or fit
+changed" names no field group and no action, so no rule can be written against
+it, and a row the resolver can't explain is worse than an absent one.
+`AUTOMATION_EVENT_GROUPS` survives as the display order and grouping headings
+only; `npm run automation-check` asserts it stays 1:1 with the seeded keys.
+
+**`publishJob` must never snapshot automations.** It snapshots
+`workflow_settings` / `sla_policies` / `communication_templates` as `scope='job'`
+rows so a published job is self-contained — correct there, because the pipeline
+is frozen at publish by design. Automations are live policy: mirroring it would
+write 13 job rows per publish, make every later global fix invisible to published
+jobs, and turn every provenance badge into "Job override", destroying the one
+thing the dialog exists to show.
+
+## Interview scheduling (agent interviews)
+
+**The first automation that actually runs.** Everything else in the automation
+library is still configuration; this one has an executor, a candidate-facing
+surface, and a queue that places real calls.
+
+```
+candidate reaches a self-scheduling agent stage
+  → the gate (`send_booking_link`) is checked for this job
+  → a scheduling request + a one-time token
+  → n8n re-checks the gate, then emails /book/<token>
+  → candidate picks a time, or "Start now"
+  → the interview is created atomically and a call is queued
+  → a cron tick hands the call to n8n at the right moment
+  → paused/off → `automation_skipped_by_policy`, no side effect, exit clean
+```
+
+**Two bookable resources, exactly one per booking.** An **agent** has N
+concurrent lanes and gets dialled; an **interviewer** has a calendar and capacity
+one, because a person does one interview at a time. `isr_one_resource` enforces
+the "exactly one" — a booking is never both and never neither. A human booking
+queues **no** `scheduled_agent_calls` row at all: n8n writes the calendar event
+off `interview_scheduled` instead, because a bot must never dial a candidate for
+an interview a person was meant to run.
+
+A human interviewer's availability is their **live Google free/busy**
+(`getCalendarPreview`, which returns intervals only — never a title or attendee)
+minus their own working hours, now persisted on `job_team_members`
+(`timezone`, `working_hours_start/end`, `preferred_days`). Those lived in React
+state on the availability sheet and reset on reload; `docs/google-calendar-consent-plan.md`
+had already named persisting them as the next step. Their window beats the
+stage's where set — the stage says when the *company* books, the person says when
+they'll actually take an interview.
+
+**Who is the interviewer? The stage's single reviewer.** Exactly one, for now.
+**Panels resolve as `panel_not_supported`**, not as a guess:
+`job_workflow_sub_stage_reviewers` has no required-vs-optional flag, so "whose
+calendar counts" has no answer in the schema yet, and an N-way availability
+intersection is a different problem. Still out of scope: external schedulers and
+candidate reschedule — the first link is one-time.
+
+**Four tables, one of which is a lease.** `interview_scheduling_requests` (the
+link, its expiry, and a **frozen config snapshot**), `interviews` (the booking of
+record — a deliberate re-creation of the table dropped in `20260807173038`),
+`interview_slot_holds` (a TTL'd lease, *not* a booking) and
+`scheduled_agent_calls` (the durable outbound queue). Full columns and the
+reasoning for each split are in [DB_Schema.md](DB_Schema.md).
+
+**A hold is a lease; a booking is a fact.** They are separate tables because a
+hold must stop existing on a clock with nothing on the critical path — an
+`interviews` row with `status='held'` never stops existing, needs a sweeper, and
+until that runs is indistinguishable from a real interview to *every* reader. One
+forgotten `and status <> 'held'` and a recruiter sees an interview that was never
+booked.
+
+**Concurrency: the advisory lock is the mechanism, the exclusion constraint is
+the invariant.** `pg_advisory_xact_lock` on `agent_id` serialises the
+read-then-write; `exclude using gist (agent_id, agent_slot_index, during)` on
+both `interviews` and `interview_slot_holds` catches any other write path.
+Constraints cannot be primary here: Postgres has no cross-table exclusion, a hold
+must not overlap an interview, and capacity is N rather than 1 —
+`agent_slot_index` is the lane trick that lets a capacity-1 constraint police a
+capacity-N pool. Lock order is fixed everywhere (request `FOR UPDATE`, then the
+agent), so deadlock is structurally impossible.
+
+**The token is opaque, hashed and single-use, and the app mints it.** 32 random
+bytes base64url in the URL; only `sha256(token)` is stored. The raw token exists
+in exactly two places — the URL in the candidate's email, and the
+`booking_url` field of the authenticated POST to
+`N8N_BOOKING_LINK_WEBHOOK_URL`. It is **never** written to the database, an
+`activity_event`, the `audit_log`, or a log line; `booking_link_sent` deliberately
+records the request id and expiry and not the URL, because that feed is read by
+every recruiter on the account and the token in it is a capability. **n8n emails
+the link and never generates or modifies a token** — it has no way to, since it
+never sees the hash and could not reverse one. Logs carry
+`bookingTokenFingerprint()` instead: the first 12 hex characters of the hash,
+enough to correlate a candidate's complaint to a set of log lines and useless as
+a credential.
+
+**Not** the HMAC `encodeState` pattern used for calendar consent: that is not
+revocable, puts its claims in the URL in plaintext, and has no single-use
+semantics — all three unacceptable for a capability that causes a real phone
+call. Confirm sets `token_expires_at = now()`, which is what makes the link
+one-time without a separate column. Every failure renders **one identical
+message**: the difference between "expired" and "never existed" is precisely what
+confirms a token existed.
+
+**The URL is built from `PUBLIC_APP_URL`**, not `SITE_URL`. They are usually the
+same string and are deliberately separate columns of config: `SITE_URL` builds
+the Google OAuth `redirect_uri` and must match a value registered in the Google
+Cloud console *exactly*, while `PUBLIC_APP_URL` is the origin a candidate's
+browser has to reach. Conflating them means changing one to fix the other and
+silently breaking either an OAuth callback or every booking link in flight. It
+falls back to `SITE_URL` when unset, and is **not** `NEXT_PUBLIC_` — nothing in
+the browser needs it.
+
+**Three public HTTP endpoints, one implementation.** `src/lib/server/booking-core.ts`
+holds every rule; `src/app/book/actions.ts` (Server Actions, for the server
+render) and `src/app/api/book/[token]/*` (routes, for everything the client does)
+are transports over it, so there is one answer to "may this token do this".
+The client uses the routes rather than the actions because a Server Action cannot
+carry `Cache-Control: no-store`, a `Retry-After`, or an `Idempotency-Key`.
+
+| Route | Does |
+|---|---|
+| `GET …/availability` | The live bookable grid. Occupancy is folded in server-side, so a slot the candidate can't have simply isn't listed — the response never says *why*, because "busy" is a fact about someone else's interview. Polled every 60s while deciding. |
+| `POST …/hold` | Takes (or moves) the link's single lease. Body carries a **start instant, not a slot id** — there are no slot ids, the grid is generated. `DELETE` releases, sent with `keepalive` on `pagehide`. |
+| `POST …/confirm` | The atomic commit. Honours `Idempotency-Key`. |
+
+Shared plumbing is `src/lib/server/booking-http.ts` — one place that decides what
+"public booking endpoint" means, so the fourth route added later can't forget the
+`no-store` or the rate limit. Every one of them hashes the token before lookup,
+re-resolves it rather than trusting any identifier from the client, sends
+`no-store` + `no-referrer`, and collapses every invalid-token condition onto one
+404 with a byte-identical body.
+
+**Idempotency on confirm is two layers, and the durable one is the database.**
+`confirm_interview_booking` takes `FOR UPDATE` on the request row and a replay
+finds `status = 'booked'`, so it returns the interview that already exists —
+across instances, deploys, and a link reopened next week. The `Idempotency-Key`
+header (`src/lib/server/idempotency.ts`) is an in-process optimisation on top:
+it collapses the double-click and the flaky-signal retry so they don't each take
+the per-agent advisory lock. Correctness does not depend on the caller sending
+it. A malformed key is **refused with a 400**, never silently ignored — that
+would let a caller believe it has replay protection it doesn't have.
+
+⚠️ **Rate limiting is in-process** (`src/lib/server/rate-limit.ts`), so on Vercel
+it is enforced per instance, not globally. Keyed on the token fingerprint **and**
+the IP, both of which must pass. It is still the first thing every public route
+does: the realistic attack is enumeration, which is high-volume from few sources,
+and it bounds the damage a retry loop in a candidate's browser can do to the
+advisory lock. The failure mode is safe — too little limiting under scale-out,
+never too much. The durable version belongs in Postgres or Upstash and would
+replace the module wholesale; the call sites take a key and a budget and would
+not change.
+
+**Slots are generated in the agent's operating timezone and rendered in the
+candidate's.** Generating per viewer would give two candidates in different zones
+misaligned grids for the same agent, and capacity would fragment into unbookable
+slivers. The grid is a property of the stage; the display is a property of the
+viewer. Absolute instants everywhere, `Intl` at render, never an offset.
+
+**Per-stage config lives in `config.scheduling`; `scheduling_mode` is a column.**
+The rest are read once, by id, when a request is created and are then frozen onto
+it — a recruiter editing minimum notice while a candidate has the page open must
+not move the grid under them. `scheduling_mode` is the exception because it is the
+only scheduling field ever used in a WHERE, by system code with no session, and a
+gate predicate buried in untyped jsonb is what silently stops matching after a UI
+refactor. It reuses the `scheduling_policy` enum that had existed since
+`20260728100000` with no column using it.
+
+⚠️ **`SCHEDULING_OUTBOUND_ENABLED` defaults to `false`, and should stay that way.**
+A cron that dispatches on a timer is categorically more dangerous than the manual
+test-call button it reuses: nobody has to click. All fourteen QA fixture
+candidates share one real phone number and one real inbox. With the switch off
+the entire loop runs and the call is recorded `suppressed` rather than placed —
+which is how `npm run scheduling-e2e` exercises it. Two further guards:
+`SCHEDULING_ALLOW_FIXTURE_CALLS` (refuses `source = 'qa_test_fixture'`) and a cap
+of three live calls to one phone number.
+
+⚠️ **The public route runs as service-role.** Candidates have no login, so RLS is
+not there to catch a mistake. Three rules, stated at the top of every file under
+`src/app/book/`: never `select("*")`; never accept an identifier from the client
+(every action re-resolves the raw token); never read another candidate's row —
+the agent's occupancy query returns **instants only**.
+
+⚠️ **Nothing here stamps `activity_events.dispatched_at`**, and nothing may. That
+column is the shared outbox marker for a dozen event-driven n8n workflows; the
+dispatcher dedupes on `scheduled_agent_calls` state instead.
+
+⚠️ **`agents` has no tenant column**, so `max_concurrent_calls` is a global pool
+shared across clients. Accepted for this pass and flagged: a busy customer can
+starve another, and the *count* of another tenant's bookings is weakly inferable
+from which slots are unavailable. The fix needs `agents.client_id`.
+
+**Two prerequisites this pass had to build first**, both flagged in earlier
+passes as missing: the **agent picker** (`job_workflow_sub_stages.agent_id`
+existed and no UI ever set it) and a **stage-move control** (`moveCandidate`
+existed and had *no caller*, so no candidate could reach an interview stage at
+all). Both go through `src/lib/server/pipeline-commands.ts`, the same domain
+commands the bearer-authed routes call — so a recruiter's click and an n8n
+webhook produce identical rows and identical events.
+
+**Guards:** `npm run scheduling-check` (pure — slug parsing, grid generation,
+capacity, DST across a spring-forward boundary, backwards compatibility of
+`availability.ts`), `npm run scheduling-e2e` (the whole loop against the real
+database, asserting no call is placed and every table is left empty), and
+`npm run booking-check` (the public endpoints, calling the **real route
+handlers** with hand-built `NextRequest`s). The last one uses tokens that were
+never issued, deliberately: the properties worth guarding live on the failure
+path, which no happy-path test reaches. It asserts a malformed token and a
+never-issued one are byte-identical on all three routes, that `no-store` and
+`no-referrer` are set, that the budget is enforced to the exact request, and
+that a rejected idempotent attempt is evicted so a retry can still succeed.
 
 ## Interview channels (phone vs. room)
 
@@ -328,7 +996,29 @@ without the fixtures and disappears when they are deleted) →
 `call_recordings` row per fixture evaluation, transcript built from that
 evaluation's own Q&A; audio is attached separately by
 `npm run attach-fixture-audio`, which copies a real test-call clip into a
-per-evaluation object path since SQL can't write Storage).
+per-evaluation object path since SQL can't write Storage) → the **automation
+control plane**: `20260823195938_automation_enums` (`automation_state`,
+`automation_mode`, `automation_version_status`, + `decision_made` on
+`activity_event_type`), `_200011_automation_definitions`
+(`automation_definitions` + `automation_definition_versions`),
+`_200121_automation_bindings` (renames the empty, never-written
+`automation_rules` to `automation_bindings` and splits rule-from-scope: drops
+`conditions`/`actions`/`enabled`/`trigger_event_type`, adds
+`automation_definition_id`/`state`, and replaces `(scope, scope_id)` with typed
+FKs + a generated `scope`), `_200136_automation_rls`, `_200301_seed_automation_library`
+(13 definitions, 13 published v1 versions, 13 global bindings) → the **agent
+interview scheduling** set: `20260823211312_scheduling_extensions` (`btree_gist`),
+`_211325_scheduling_enums` (`interview_status` re-created, `scheduling_request_status`,
+`scheduled_call_status`, + 6 `activity_event_type` values),
+`_211338_sub_stage_scheduling_mode`, `_211434_interview_scheduling_tables`
+(`interview_scheduling_requests`, `interviews`, `interview_slot_holds`,
+`scheduled_agent_calls`, `agents.max_concurrent_calls`),
+`_211451_interview_scheduling_rls`, `_211548_interview_booking_functions`,
+`_211618_seed_send_booking_link_automation` (the 14th definition, plus a v2 of
+`interview_scheduled` replacing promises with no executor),
+`_211623_call_recordings_interview_link`,
+`_211822_fix_hold_interview_slot_column_ambiguity`,
+`_215500_confirm_booking_hold_id_default_null`.
 
 **RLS.** Permissive `authenticated`-ALL on core tables; **tenant-scoped** on the
 workflow-template / settings / activity / AI / audit tables (client users see

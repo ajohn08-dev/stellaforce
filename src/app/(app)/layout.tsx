@@ -10,6 +10,7 @@ import { ResumeUploadQueueProvider } from "@/lib/resume-upload-queue";
 import { getCurrentProfile } from "@/lib/auth";
 import { getSwitchableProfiles } from "@/lib/data";
 import { IMPERSONATOR_COOKIE } from "@/lib/impersonation";
+import { companyAccessFor } from "@/lib/company-access";
 
 export default async function AppLayout({
   children,
@@ -24,6 +25,11 @@ export default async function AppLayout({
   const sidebarCollapsed = sidebarCollapsedFromCookie(
     cookieStore.get(SIDEBAR_COOKIE)?.value,
   );
+  // Client-side profiles get "Company Profile" pointing at their own company
+  // instead of the "Companies" list they may not open. Passed as the plain
+  // access object, not as resolved nav items — a NavItem carries a lucide icon
+  // component, which can't cross into a Client Component.
+  const companyAccess = companyAccessFor(profile);
 
   return (
     <SidebarProvider initialCollapsed={sidebarCollapsed}>
@@ -31,7 +37,7 @@ export default async function AppLayout({
         <HeaderActionsProvider>
           <ResumeUploadQueueProvider>
             <div className="flex h-full">
-              <AppSidebar />
+              <AppSidebar companyAccess={companyAccess} />
               <div
                 id="app-content"
                 className="flex min-w-0 flex-1 flex-col"
@@ -46,6 +52,7 @@ export default async function AppLayout({
                   user={profile}
                   switchableUsers={switchableUsers}
                   isImpersonating={isImpersonating}
+                  companyAccess={companyAccess}
                 />
                 <main className="flex-1 overflow-y-auto bg-brand-neutral-50">{children}</main>
               </div>
