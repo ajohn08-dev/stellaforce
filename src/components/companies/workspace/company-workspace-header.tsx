@@ -68,17 +68,23 @@ export function CompanyWorkspaceHeader({
   ].filter(Boolean) as string[]
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="flex min-w-0 items-start gap-3">
-        <CompanyLogo
-          name={company.preferredName}
-          logoPath={company.logoPath}
-          size="lg"
-        />
+    // The actions live on the *title* row, not in a column beside the whole
+    // block, and nothing here wraps. Previously this was a wrapping
+    // `justify-between` row, so as soon as the identity line grew — a longer
+    // name, more facts, a second badge — the buttons dropped onto a line of
+    // their own and the header silently became three rows tall on a page whose
+    // content already scrolls in a fixed viewport.
+    //
+    // The name truncates instead. A clipped company name is recoverable (it is
+    // in the breadcrumb, the tab title and the URL); a Publish button that moved
+    // is not.
+    <div className="flex items-start gap-3">
+      <CompanyLogo name={company.preferredName} logoPath={company.logoPath} size="lg" />
 
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="truncate text-2xl font-semibold tracking-tight">
               {company.preferredName}
             </h1>
             {/* Says whose page this is, once, where the name is. A client-side
@@ -86,14 +92,14 @@ export function CompanyWorkspaceHeader({
                 this the page is indistinguishable from the one a Stellaforce
                 recruiter opens from an index of many. */}
             {isOwnCompany && (
-              <Badge variant="secondary" className="font-normal">
+              <Badge variant="secondary" className="shrink-0 font-normal">
                 Your organization
               </Badge>
             )}
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span tabIndex={0} className="inline-flex">
+                  <span tabIndex={0} className="inline-flex shrink-0">
                     <ReadinessPill status={readiness.status} size="sm" short />
                   </span>
                 }
@@ -116,62 +122,66 @@ export function CompanyWorkspaceHeader({
             </Tooltip>
           </div>
 
-          <p className="text-sm text-muted-foreground">
-            {facts.join(" · ")}
-            {company.website && (
-              <>
-                {facts.length > 0 && " · "}
-                <a
-                  href={company.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
-                >
-                  {company.website.replace(/^https?:\/\//, "")}
-                  <ExternalLink className="size-3 shrink-0" />
-                </a>
-              </>
-            )}
-            {company.linkedinUrl && (
-              <>
-                {" · "}
-                <a
-                  href={company.linkedinUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
-                >
-                  <LinkedinIcon className="size-3 shrink-0" />
-                  LinkedIn
-                </a>
-              </>
-            )}
-            {` · Owner: ${company.accountOwner}`}
-          </p>
+          {/* `ml-auto` rather than `justify-between` on the row: the identity
+              group keeps its natural width and truncates, and the actions are
+              pinned right whatever is to their left. `shrink-0` so a long name
+              eats into the name, never into a button. */}
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              render={<Link href="/jobs" />}
+            >
+              <Plus className="size-4" />
+              Create job
+            </Button>
+
+            {/* Between Create job and Publish: the only place the agent's
+                behaviour can be observed rather than described. */}
+            <KnowledgePreview company={company} />
+
+            <PublishButton
+              company={company}
+              context={agentContext}
+              readiness={readiness}
+              versions={company.versions}
+            />
+          </div>
         </div>
-      </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          render={<Link href="/jobs" />}
-        >
-          <Plus className="size-4" />
-          Create job
-        </Button>
-
-        {/* Between Create job and Publish: the only place the agent's behaviour
-            can be observed rather than described. */}
-        <KnowledgePreview company={company} />
-
-        <PublishButton
-          company={company}
-          context={agentContext}
-          readiness={readiness}
-          versions={company.versions}
-        />
+        <p className="text-sm text-muted-foreground">
+          {facts.join(" · ")}
+          {company.website && (
+            <>
+              {facts.length > 0 && " · "}
+              <a
+                href={company.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
+              >
+                {company.website.replace(/^https?:\/\//, "")}
+                <ExternalLink className="size-3 shrink-0" />
+              </a>
+            </>
+          )}
+          {company.linkedinUrl && (
+            <>
+              {" · "}
+              <a
+                href={company.linkedinUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
+              >
+                <LinkedinIcon className="size-3 shrink-0" />
+                LinkedIn
+              </a>
+            </>
+          )}
+          {` · Owner: ${company.accountOwner}`}
+        </p>
       </div>
     </div>
   )
