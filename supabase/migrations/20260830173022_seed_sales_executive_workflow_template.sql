@@ -1,7 +1,7 @@
 -- The Sales Executive hiring workflow: nine stages, two of them run by agents.
 --
 -- Global (`client_id` null), so it is offered on every job rather than only
--- STELLAFORCE's. Field defaults mirror what `saveTemplateSubStages`
+-- Stellaforce's. Field defaults mirror what `saveTemplateSubStages`
 -- (src/app/(app)/workflows/actions.ts) applies when the Stages tab saves, so a
 -- template seeded here and one authored in the UI are the same shape.
 --

@@ -2729,13 +2729,13 @@ const HARBORLINE: Company = {
 }
 
 // ===========================================================================
-// Fixture 4 — STELLAFORCE (the Sales Executive demo)
+// Fixture 4 — Stellaforce (the Sales Executive demo)
 // ===========================================================================
 
 /**
  * The company behind the Sales Executive job.
  *
- * ⚠️ **Not linked to the job.** There is a real `clients` row named STELLAFORCE
+ * ⚠️ **Not linked to the job.** There is a real `clients` row named Stellaforce
  * (`seed_stellaforce_client`) that `job_orders.client_id` points at, and this
  * fixture shares no key with it — the two company models are still separate, as
  * the /companies section of CLAUDE.md describes. `CompanyJob.id` here is a
@@ -2750,7 +2750,7 @@ const HARBORLINE: Company = {
 const STELLAFORCE: Company = {
   id: "co-stellaforce",
   slug: "stellaforce",
-  preferredName: "STELLAFORCE",
+  preferredName: "Stellaforce",
   legalName: "Stellaforce, Inc.",
   tagline: "Agentic screening and interviewing for recruiting teams",
   website: "https://stellaforce.ai",
@@ -2784,7 +2784,7 @@ const STELLAFORCE: Company = {
       levelRefId: null,
       kind: "one_liner",
       title: "One-sentence description",
-      body: "STELLAFORCE builds agentic recruiting software — AI agents that screen, interview and evaluate candidates alongside the recruiters who own the hire.",
+      body: "Stellaforce builds agentic recruiting software — AI agents that screen, interview and evaluate candidates alongside the recruiters who own the hire.",
       visibility: vis("cleared_for_candidates", "proactive", "published", {
         source: "Company profile, Aug 2026",
         verification: "verified",
@@ -2909,7 +2909,7 @@ const STELLAFORCE: Company = {
       name: "Go-to-Market",
       mission: "Take an agentic recruiting platform to mid-market buyers who have never bought one before.",
       description:
-        "The commercial side of STELLAFORCE — sales, partnerships and the customer relationships that follow a signature.",
+        "The commercial side of Stellaforce — sales, partnerships and the customer relationships that follow a signature.",
       leaderId: "sh-sf-01",
       sizeRange: "6–10",
       operatingModel: "hybrid",
@@ -2939,7 +2939,7 @@ const STELLAFORCE: Company = {
       title: "Sales Director",
       role: "hiring_manager",
       candidateFacingBio:
-        "Marcus leads go-to-market at STELLAFORCE and is the person this role reports to. He runs the hiring manager and executive conversations himself.",
+        "Marcus leads go-to-market at Stellaforce and is the person this role reports to. He runs the hiring manager and executive conversations himself.",
       internalNotes: "Decides quickly. Wants specifics on quota attainment, not narrative.",
       visibility: vis("cleared_for_candidates", "on_request", "published", {
         source: "Intake call with the Sales Director, Aug 2026",
@@ -2958,7 +2958,7 @@ const STELLAFORCE: Company = {
       travel: "Occasional regional travel to customer sites.",
       reportsTo: "Sales Director",
       rolePurpose:
-        "Own the full mid-market sales cycle — prospecting through signed contract — for STELLAFORCE's agentic recruiting platform.",
+        "Own the full mid-market sales cycle — prospecting through signed contract — for Stellaforce's agentic recruiting platform.",
       compensation: null,
       // Mirrors pol-sf-02 deliberately: a job-level answer that disagreed with
       // the company policy is exactly what the cascade exists to prevent.
@@ -2993,7 +2993,7 @@ const STELLAFORCE: Company = {
     {
       id: "act-sf-01",
       event: "created",
-      entityLabel: "Company — STELLAFORCE",
+      entityLabel: "Company — Stellaforce",
       actor: "Anna John",
       actorType: "user",
       at: "2026-08-30T09:00:00Z",

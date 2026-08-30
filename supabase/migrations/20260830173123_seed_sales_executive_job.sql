@@ -1,4 +1,4 @@
--- The Sales Executive job at STELLAFORCE, created and published.
+-- The Sales Executive job at Stellaforce, created and published.
 --
 -- This replicates `publishJob` (src/app/(app)/jobs/actions.ts) rather than
 -- calling it, because a Server Action needs a session. The sub-stage snapshot
@@ -23,14 +23,14 @@ values (
   'Charleston, SC',
   'hybrid',
   'Charleston, South Carolina',
-  'STELLAFORCE',
+  'Stellaforce',
   'AI & agentic recruiting technology',
   'Sales',
   'full-time',
   '5-7 years',
   null,
   120000, 160000, 'USD',
-  'Sell STELLAFORCE''s agentic recruiting platform to mid-market B2B companies. Own the full cycle — prospecting, discovery, multi-stakeholder demos, commercial terms and contract close — reporting directly to the Sales Director. Based in Charleston, SC: the team meets in person regularly and a meaningful share of customer conversations happen face to face.'
+  'Sell Stellaforce''s agentic recruiting platform to mid-market B2B companies. Own the full cycle — prospecting, discovery, multi-stakeholder demos, commercial terms and contract close — reporting directly to the Sales Director. Based in Charleston, SC: the team meets in person regularly and a meaningful share of customer conversations happen face to face.'
 )
 on conflict (job_id) do nothing;
 

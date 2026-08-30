@@ -134,7 +134,7 @@ export const INTERVIEW_AGENT_CONFIGS: Record<string, InterviewAgentConfig> = {
     ].join(" "),
   },
 
-  // Sales Executive Screening Agent — Sales Executive @ STELLAFORCE,
+  // Sales Executive Screening Agent — Sales Executive @ Stellaforce,
   // Charleston SC. See the seed_sales_executive_screening_agent migration.
   //
   // Three of these four questions are disqualifying in practice — location,
