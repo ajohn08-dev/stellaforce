@@ -10,6 +10,16 @@ import type { Database } from "@/lib/supabase/types"
  *     npx tsx --conditions=react-server --env-file=.env.local scripts/demo-anna.ts advance
  *     npx tsx --conditions=react-server --env-file=.env.local scripts/demo-anna.ts reset
  *
+ * A second argument picks the job when she is on more than one — a substring of
+ * the title, case-insensitive:
+ *
+ *     … scripts/demo-anna.ts advance sales
+ *     … scripts/demo-anna.ts reset "product designer"
+ *
+ * With one active application the argument is optional. With several and no
+ * argument it lists them and stops, rather than guessing which pipeline to move
+ * a candidate along.
+ *
  * ⚠️ **Every delete here is scoped to this one application.** That is not a
  * stylistic preference. `scripts/scheduling-e2e.ts` clears the scheduling tables
  * with `.not("id","is",null)` — every row, whoever made it — and running it
@@ -33,18 +43,48 @@ function line(label: string, value: unknown) {
   console.log(`  ${label.padEnd(24)} ${value}`)
 }
 
-async function context() {
+/** Thrown to stop cleanly with a message rather than a stack trace. */
+class Stop extends Error {}
+
+async function context(jobFilter?: string) {
   const { data: candidate } = await db
     .from("candidates")
     .select("candidate_id, first_name, last_name, email")
     .eq("email", CANDIDATE_EMAIL)
     .single()
-  const { data: app } = await db
+
+  // `.single()` here used to be safe and no longer is: she sits on Product
+  // Designer *and* Sales Executive. Picking the first would silently advance a
+  // candidate down whichever pipeline the database happened to return.
+  const { data: apps } = await db
     .from("applications")
-    .select("application_id, candidate_id, job_id, client_id, current_stage_id, status")
+    .select("application_id, candidate_id, job_id, client_id, current_stage_id, status, job:job_orders(title)")
     .eq("candidate_id", candidate!.candidate_id)
     .eq("status", "active")
-    .single()
+
+  const withTitles = (apps ?? []).map((a) => ({
+    ...a,
+    jobTitle: (a.job as { title: string } | null)?.title ?? "(untitled)",
+  }))
+
+  if (withTitles.length === 0) throw new Stop("She has no active application.")
+
+  const matches = jobFilter
+    ? withTitles.filter((a) => a.jobTitle.toLowerCase().includes(jobFilter.toLowerCase()))
+    : withTitles
+
+  if (matches.length === 0) {
+    throw new Stop(
+      `No active application matching "${jobFilter}". She is on: ${withTitles.map((a) => a.jobTitle).join(", ")}.`
+    )
+  }
+  if (matches.length > 1) {
+    throw new Stop(
+      `She is on ${matches.length} pipelines — name one:\n` +
+        matches.map((a) => `  · ${a.jobTitle}`).join("\n")
+    )
+  }
+  const app = matches[0]
 
   // Pipeline order: Tier-1 first, then position within it.
   const { data: stages } = await db
@@ -64,11 +104,11 @@ async function context() {
     }))
     .sort((a, b) => a.tier1Order - b.tier1Order || a.subOrder - b.subOrder)
 
-  return { candidate: candidate!, app: app!, ordered }
+  return { candidate: candidate!, app, ordered }
 }
 
-async function status() {
-  const { candidate, app, ordered } = await context()
+async function status(jobFilter?: string) {
+  const { candidate, app, ordered } = await context(jobFilter)
   const current = ordered.find((s) => s.id === app.current_stage_id)
   const index = ordered.findIndex((s) => s.id === app.current_stage_id)
 
@@ -114,8 +154,8 @@ async function status() {
   console.log("")
 }
 
-async function advance() {
-  const { app, ordered } = await context()
+async function advance(jobFilter?: string) {
+  const { app, ordered } = await context(jobFilter)
   const index = ordered.findIndex((s) => s.id === app.current_stage_id)
   const next = index >= 0 ? ordered[index + 1] : undefined
   if (!next) {
@@ -158,8 +198,8 @@ async function advance() {
   console.log("")
 }
 
-async function reset() {
-  const { app, ordered } = await context()
+async function reset(jobFilter?: string) {
+  const { app, ordered } = await context(jobFilter)
   const first = ordered[0]
 
   console.log(`\nResetting to ${first.name}`)
@@ -248,8 +288,13 @@ async function reset() {
 }
 
 const command = process.argv[2] ?? "status"
+const jobFilter = process.argv[3]
 const run = command === "advance" ? advance : command === "reset" ? reset : status
-run().catch((err) => {
+run(jobFilter).catch((err) => {
+  if (err instanceof Stop) {
+    console.log(`\n${err.message}\n`)
+    process.exit(1)
+  }
   console.error(err)
   process.exit(1)
 })

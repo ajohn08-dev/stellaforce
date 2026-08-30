@@ -2729,10 +2729,285 @@ const HARBORLINE: Company = {
 }
 
 // ===========================================================================
+// Fixture 4 — STELLAFORCE (the Sales Executive demo)
+// ===========================================================================
+
+/**
+ * The company behind the Sales Executive job.
+ *
+ * ⚠️ **Not linked to the job.** There is a real `clients` row named STELLAFORCE
+ * (`seed_stellaforce_client`) that `job_orders.client_id` points at, and this
+ * fixture shares no key with it — the two company models are still separate, as
+ * the /companies section of CLAUDE.md describes. `CompanyJob.id` here is a
+ * fixture id, not `job_orders.job_id`.
+ *
+ * What *is* deliberately kept in step is the **work-authorization answer**. The
+ * Sales Executive screening agent asks about visa status and is forbidden from
+ * promising anything; if this page said sponsorship was available, the knowledge
+ * base and the agent would contradict each other on the one topic where that is
+ * least affordable.
+ */
+const STELLAFORCE: Company = {
+  id: "co-stellaforce",
+  slug: "stellaforce",
+  preferredName: "STELLAFORCE",
+  legalName: "Stellaforce, Inc.",
+  tagline: "Agentic screening and interviewing for recruiting teams",
+  website: "https://stellaforce.ai",
+  linkedinUrl: null,
+  logoPath: null,
+  headquarters: "Charleston, South Carolina",
+  officeLocations: ["Charleston, South Carolina"],
+  countriesOfOperation: ["United States"],
+  industry: "AI & agentic recruiting technology",
+  subIndustry: "Talent acquisition software",
+  stage: "early_venture",
+  foundedYear: 2024,
+  employeeRange: "40–70",
+  operatingModel: "hybrid",
+  productCategories: ["Applicant tracking", "AI screening", "Interview automation"],
+  customerTypes: ["Mid-market B2B", "Staffing and RPO firms"],
+  verticals: ["Technology", "Professional services"],
+  accountOwner: "Anna John",
+  contractStatus: "active",
+  searchExclusivity: "Exclusive on go-to-market roles",
+  relationshipHealth: "strong",
+  internalPriority: "high",
+  responsivenessNotes: "Sales Director replies same-day; scheduling goes through Anna.",
+  disclosurePreset: "standard",
+  createdAt: "2026-08-30",
+  updatedAt: "2026-08-30",
+  knowledge: [
+    {
+      id: "ki-sf-01",
+      level: "company",
+      levelRefId: null,
+      kind: "one_liner",
+      title: "One-sentence description",
+      body: "STELLAFORCE builds agentic recruiting software — AI agents that screen, interview and evaluate candidates alongside the recruiters who own the hire.",
+      visibility: vis("cleared_for_candidates", "proactive", "published", {
+        source: "Company profile, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+    {
+      id: "ki-sf-02",
+      level: "company",
+      levelRefId: null,
+      kind: "product_overview",
+      title: "What we build",
+      body: "A recruiting platform where the pipeline runs itself between the moments that need a person. Voice agents run first-pass screens and structured interviews, transcripts and scorecards land against the candidate automatically, and the recruiter spends their time on judgement rather than scheduling.",
+      visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Company profile, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+    {
+      id: "ki-sf-03",
+      level: "company",
+      levelRefId: null,
+      kind: "evp",
+      title: "Why join",
+      body: "Small enough that a salesperson shapes the product roadmap by what they hear on calls, funded enough to sell against incumbents rather than around them. The go-to-market team is being built now, so the first hires set the motion instead of inheriting it.",
+      visibility: vis("cleared_for_candidates", "proactive", "published", {
+        source: "Company profile, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+    {
+      id: "ki-sf-04",
+      level: "company",
+      levelRefId: null,
+      kind: "culture",
+      title: "Culture & working style",
+      body: "Hybrid out of Charleston, with the go-to-market team in the office most of the week — deal reviews and customer conversations happen in a room. Written-first for decisions, direct about numbers, and allergic to pipeline theatre.",
+      visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Company profile, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+    {
+      id: "ki-sf-05",
+      level: "company",
+      levelRefId: null,
+      kind: "brief_note",
+      title: "Recruiter brief — go-to-market hiring",
+      body: "Charleston presence is a genuine requirement, not a preference: the Sales Director runs in-person deal reviews and expects the AE in the room. Candidates who need the H-1B lottery cannot be progressed — a transfer is workable, the lottery is not, and that has to be established on the first call rather than at offer.",
+      visibility: vis("recruiters_only", null, "published", {
+        source: "Intake call with the Sales Director, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+  ],
+  policies: [
+    {
+      id: "pol-sf-01",
+      group: "immigration",
+      key: "work_auth_requirement",
+      label: "Work authorization requirements",
+      value: "Must be authorized to work in the US at the time of hire.",
+      immigrationValue: "confirmed_yes",
+      candidateFacingText:
+        "You'll need to be authorized to work in the US when you start. A recruiter can talk through the specifics with you.",
+      visibility: vis("cleared_for_candidates", "escalate", "published", {
+        source: "Intake call with the Sales Director, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+    {
+      id: "pol-sf-02",
+      group: "immigration",
+      key: "sponsorship_general",
+      label: "Visa sponsorship policy",
+      // `case_by_case` rather than yes or no, because both are wrong: an H-1B
+      // transfer is workable and a lottery petition is not, and no single
+      // boolean says that. `escalate` keeps the agent out of it entirely.
+      value: "H-1B transfers considered case by case. No lottery petitions.",
+      immigrationValue: "case_by_case",
+      candidateFacingText: null,
+      visibility: vis("cleared_for_candidates", "escalate", "published", {
+        source: "Intake call with the Sales Director, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+    {
+      id: "pol-sf-03",
+      group: "employment",
+      key: "work_model",
+      label: "Remote/hybrid/on-site policy",
+      value: "Hybrid, Charleston SC. Go-to-market roles are in the office most of the week.",
+      candidateFacingText:
+        "This is a hybrid role based in Charleston, South Carolina — the sales team is in the office most of the week and meets customers in person.",
+      visibility: vis("cleared_for_candidates", "proactive", "published", {
+        source: "Company profile, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+  ],
+  questions: [],
+  customQuestions: [],
+  teams: [
+    {
+      id: "team-sf-gtm",
+      parentTeamId: null,
+      name: "Go-to-Market",
+      mission: "Take an agentic recruiting platform to mid-market buyers who have never bought one before.",
+      description:
+        "The commercial side of STELLAFORCE — sales, partnerships and the customer relationships that follow a signature.",
+      leaderId: "sh-sf-01",
+      sizeRange: "6–10",
+      operatingModel: "hybrid",
+      locations: ["Charleston, South Carolina"],
+      timezoneSpread: "US Eastern",
+      workingStyle: "In the office most of the week; customer meetings in person where they can be.",
+      collaborationCadence: "Monday pipeline review, Thursday deal desk.",
+      dayInTheLife: null,
+      goals: ["Build a repeatable mid-market motion", "First 20 reference customers"],
+      crossFunctionalPartners: ["Product", "Customer Success"],
+      commonRoleFamilies: ["Account Executive", "Sales Engineer"],
+      cultureNotes: null,
+      internalNotes: "Being built now — the Sales Executive is the first AE hire under the Director.",
+      visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Intake call with the Sales Director, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+      createdBecauseJobId: "job-sf-01",
+    },
+  ],
+  stakeholders: [
+    {
+      id: "sh-sf-01",
+      name: "Marcus Reyes",
+      title: "Sales Director",
+      role: "hiring_manager",
+      candidateFacingBio:
+        "Marcus leads go-to-market at STELLAFORCE and is the person this role reports to. He runs the hiring manager and executive conversations himself.",
+      internalNotes: "Decides quickly. Wants specifics on quota attainment, not narrative.",
+      visibility: vis("cleared_for_candidates", "on_request", "published", {
+        source: "Intake call with the Sales Director, Aug 2026",
+        verification: "verified",
+        lastVerifiedAt: "2026-08-30",
+        verifiedBy: "Anna John",
+      }),
+    },
+  ],
+  jobs: [
+    {
+      id: "job-sf-01",
+      title: "Sales Executive",
+      teamId: "team-sf-gtm",
+      location: "Charleston, SC",
+      travel: "Occasional regional travel to customer sites.",
+      reportsTo: "Sales Director",
+      rolePurpose:
+        "Own the full mid-market sales cycle — prospecting through signed contract — for STELLAFORCE's agentic recruiting platform.",
+      compensation: null,
+      // Mirrors pol-sf-02 deliberately: a job-level answer that disagreed with
+      // the company policy is exactly what the cascade exists to prevent.
+      sponsorshipPolicy: "case_by_case",
+      typicalWeek:
+        "Pipeline review Monday, customer conversations midweek — several of them in person — and deal desk on Thursday.",
+      first90DayOutcomes: [
+        "Territory segmented and an outbound motion running",
+        "First self-sourced opportunities in pipeline",
+        "One deal carried to commercial terms",
+      ],
+      roleRisks: null,
+      overrides: [],
+      status: "open",
+      // The real nine-stage pipeline, mirrored from
+      // `seed_sales_executive_workflow_template`. Fixture stand-in for
+      // `job_workflow_sub_stages` — see the type's note.
+      interviewStages: [
+        "Sourced",
+        "Pre-Screening",
+        "Recruiter Screen",
+        "Hiring Manager Interview",
+        "Who Interview",
+        "Case Study Interview",
+        "Executive Round",
+        "Offer",
+        "Close",
+      ],
+    },
+  ],
+  activity: [
+    {
+      id: "act-sf-01",
+      event: "created",
+      entityLabel: "Company — STELLAFORCE",
+      actor: "Anna John",
+      actorType: "user",
+      at: "2026-08-30T09:00:00Z",
+      detail: "Created alongside the Sales Executive req. Disclosure preset: Standard.",
+    },
+  ],
+  versions: [],
+}
+
+// ===========================================================================
 // Exports
 // ===========================================================================
 
-export const MOCK_COMPANIES: Company[] = [LUMAGRID, VERITY, HARBORLINE]
+export const MOCK_COMPANIES: Company[] = [LUMAGRID, VERITY, HARBORLINE, STELLAFORCE]
 
 export function getMockCompany(id: string): Company | undefined {
   return MOCK_COMPANIES.find((c) => c.id === id || c.slug === id)

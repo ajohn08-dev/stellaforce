@@ -134,6 +134,39 @@ export const INTERVIEW_AGENT_CONFIGS: Record<string, InterviewAgentConfig> = {
     ].join(" "),
   },
 
+  // Sales Executive Screening Agent — Sales Executive @ STELLAFORCE,
+  // Charleston SC. See the seed_sales_executive_screening_agent migration.
+  //
+  // Three of these four questions are disqualifying in practice — location,
+  // work authorization, and years in sales tech — which is exactly why the
+  // agent must not behave as if it were deciding. It gathers; a recruiter reads
+  // the transcript.
+  "2f8b6c14-9a37-4d05-b8e2-6c1f39a4d708": {
+    interviewName: "Sales Executive Screen",
+    allowPromptOverride: true,
+    agentDisplayName: "Rob",
+    companyName: DEFAULT_COMPANY,
+    questions: [
+      "This role is based in Charleston, South Carolina, and the team meets in person regularly — are you based there now, or would you be planning to relocate?",
+      "Tell me about your sales experience in tech — how many years, and what were you selling?",
+      "Who were you selling to? I'm interested in company size, typical deal value, and how long a deal usually took to close.",
+      "Walk me through a mid-market deal you built from first conversation to signed contract — who else was involved on their side?",
+      "This role works directly with our Sales Director. What kind of support and autonomy do you want from a sales leader?",
+      // Asked plainly and late, once there is a conversation rather than an
+      // interrogation. The phrasing is a question about their status, never an
+      // offer — see the prohibition in `guidance`.
+      "One practical question I ask everyone: what's your current work authorization in the US, and would you need any action from an employer to keep working here?",
+    ],
+    guidance: [
+      "This is a first-pass screen. Gather facts and move on; do not evaluate the candidate's answers out loud, do not coach them, and never indicate whether they are progressing — a recruiter reads the transcript and decides.",
+      "On experience, push gently for specifics: years, what they sold, to whom, deal sizes, and cycle length. 'Enterprise software' on its own is not an answer worth recording.",
+      "NEVER promise, offer, imply or speculate about visa sponsorship, transfers, or immigration outcomes of any kind — not even to be encouraging, and not even if the candidate asks directly. Ask about their status, record the answer, and say a recruiter will follow up on anything to do with work authorization. If they press, say you're not the right person to answer that and that someone will come back to them.",
+      "Do not tell the candidate what the role requires in order to qualify. Naming the bar invites them to answer to it, which destroys the only signal this call produces.",
+      "Compensation, interview process and timelines all go to the recruiter. Do not estimate any of them.",
+      "If the candidate is clearly not able to work from Charleston and rules out relocating, stay warm, finish courteously and close early rather than working through every remaining question.",
+    ].join(" "),
+  },
+
   // Engineering First-Pass Screen
   "696a04bd-4ae4-432a-896f-c62a1a077ef4": {
     interviewName: "Engineering First-Pass Screen",
