@@ -289,16 +289,42 @@ export async function getClients(): Promise<ClientRow[]> {
   return data ?? []
 }
 
+/**
+ * Job rows for the list page, each with how many candidates are actually in its
+ * pipeline.
+ *
+ * The count is an **aggregate embed**, not a second round trip and not a
+ * `length` on fetched rows: the list renders every job on the account, and
+ * pulling every application to count them would grow with the busiest customer.
+ *
+ * `active` only, matching the field it feeds (`candidates_in_pipeline`). Now
+ * that Hold and Reject exist, "candidates" and "candidates still in play" are
+ * different numbers, and this column has always claimed the second.
+ *
+ * The filter is on the embed and deliberately **not** `applications!inner(...)`:
+ * an inner join would drop every job with no active candidate, so a job with
+ * nobody in it would vanish from the jobs list rather than reading 0. Verified
+ * against the database, since that failure would look like a missing job rather
+ * than a bad count.
+ */
 export async function getJobOrders(): Promise<
-  (JobOrderRow & { client: ClientRow | null })[]
+  (JobOrderRow & { client: ClientRow | null; active_application_count: number })[]
 > {
   if (!isSupabaseConfigured) return []
   const supabase = await createClient()
   const { data } = await supabase
     .from("job_orders")
-    .select("*, client:clients(*)")
+    .select("*, client:clients(*), applications(count)")
+    .eq("applications.status", "active")
     .order("created_at", { ascending: false })
-  return (data ?? []) as (JobOrderRow & { client: ClientRow | null })[]
+
+  return ((data ?? []) as unknown as (JobOrderRow & {
+    client: ClientRow | null
+    applications: { count: number }[] | null
+  })[]).map((job) => {
+    const { applications, ...rest } = job
+    return { ...rest, active_application_count: applications?.[0]?.count ?? 0 }
+  })
 }
 
 export async function getJobOrder(id: string): Promise<

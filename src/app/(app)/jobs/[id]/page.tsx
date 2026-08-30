@@ -43,7 +43,12 @@ export default async function JobWorkspacePage({
   const job = await getJobOrder(id)
   if (!job) notFound()
 
-  const mockJob = toMockJob(job, { candidatesInPipeline: job.applications.length })
+  // Active only, matching the jobs list. Counting every application here and
+  // active ones there would make the same job read 15 on one screen and 14 on
+  // the other the moment somebody is rejected.
+  const mockJob = toMockJob(job, {
+    candidatesInPipeline: job.applications.filter((a) => a.status === "active").length,
+  })
   const hasCandidates = job.applications.length > 0
 
   // Draft → the 5-step setup wizard. Published jobs can also re-enter the
