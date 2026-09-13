@@ -3,6 +3,7 @@ import "server-only"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { serverEnv } from "@/lib/env"
 import { buildAuthUrl, STATE_TTL_SECONDS } from "@/lib/google-calendar/oauth"
+import { checkOutbound } from "@/lib/server/outbound-gate"
 
 /**
  * `google_calendar_connections` has no RLS policy for `authenticated` (it
@@ -35,7 +36,7 @@ export type CalendarInviteResult =
   | { ok: true }
   | {
       ok: false
-      code: "already_connected" | "not_configured" | "webhook_failed"
+      code: "already_connected" | "not_configured" | "webhook_failed" | "suppressed"
       error: string
     }
 
@@ -73,9 +74,27 @@ export async function sendCalendarConnectInvite(
     // asked to interview for — best-effort, the invite still sends without it.
     const { data: job } = await admin
       .from("job_orders")
-      .select("title, clients(client_name)")
+      .select("title, client_id, clients(client_name)")
       .eq("job_id", input.jobId)
       .maybeSingle()
+
+    // One gate for all four triggers — adding a member, the publish-time loop
+    // that emails *every* member at once, the manual resend, and the automatic
+    // re-invite on a revoked token. None of them passes an override: a person
+    // clicking "resend" is asking for the normal behaviour, not consciously
+    // overriding an account that has been switched off.
+    const gate = await checkOutbound(admin, {
+      channel: "team_email",
+      clientId: job?.client_id ?? null,
+      scope: { job_id: input.jobId },
+    })
+    if (!gate.allowed) {
+      return {
+        ok: false,
+        code: "suppressed",
+        error: `${gate.message} No calendar invite was sent to ${input.name}.`,
+      }
+    }
 
     const connectUrl = buildAuthUrl({
       email: input.email,

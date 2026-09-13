@@ -11,6 +11,7 @@ import { getCurrentProfile } from "@/lib/auth";
 import { getSwitchableProfiles } from "@/lib/data";
 import { IMPERSONATOR_COOKIE } from "@/lib/impersonation";
 import { companyAccessFor } from "@/lib/company-access";
+import { scopeStateFor } from "@/lib/server/automation-scope-state";
 
 export default async function AppLayout({
   children,
@@ -30,6 +31,9 @@ export default async function AppLayout({
   // access object, not as resolved nav items — a NavItem carries a lucide icon
   // component, which can't cross into a Client Component.
   const companyAccess = companyAccessFor(profile);
+  // The viewer's own account, so a recruiter wondering why nothing has been
+  // sent is told on every page rather than having to find /automations.
+  const automationSwitch = profile ? await scopeStateFor(profile.client_id) : null;
 
   return (
     <SidebarProvider initialCollapsed={sidebarCollapsed}>
@@ -53,6 +57,7 @@ export default async function AppLayout({
                   switchableUsers={switchableUsers}
                   isImpersonating={isImpersonating}
                   companyAccess={companyAccess}
+                  automationSwitch={automationSwitch}
                 />
                 <main className="flex-1 overflow-y-auto bg-brand-neutral-50">{children}</main>
               </div>

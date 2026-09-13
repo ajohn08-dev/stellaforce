@@ -9,6 +9,8 @@ import { ViewToggle } from "@/components/candidates/view-toggle"
 import { SupabaseNotice } from "@/components/supabase-notice"
 import { parseTiersParam } from "@/lib/candidate-tiers"
 import { getCandidates } from "@/lib/data"
+import { getCurrentProfile } from "@/lib/auth"
+import { isStellaforceStaff } from "@/lib/permissions"
 
 export default async function CandidatesPage({
   searchParams,
@@ -23,6 +25,8 @@ export default async function CandidatesPage({
     q: get("q"),
   })
   const view = get("view") === "grid" ? "grid" : "list"
+  // Advanced Search is Stellaforce-internal for V1; the menu entry follows.
+  const canUseAdvancedSearch = isStellaforceStaff(await getCurrentProfile())
 
   return (
     <div
@@ -37,7 +41,7 @@ export default async function CandidatesPage({
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <CandidateSearch />
-            <CandidateFilterButton />
+            <CandidateFilterButton canUseAdvancedSearch={canUseAdvancedSearch} />
           </div>
           <AddCandidateDialog />
         </div>

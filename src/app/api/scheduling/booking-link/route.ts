@@ -6,6 +6,7 @@ import { isN8nAuthorized } from "@/lib/server/n8n-auth"
 import { resolveAutomationWithClient } from "@/lib/automation-settings"
 import { logAutomationSkipped } from "@/lib/server/activity"
 import { BOOKING_AUTOMATION_KEY } from "@/lib/server/booking-request"
+import { automationSkipReason } from "@/lib/scheduling-reason-codes"
 import type { SchedulingReasonCode } from "@/lib/scheduling-reason-codes"
 
 export const runtime = "nodejs"
@@ -115,16 +116,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "Automation not found" }, { status: 404 })
   }
 
-  const allowed =
-    automation.effectiveState === "active" && !automation.isLocked && automation.isApplicable
+  // Shares `automationSkipReason` with the app-side gate in booking-request.ts,
+  // so n8n and the recruiter's timeline can never name different causes for the
+  // same skip. `isApplicable` is checked separately: an unpublished definition
+  // is not a policy decision.
+  const skipReason = automationSkipReason(automation)
+  const allowed = skipReason === null && automation.isApplicable
 
   const reason: GateResponse["reason"] = allowed
     ? "active"
-    : automation.isLocked
-      ? "AUTOMATION_LOCKED"
-      : automation.effectiveState === "paused"
-        ? "AUTOMATION_PAUSED_FOR_JOB"
-        : "AUTOMATION_OFF_BY_POLICY"
+    : (skipReason ?? "AUTOMATION_OFF_BY_POLICY")
 
   if (!allowed) {
     // n8n exits successfully after this — a skip is not an error. The event is

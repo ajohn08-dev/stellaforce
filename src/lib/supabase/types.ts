@@ -31,6 +31,8 @@ export type Database = {
           reverses_event_id: string | null
           severity: Database["public"]["Enums"]["event_severity"]
           sub_stage_id: string | null
+          suppressed_at: string | null
+          suppressed_reason: string | null
           system_source: string | null
         }
         Insert: {
@@ -49,6 +51,8 @@ export type Database = {
           reverses_event_id?: string | null
           severity?: Database["public"]["Enums"]["event_severity"]
           sub_stage_id?: string | null
+          suppressed_at?: string | null
+          suppressed_reason?: string | null
           system_source?: string | null
         }
         Update: {
@@ -67,6 +71,8 @@ export type Database = {
           reverses_event_id?: string | null
           severity?: Database["public"]["Enums"]["event_severity"]
           sub_stage_id?: string | null
+          suppressed_at?: string | null
+          suppressed_reason?: string | null
           system_source?: string | null
         }
         Relationships: [
@@ -775,6 +781,87 @@ export type Database = {
           },
           {
             foreignKeyName: "automation_bindings_workflow_template_id_fkey"
+            columns: ["workflow_template_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_scope_settings: {
+        Row: {
+          category: string | null
+          company_scope_client_id: string | null
+          created_at: string
+          id: string
+          job_id: string | null
+          resume_at: string | null
+          scope: Database["public"]["Enums"]["settings_scope"]
+          set_by: string | null
+          state: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id: string | null
+          updated_at: string
+          workflow_template_id: string | null
+        }
+        Insert: {
+          category?: string | null
+          company_scope_client_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          resume_at?: string | null
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          set_by?: string | null
+          state: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id?: string | null
+          updated_at?: string
+          workflow_template_id?: string | null
+        }
+        Update: {
+          category?: string | null
+          company_scope_client_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          resume_at?: string | null
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          set_by?: string | null
+          state?: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id?: string | null
+          updated_at?: string
+          workflow_template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_scope_settings_company_scope_client_id_fkey"
+            columns: ["company_scope_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "automation_scope_settings_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "automation_scope_settings_set_by_fkey"
+            columns: ["set_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_scope_settings_tenant_client_id_fkey"
+            columns: ["tenant_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "automation_scope_settings_workflow_template_id_fkey"
             columns: ["workflow_template_id"]
             isOneToOne: false
             referencedRelation: "workflow_templates"
@@ -4290,6 +4377,10 @@ export type AutomationDefinitionVersionRow =
   SchemaTables["automation_definition_versions"]["Row"]
 export type AutomationBindingRow = SchemaTables["automation_bindings"]["Row"]
 export type AutomationBindingInsert = SchemaTables["automation_bindings"]["Insert"]
+export type AutomationScopeSettingRow =
+  SchemaTables["automation_scope_settings"]["Row"]
+export type AutomationScopeSettingInsert =
+  SchemaTables["automation_scope_settings"]["Insert"]
 
 // ── Agents / call recordings (screening-agent registry + interview/call log) ─
 export type AgentRow = SchemaTables["agents"]["Row"]

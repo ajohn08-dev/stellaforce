@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import { logActivity } from "@/lib/server/activity"
 import { encryptToken } from "@/lib/google-calendar/crypto"
 import {
   decodeState,
@@ -212,7 +213,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     .eq("job_id", state.jobId)
     .maybeSingle()
 
-  await admin.from("activity_events").insert({
+  // Through `logActivity` rather than a direct insert: that is the one writer
+  // that stamps `suppressed_at`, and a bypass leaves this event visible to the
+  // outbox on an account that has automations switched off.
+  await logActivity(admin, {
     event_type: "calendar_connected",
     client_id: job?.client_id ?? null,
     job_id: state.jobId,

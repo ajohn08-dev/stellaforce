@@ -18,6 +18,12 @@ export const SCHEDULING_REASON_CODES = [
   "AUTOMATION_OFF_BY_POLICY",
   "AUTOMATION_PAUSED_FOR_JOB",
   "AUTOMATION_LOCKED",
+  // The account-wide switch, which is a different decision from a per-rule one:
+  // nothing about this job or this automation is wrong, the account simply
+  // isn't running automations. Distinct codes because the recommended action
+  // differs — nobody can fix this on the job.
+  "ACCOUNT_AUTOMATIONS_OFF",
+  "ACCOUNT_AUTOMATIONS_PAUSED",
   // The candidate's link
   "CANDIDATE_BOOKING_TOKEN_INVALID",
   "CANDIDATE_BOOKING_TOKEN_EXPIRED",
@@ -96,6 +102,19 @@ export const SCHEDULING_REASONS: Record<SchedulingReasonCode, ReasonMeta> = {
   AUTOMATION_LOCKED: {
     message: "This automation is system-managed and can't be changed here.",
     recommendedAction: null,
+    retryable: false,
+    candidateMessage: null,
+  },
+
+  ACCOUNT_AUTOMATIONS_OFF: {
+    message: "Automations are switched off for this account, so nothing was sent.",
+    recommendedAction: "Do it yourself here, or turn automations back on in Platform settings.",
+    retryable: false,
+    candidateMessage: null,
+  },
+  ACCOUNT_AUTOMATIONS_PAUSED: {
+    message: "Automations are paused for this account, so nothing was sent.",
+    recommendedAction: "Do it yourself here, or resume automations in Platform settings.",
     retryable: false,
     candidateMessage: null,
   },
@@ -190,6 +209,34 @@ export function candidateMessageFor(code: SchedulingReasonCode | null | undefine
 }
 
 /**
+ * Why a resolved automation isn't running — the one place that mapping is made.
+ *
+ * Both booking gates (`src/lib/server/booking-request.ts` and
+ * `/api/scheduling/booking-link`) ask this, and they must give a recruiter the
+ * same sentence for the same cause. The account-wide switch is checked first
+ * because it subsumes the others: when an account is off, every automation also
+ * reports `isLocked`, and answering "system-managed" there would be true of the
+ * type and useless to the reader.
+ *
+ * Returns null when the automation is running normally.
+ */
+export function automationSkipReason(a: {
+  effectiveState: string
+  isLocked: boolean
+  scopeSwitch: { state: string } | null
+}): SchedulingReasonCode | null {
+  if (a.scopeSwitch) {
+    return a.scopeSwitch.state === "paused"
+      ? "ACCOUNT_AUTOMATIONS_PAUSED"
+      : "ACCOUNT_AUTOMATIONS_OFF"
+  }
+  if (a.isLocked) return "AUTOMATION_LOCKED"
+  if (a.effectiveState === "paused") return "AUTOMATION_PAUSED_FOR_JOB"
+  if (a.effectiveState !== "active") return "AUTOMATION_OFF_BY_POLICY"
+  return null
+}
+
+/**
  * Codes that describe a deliberate policy decision rather than something going
  * wrong. These are logged as `automation_skipped_by_policy` at `info`, never as
  * a `scheduling_failed` alert — a paused automation is the system obeying, and
@@ -199,7 +246,9 @@ export function isPolicySkip(code: SchedulingReasonCode): boolean {
   return (
     code === "AUTOMATION_OFF_BY_POLICY" ||
     code === "AUTOMATION_PAUSED_FOR_JOB" ||
-    code === "AUTOMATION_LOCKED"
+    code === "AUTOMATION_LOCKED" ||
+    code === "ACCOUNT_AUTOMATIONS_OFF" ||
+    code === "ACCOUNT_AUTOMATIONS_PAUSED"
   )
 }
 

@@ -6,7 +6,7 @@ import { TodaysFocusCard } from "@/components/home/todays-focus-card"
 import { RisksCard } from "@/components/home/risks-card"
 import { BenchStrengthCard } from "@/components/home/bench-strength-card"
 import { AgentHealthCard } from "@/components/home/agent-health-card"
-import { HomeChatPanel } from "@/components/home/home-chat-panel"
+import { HomeAskBar } from "@/components/home/home-ask-bar"
 import {
   MOCK_AGENT_HEALTH,
   MOCK_BENCH_STRENGTH,
@@ -50,9 +50,7 @@ export function RecruiterHome() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
-        <HomeChatPanel prompts={SUGGESTED_PROMPTS} />
-      </div>
+      <HomeAskBar prompts={SUGGESTED_PROMPTS} />
     </div>
   )
 }

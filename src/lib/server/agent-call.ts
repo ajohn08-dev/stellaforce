@@ -1,6 +1,7 @@
 import "server-only"
 
 import { serverEnv } from "@/lib/env"
+import { checkOutbound } from "@/lib/server/outbound-gate"
 import { interviewFieldsFor } from "@/lib/interview-agent-config"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
@@ -17,8 +18,13 @@ import type { Database } from "@/lib/supabase/types"
  * ⚠️ **The difference from the test-call button is that nobody clicks this.**
  * A cron dispatching on a timer will keep dialling whatever it is pointed at,
  * and all fourteen QA fixture candidates share one real phone number and one
- * real inbox (CLAUDE.md, "QA test fixtures"). Three independent guards below,
+ * real inbox (CLAUDE.md, "QA test fixtures"). Four independent guards below,
  * each of which alone is enough to stop a call.
+ *
+ * The guards answer four different questions and are ordered by whose decision
+ * they carry: the customer's (the account switch), the operator's (the deploy
+ * flag), the fixture safeguard, and the physical one (a handset can only hold
+ * one conversation).
  */
 
 export type AgentCallClient = SupabaseClient<Database>
@@ -103,7 +109,26 @@ export async function dispatchAgentCall(
   supabase: AgentCallClient,
   ctx: AgentCallContext
 ): Promise<AgentCallResult> {
-  // ── Guard 1: the global kill switch, which defaults to off ────────────────
+  // ── Guard 0: the account's own switch ─────────────────────────────────────
+  // First, because it is the only guard a customer controls and the only one
+  // whose answer a recruiter is owed an explanation for. The env flag below is
+  // a deploy-wide safety catch; this is policy.
+  const gate = await checkOutbound(supabase, {
+    channel: "voice_call",
+    clientId: ctx.clientId,
+    category: "scheduling",
+    scope: {
+      application_id: ctx.applicationId,
+      candidate_id: ctx.candidateId,
+      job_id: ctx.jobId,
+      sub_stage_id: ctx.subStageId,
+    },
+  })
+  if (!gate.allowed) {
+    return { ok: false, kind: "suppressed", reason: gate.reasonCode }
+  }
+
+  // ── Guard 1: the deploy-wide kill switch, which defaults to off ───────────
   if (!serverEnv.schedulingOutboundEnabled) {
     return { ok: false, kind: "suppressed", reason: "outbound_disabled" }
   }

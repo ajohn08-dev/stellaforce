@@ -20,7 +20,12 @@ Evaluation is layered: **L1** job template (`job_competencies`,
 (`candidate_client_fit`).
 
 **Table count:** 56 tables. Tables marked **[tenant RLS]** enforce
-client-scoped row access; all others use the permissive `authenticated`-ALL
+client-scoped row access. The **candidate domain** (`candidates` + its child
+tables, `resumes`, `applications`, `candidate_client_fit`, `placements`,
+`interactions`) enforces the candidate-visibility rule described in
+[CLAUDE.md](CLAUDE.md) — Stellaforce sees every candidate, a client sees only
+the candidates it entered plus those submitted to its jobs. Only the `skills`
+and `tools` lookup vocabularies still use the permissive `authenticated`-ALL
 policy (see RLS model at the end).
 
 ---
@@ -356,6 +361,50 @@ are written by users, never seeded. `candidate_data_updated` is deliberately
 **not** seeded — it names no field group and no action, so no rule can be written
 against it. Guarded by `npm run automation-check`.
 
+**automation_scope_settings** **[tenant RLS]** (14 cols) — *is this account
+running automations at all*. A different question from a binding, which answers
+*what is the state of this rule here*, and therefore a separate table rather
+than a binding with a null `automation_definition_id`: a nullable FK carrying
+semantic weight is the same footgun `tenant_client_id` was split to remove.
+`id`, `state` (automation_state — **the same three values**, reused rather than a
+new `live | manual` vocabulary: `paused` and `off` are different facts with
+different lifetimes), `category` (text, nullable — null = every category,
+otherwise an `automation_definitions.category`), `resume_at` (timestamptz,
+paused-until), `set_by` (fk profiles), `created_at`, `updated_at`, plus
+the same four scope columns and generated `scope` as `automation_bindings`, so
+`resolveFromRows` walks **one** chain for both.
+
+- **Resolution is narrowest-wins, not a union.** Global is a *default for
+  accounts that haven't decided*, never a ceiling — so Stellaforce can be `off`
+  while Naehas runs, and the reverse. An explicit account-level `active` beats a
+  global `off`. (Stellaforce is itself a `clients` row and `job_orders.client_id`
+  is NOT NULL, so there is one kind of account and no separate internal level.)
+- **At equal scope a category row beats a catch-all; a narrower scope beats
+  both.**
+- **It is a ceiling and a lock.** When it is not `active`, every automation at
+  or below reports `effectiveState` = its state, `isLocked: true`, and all three
+  `can*` false — unlike an inherited-`off` *binding*, which a job may turn back
+  on. One governs a rule's default; the other governs whether the account runs.
+  `sourceChain` is left untouched so "would be Active · Global library" is still
+  answerable.
+- **`resume_at` is honoured at resolve time, not by a sweeper** — an expired
+  pause stops applying whether or not any cron has run; `scheduling-sweep` only
+  deletes the dead row. CHECK: `resume_at` only on a `paused` row.
+- Four partial unique indexes on `(target, coalesce(category,''))`, plus the
+  same four CHECKs as `automation_bindings`.
+- RLS write requires **`current_profile_is_account_admin()`** — a new helper,
+  because every existing `current_profile_*` answers tenancy and none answers
+  authority. Read is open to the tenant so a recruiter can be told why nothing
+  was sent.
+
+**Seeded:** one global row at `off`, so an account runs nothing until it is
+turned on. The resolver's own fallback stays `active` (no rows = running) — the
+default is deliberately *data*, changeable from Platform settings rather than by
+another migration. There is no `reason` column: it was prompted on every flip,
+which is friction that gets filled with "." and tells nobody anything; `audit_log`
+records who changed what and from which state. Guarded by
+`npm run automation-scope-check` and section 5b of `npm run scheduling-e2e`.
+
 ### Interview scheduling
 
 Agent-interview self-scheduling: a candidate gets a one-time link, picks a time
@@ -477,7 +526,20 @@ timelines + RLS), `sub_stage_id` (fk), `actor_type` (default user),
 `actor_profile_id` (fk), `system_source` (text — e.g. `n8n:sla_cron`), `severity`
 (default info), `payload` (jsonb), `reverses_event_id` (self-fk — compensation for
 reopen), `idempotency_key` (text, **unique** — dedupes at-least-once redelivery),
-`dispatched_at` (timestamptz — set when side-effects/n8n consumed it), `created_at`.
+`dispatched_at` (timestamptz — set when side-effects/n8n consumed it), `created_at`,
+plus two suppression columns:
+- `suppressed_at` (timestamptz) / `suppressed_reason` (text — `automations_off` |
+  `automations_paused`). Stamped by `logActivity` when the event's account has
+  automations switched off (`automation_scope_settings`). The row is still
+  written in full — the timeline is the record — and only the **outbox drain**
+  skips it, so the drain predicate is
+  `dispatched_at is null AND suppressed_at is null`
+  (`idx_activity_events_undispatched`). Orthogonal to `dispatched_at`, which
+  keeps meaning "a workflow consumed this" and which **nothing in the app may
+  set**; overloading it would make "dispatched" mean "never dispatched".
+  Set by the writer, never by a caller — `ActivityInput` deliberately has no
+  field for either, so no call site can forget it or fake it.
+
 CHECK: at least one of candidate_id/job_id/application_id set.
 
 **application_stage_history** (9 cols) — `id`, `application_id` (fk cascade),

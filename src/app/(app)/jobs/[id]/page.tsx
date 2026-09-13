@@ -23,6 +23,7 @@ import {
 } from "@/lib/data"
 import { getCurrentProfile } from "@/lib/auth"
 import { resolveAutomations } from "@/lib/automation-settings"
+import { scopeStateFor } from "@/lib/server/automation-scope-state"
 import { buildJobEvalContext, toBoardStages, toMockJob } from "@/lib/job-adapter"
 import {
   buildPulseActions,
@@ -169,6 +170,9 @@ export default async function JobWorkspacePage({
     nowMs,
   })
   const pulseFilters = buildPulseFilterOptions(subStages, pipeline.applications)
+  // This job's account, which is not necessarily the viewer's: a Stellaforce
+  // recruiter working a client's req needs the client's status, not their own.
+  const automationSwitch = await scopeStateFor(job.client_id)
   const inPipeline = new Set(pipeline.applications.map((a) => a.candidate_id))
   const candidateOptions = candidates
     .filter((c) => !inPipeline.has(c.candidate_id))
@@ -199,6 +203,7 @@ export default async function JobWorkspacePage({
           candidateOptions={pulseFilters.candidates}
           stages={stages}
           jobEvalContext={jobEvalContext}
+          automationSwitch={automationSwitch}
         />
       </div>
     </div>

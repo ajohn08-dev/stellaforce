@@ -3,6 +3,8 @@ import { timingSafeEqual } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 
 import { serverEnv } from "@/lib/env"
+import { logActivity } from "@/lib/server/activity"
+import { checkOutbound } from "@/lib/server/outbound-gate"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 /**
@@ -111,6 +113,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 4) Find breaches, record each, collect the email list.
   const breaches: BreachOut[] = []
+  /** Breaches recorded but deliberately not emailed. Reported, never silent. */
+  let suppressed = 0
   for (const r of activeRows) {
     const app = r.application
     const threshold = (app?.job_id && jobHours.get(app.job_id)) || globalHours
@@ -123,26 +127,38 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       [app?.candidate?.first_name, app?.candidate?.last_name].filter(Boolean).join(" ") || "Candidate"
 
     // Record: one activity_events row (system, alert), dedup'd once per day.
-    await supabase.from("activity_events").upsert(
-      {
-        event_type: "stage_sla_breached",
-        client_id: app?.client_id ?? null,
-        candidate_id: app?.candidate_id ?? null,
-        job_id: app?.job_id ?? null,
-        application_id: r.application_id,
-        sub_stage_id: r.sub_stage_id,
-        actor_type: "system",
-        actor_profile_id: null,
-        system_source: "n8n:sla_cron",
-        severity: "alert",
-        payload: { days_in_stage: daysIn, threshold_hours: threshold, stage_name: stageName },
-        idempotency_key: `stage_sla_breached:${r.application_id}:${r.sub_stage_id}:${today}`,
-      },
-      { onConflict: "idempotency_key", ignoreDuplicates: true }
-    )
+    // Through `logActivity` rather than a direct insert, so an account that
+    // isn't running automations gets the row stamped `suppressed_at` like every
+    // other event -- a bypass here is exactly how one workflow keeps emailing.
+    await logActivity(supabase, {
+      event_type: "stage_sla_breached",
+      client_id: app?.client_id ?? null,
+      candidate_id: app?.candidate_id ?? null,
+      job_id: app?.job_id ?? null,
+      application_id: r.application_id,
+      sub_stage_id: r.sub_stage_id,
+      actor_type: "system",
+      system_source: "n8n:sla_cron",
+      severity: "alert",
+      payload: { days_in_stage: daysIn, threshold_hours: threshold, stage_name: stageName },
+      idempotency_key: `stage_sla_breached:${r.application_id}:${r.sub_stage_id}:${today}`,
+    })
     // Flip the red sticker (idempotent).
     if (!r.sla_breached) {
       await supabase.from("application_stage_history").update({ sla_breached: true }).eq("id", r.id)
+    }
+
+    // The breach is always recorded -- a recruiter must still see it in-platform
+    // -- but the email list is gated per account. One cron run spans every
+    // customer, so this is asked per breach rather than once for the run.
+    const gate = await checkOutbound(supabase, {
+      channel: "sla_email",
+      clientId: app?.client_id ?? null,
+      scope: { application_id: r.application_id, job_id: app?.job_id ?? null },
+    })
+    if (!gate.allowed) {
+      suppressed++
+      continue
     }
 
     breaches.push({
@@ -159,5 +175,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     })
   }
 
-  return NextResponse.json({ ok: true, count: breaches.length, breaches }, { status: 200 })
+  return NextResponse.json(
+    { ok: true, count: breaches.length, suppressed, breaches },
+    { status: 200 }
+  )
 }

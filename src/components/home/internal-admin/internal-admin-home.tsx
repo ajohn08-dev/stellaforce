@@ -1,5 +1,5 @@
 import { HomeDateRangePicker } from "@/components/home/home-date-range-picker"
-import { HomeChatPanel } from "@/components/home/home-chat-panel"
+import { HomeAskBar } from "@/components/home/home-ask-bar"
 import { MultiSelectFilterChip } from "@/components/home/multi-select-filter-chip"
 import { InternalAdminFilterButton } from "@/components/home/internal-admin/internal-admin-filter-button"
 import { InternalAdminMomentumCard } from "@/components/home/internal-admin/internal-admin-momentum-card"
@@ -61,9 +61,7 @@ export function InternalAdminHome() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
-        <HomeChatPanel prompts={INTERNAL_ADMIN_SUGGESTED_PROMPTS} />
-      </div>
+      <HomeAskBar prompts={INTERNAL_ADMIN_SUGGESTED_PROMPTS} />
     </div>
   )
 }

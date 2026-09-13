@@ -73,6 +73,9 @@ export const SETTINGS_NAV_SECTION: NavSection = {
   label: "Settings",
   items: [
     { href: "/settings/team-access", label: "Team Access", icon: UsersRound },
+    // No "Automations" entry here. `/automations` under Operations already owns
+    // that word; the account-wide switch is a section of Platform settings, and
+    // two sidebar items with the same label is worse than one extra click.
     { href: "/settings/platform", label: "Platform settings", icon: Settings },
   ],
 }
@@ -98,6 +101,27 @@ export function operationsSectionFor(access: CompanyAccess): NavSection {
         : item
     ),
   }
+}
+
+/**
+ * Routes that keep the top header but drop the main side navigation.
+ *
+ * These are *working* screens rather than destinations — you arrive from
+ * somewhere specific, do one thing, and go back. Advanced Search is the first:
+ * its own filter rail is the navigation while you're in it, and a second column
+ * of app-level links beside it would compete with that.
+ *
+ * Listed here rather than achieved by moving the route into its own group,
+ * because `(app)/candidates/[id]` also matches `/candidates/search` and two
+ * groups resolving one path is a conflict Next resolves unpredictably. The
+ * header, the providers and the URL all stay exactly as they are.
+ */
+export const SIDEBAR_HIDDEN_ROUTES: string[] = ["/candidates/search"]
+
+export function hidesMainSidebar(pathname: string): boolean {
+  return SIDEBAR_HIDDEN_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + "/")
+  )
 }
 
 /** Every nav item a viewer has, for resolving the current page's title. */

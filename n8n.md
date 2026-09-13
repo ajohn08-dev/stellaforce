@@ -41,14 +41,25 @@ Actions (`src/app/(app)/jobs/actions.ts`, `.../workflows/actions.ts`) writing
 1. **Direct webhook** — a Server Action POSTs to `N8N_WEBHOOK_URL` inline. Used
    today by resume ingestion (`notifyResumeUploaded`).
 2. **Transactional outbox** — event-driven workflows drain
-   **`activity_events`** where **`dispatched_at IS NULL`** (partial index
-   `idx_activity_events_undispatched`). A dispatcher (Supabase **Database
-   Webhook** on insert, or an n8n cron that polls the outbox) forwards each
-   event to the matching workflow, then stamps `dispatched_at = now()`. This
-   guarantees at-least-once delivery with no lost/double side-effects, because
-   the event + the state change were written in the same request, and
-   `activity_events.idempotency_key` dedupes redeliveries. _(Dispatcher not built
-   yet — see Follow-on.)_
+   **`activity_events`** where **`dispatched_at IS NULL AND suppressed_at IS
+   NULL`** (partial index `idx_activity_events_undispatched`). A dispatcher
+   (Supabase **Database Webhook** on insert, or an n8n cron that polls the
+   outbox) forwards each event to the matching workflow, then stamps
+   `dispatched_at = now()`. This guarantees at-least-once delivery with no
+   lost/double side-effects, because the event + the state change were written
+   in the same request, and `activity_events.idempotency_key` dedupes
+   redeliveries. _(Dispatcher not built yet — see Follow-on.)_
+
+   ⚠️ **`suppressed_at` is not optional in that predicate.** It is stamped by
+   `logActivity` when the event's account has automations switched off
+   (`automation_scope_settings` — see CLAUDE.md, *Automations on/off*). The row
+   is written in full on purpose: the timeline is the record and the recruiter
+   must still see what *would* have happened. Only the drain skips it. A
+   dispatcher that filters on `dispatched_at` alone will email candidates for
+   every account that has been switched off, which is the single thing that
+   switch exists to prevent. It is deliberately a second column rather than an
+   early `dispatched_at` stamp — that column means "a workflow consumed this",
+   and overloading it would make "dispatched" mean "never dispatched".
 
 ### Inbound: n8n → Next (bearer-auth'd callback routes)
 - **`POST /api/candidates/ingest`** (`src/app/api/candidates/ingest/route.ts`) —
@@ -311,9 +322,10 @@ booking automation hangs off those events.
 ## Dependencies & follow-on (to unblock the ⛔ workflows)
 
 1. **Outbox dispatcher** — a Supabase Database Webhook on `activity_events`
-   INSERT (or an n8n polling cron over `dispatched_at IS NULL`) that routes to
-   the right workflow and stamps `dispatched_at`. Nothing event-driven fires
-   until this exists.
+   INSERT (or an n8n polling cron over
+   `dispatched_at IS NULL AND suppressed_at IS NULL` — both, see above) that
+   routes to the right workflow and stamps `dispatched_at`. Nothing
+   event-driven fires until this exists.
 2. **Runtime tables.** `interviews` now **exists** (re-created for agent-interview
    scheduling — see CLAUDE.md), along with `interview_scheduling_requests`,
    `interview_slot_holds` and `scheduled_agent_calls`. Still missing:

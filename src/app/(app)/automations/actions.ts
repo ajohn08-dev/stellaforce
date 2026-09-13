@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { getCurrentProfile } from "@/lib/auth"
+import { isAccountAdmin, isPlatformAdmin } from "@/lib/permissions"
 import { createClient } from "@/lib/supabase/server"
 import { resolveAutomation } from "@/lib/automation-settings"
 import type { AutomationRunState } from "@/lib/automation-rules"
@@ -323,6 +324,202 @@ export async function resetAutomationToInherited(input: {
   return { ok: true }
 }
 
+// ── The account-wide switch ──────────────────────────────────────────────────
+
+/**
+ * Turn every automation at a scope on, off, or pause it.
+ *
+ * A different table from `setAutomationState` above, and deliberately so: that
+ * one answers "what is the state of THIS rule here", this one answers "is this
+ * account running automations at all". Setting all fourteen bindings to `off`
+ * would have been the alternative, and it destroys the authored global defaults
+ * with no way to know what they were.
+ *
+ * Accounts are independent. Global is a **default for accounts that haven't
+ * decided**, not a ceiling — so Stellaforce may be off while a client runs, and
+ * a client may be off while Stellaforce runs.
+ */
+export async function setAutomationScopeState(input: {
+  target: AutomationBindingTarget
+  state: AutomationRunState
+  /** Only meaningful with `paused`; the DB refuses it otherwise. */
+  resumeAt?: string | null
+  /** Null = every category. Otherwise 'lifecycle' | 'scheduling' | 'evaluation'. */
+  category?: string | null
+}): Promise<AutomationActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "You must be signed in." }
+
+  // Re-checked server-side against the profile, not against whatever the UI
+  // believed when it rendered. RLS enforces it a second time.
+  if (!isAccountAdmin(profile)) {
+    return { ok: false, error: "Only an account admin can change this." }
+  }
+  if (input.target.scope === "global" && !isPlatformAdmin(profile)) {
+    return { ok: false, error: "Only a Stellaforce admin can change the platform default." }
+  }
+  if (
+    input.target.scope === "company" &&
+    profile.side === "client" &&
+    profile.client_id !== input.target.clientId
+  ) {
+    return { ok: false, error: "You can only change your own account." }
+  }
+  if (input.state !== "paused" && input.resumeAt) {
+    return { ok: false, error: "Only a pause can have a resume date." }
+  }
+
+  const context = await targetContext(input.target)
+  if ("error" in context) return { ok: false, error: context.error }
+
+  const supabase = await createClient()
+  const key = bindingKey(input.target)
+  const category = input.category ?? null
+
+  const previous = await currentScopeRow(supabase, key, category)
+
+  let query = supabase.from("automation_scope_settings").select("id, state")
+  for (const column of KEY_COLUMNS) {
+    const value = key[column]
+    query = value === null ? query.is(column, null) : query.eq(column, value)
+  }
+  query = category === null ? query.is("category", null) : query.eq("category", category)
+  const { data: existing } = await query.maybeSingle()
+
+  const row = {
+    state: input.state,
+    category,
+    resume_at: input.state === "paused" ? (input.resumeAt ?? null) : null,
+    set_by: profile.id,
+  }
+
+  const result = existing
+    ? await supabase
+        .from("automation_scope_settings")
+        .update(row)
+        .eq("id", existing.id)
+        .select("id")
+        .single()
+    : await supabase
+        .from("automation_scope_settings")
+        .insert({ ...row, tenant_client_id: context.tenantClientId, ...key })
+        .select("id")
+        .single()
+
+  if (result.error) {
+    if (result.error.code === "23505") return { ok: true }
+    return { ok: false, error: result.error.message }
+  }
+
+  await writeAuditRow({
+    bindingId: result.data.id,
+    clientId: context.tenantClientId,
+    actorProfileId: profile.id,
+    action: "state_changed",
+    entityType: "automation_scope_setting",
+    diff: {
+      target_scope: input.target.scope,
+      target_ref_id: refIdOf(input.target),
+      category,
+      from: previous ? { state: previous.state, resume_at: previous.resume_at } : null,
+      to: { state: input.state, resume_at: row.resume_at },
+    },
+  })
+
+  revalidateScopeSwitch(context.revalidate)
+  return { ok: true }
+}
+
+/**
+ * Stop deciding at this scope and inherit again.
+ *
+ * A DELETE, matching `resetAutomationToInherited` — an account that overrides
+ * nothing stores no row. Legal at global scope too, unlike bindings: deleting
+ * the global default means "no default", which resolves to running, and is a
+ * real state rather than a contradiction.
+ */
+export async function resetAutomationScopeToInherited(input: {
+  target: AutomationBindingTarget
+  category?: string | null
+}): Promise<AutomationActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "You must be signed in." }
+  if (!isAccountAdmin(profile)) {
+    return { ok: false, error: "Only an account admin can change this." }
+  }
+  if (input.target.scope === "global" && !isPlatformAdmin(profile)) {
+    return { ok: false, error: "Only a Stellaforce admin can change the platform default." }
+  }
+
+  const context = await targetContext(input.target)
+  if ("error" in context) return { ok: false, error: context.error }
+
+  const supabase = await createClient()
+  const key = bindingKey(input.target)
+  const category = input.category ?? null
+
+  let query = supabase.from("automation_scope_settings").delete()
+  for (const column of KEY_COLUMNS) {
+    const value = key[column]
+    query = value === null ? query.is(column, null) : query.eq(column, value)
+  }
+  query = category === null ? query.is("category", null) : query.eq("category", category)
+
+  const { data: deleted, error } = await query.select("id, state").maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  if (!deleted) return { ok: true }
+
+  await writeAuditRow({
+    bindingId: deleted.id,
+    clientId: context.tenantClientId,
+    actorProfileId: profile.id,
+    action: "reset_to_inherited",
+    entityType: "automation_scope_setting",
+    diff: {
+      target_scope: input.target.scope,
+      target_ref_id: refIdOf(input.target),
+      category,
+      from: { state: deleted.state },
+      to: null,
+    },
+  })
+
+  revalidateScopeSwitch(context.revalidate)
+  return { ok: true }
+}
+
+/** The row this write is about to replace, for the audit diff. */
+async function currentScopeRow(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  key: BindingKey,
+  category: string | null
+) {
+  let query = supabase.from("automation_scope_settings").select("state, resume_at")
+  for (const column of KEY_COLUMNS) {
+    const value = key[column]
+    query = value === null ? query.is(column, null) : query.eq(column, value)
+  }
+  query = category === null ? query.is("category", null) : query.eq("category", category)
+  const { data } = await query.maybeSingle()
+  return data
+}
+
+/**
+ * Flipping this changes what every screen in the product will do next, so the
+ * blast radius of the revalidation matches the blast radius of the switch —
+ * the target's own paths plus the surfaces that render its status.
+ */
+function revalidateScopeSwitch(targetPaths: string[]) {
+  const paths = new Set([
+    ...targetPaths,
+    "/settings/platform",
+    "/automations",
+    "/jobs",
+    "/home",
+  ])
+  paths.forEach((path) => revalidatePath(path))
+}
+
 // ── Audit ────────────────────────────────────────────────────────────────────
 
 function refIdOf(target: AutomationBindingTarget): string | null {
@@ -351,13 +548,15 @@ async function writeAuditRow(input: {
   clientId: string | null
   actorProfileId: string | null
   action: "state_changed" | "reset_to_inherited"
+  /** Defaults to a per-rule binding; the account-wide switch names itself. */
+  entityType?: "automation_binding" | "automation_scope_setting"
   diff: Record<string, unknown>
 }) {
   const supabase = await createClient()
   await supabase.from("audit_log").insert({
     actor_profile_id: input.actorProfileId,
     client_id: input.clientId,
-    entity_type: "automation_binding",
+    entity_type: input.entityType ?? "automation_binding",
     entity_id: input.bindingId,
     action: input.action,
     diff: input.diff as never,

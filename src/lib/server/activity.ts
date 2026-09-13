@@ -7,6 +7,7 @@ import {
   isPolicySkip,
   type SchedulingReasonCode,
 } from "@/lib/scheduling-reason-codes"
+import { scopeStateFor } from "@/lib/server/automation-scope-state"
 import type {
   ActivityEventType,
   ActorType,
@@ -64,6 +65,11 @@ export type ActivityInput = {
 // `dispatched_at` is deliberately absent from ActivityInput and always will be.
 // It belongs to the outbox dispatcher, and n8n.md's register depends on it
 // meaning "some workflow consumed this" — nothing in the app may claim it.
+//
+// `suppressed_at` is absent for a different reason: it is not a caller's
+// decision at all. It is set here, from the account's automation switch, so
+// that no writer can forget it and none can fake it. The drain is
+// `dispatched_at is null AND suppressed_at is null`.
 
 /**
  * Append an activity event. With an `idempotency_key`, a redelivery is a no-op.
@@ -76,9 +82,25 @@ export async function logActivity(
   supabase: ActivityClient,
   e: ActivityInput
 ): Promise<string | null> {
+  // The account's switch, resolved in the one place every event is written so
+  // no call site has to remember. The row is still written in full -- the
+  // timeline is the record, and a recruiter must be able to see what would have
+  // happened -- but `suppressed_at` keeps the outbox drain off it.
+  //
+  // One small indexed read per event, uncached on purpose — see the note in
+  // `automation-scope-state.ts` on why a memo here would be worth four saved
+  // queries and a switch that reports a stale value.
+  const sw = await scopeStateFor(e.client_id ?? null)
+
   const row = {
     event_type: e.event_type,
     client_id: e.client_id ?? null,
+    suppressed_at: sw ? new Date().toISOString() : null,
+    suppressed_reason: sw
+      ? sw.state === "paused"
+        ? "automations_paused"
+        : "automations_off"
+      : null,
     candidate_id: e.candidate_id ?? null,
     job_id: e.job_id ?? null,
     application_id: e.application_id ?? null,

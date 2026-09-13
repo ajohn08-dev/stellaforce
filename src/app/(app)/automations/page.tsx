@@ -4,8 +4,12 @@ import { SetSidebarCollapsed } from "@/components/set-sidebar-collapsed"
 import { AutomationToolbar } from "@/components/automations/automation-toolbar"
 import { AutomationSectionNav } from "@/components/automations/automation-section-nav"
 import { AutomationRuleRows } from "@/components/automations/automation-rule-rows"
+import { AutomationsOffBanner } from "@/components/automations/automations-off-notice"
+import { SkippedActionRows } from "@/components/automations/skipped-action-rows"
+import { getSkippedActions } from "@/lib/server/skipped-actions"
 import { findAutomationSection } from "@/lib/automation-sections"
 import { resolveAutomations } from "@/lib/automation-settings"
+import { scopeStateFor } from "@/lib/server/automation-scope-state"
 
 /**
  * The global automation library.
@@ -35,6 +39,15 @@ export default async function AutomationsPage({
   const automations = await resolveAutomations({})
   const inSection = automations.filter((a) => a.category === section.key)
 
+  // Resolved with no company, so this reflects the *default* — an account that
+  // has decided for itself is unaffected either way. The banner says so rather
+  // than letting the page imply it speaks for everyone.
+  const globalSwitch = await scopeStateFor(null)
+
+  // Only queried for the section that shows it — this is a scan of the activity
+  // log, not something every visit to the library should pay for.
+  const skipped = section.key === "skipped" ? await getSkippedActions() : []
+
   return (
     <div
       className="flex flex-col overflow-hidden"
@@ -58,21 +71,30 @@ export default async function AutomationsPage({
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           <div className="flex flex-col gap-4">
+            <AutomationsOffBanner
+              sw={globalSwitch}
+              scopeNote="This is the default for accounts that haven't decided for themselves; an account with its own setting keeps it."
+            />
+
             <div className="flex flex-col gap-0.5">
               <h2 className="text-sm font-medium text-foreground">{section.label}</h2>
               <p className="text-sm text-muted-foreground">{section.purpose}</p>
             </div>
 
-            <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border p-8 text-center">
-              <p className="text-sm font-medium text-foreground">
-                {q ? `No automations match “${q}”` : "No automations here yet"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {section.key === "runs"
-                  ? "Runs appear here once an automation has fired."
-                  : "Rules you add to this section will be listed here."}
-              </p>
-            </div>
+            {section.key === "skipped" ? (
+              <SkippedActionRows actions={skipped} />
+            ) : (
+              <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border p-8 text-center">
+                <p className="text-sm font-medium text-foreground">
+                  {q ? `No automations match “${q}”` : "No automations here yet"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {section.key === "runs"
+                    ? "Runs appear here once an automation has fired."
+                    : "Rules you add to this section will be listed here."}
+                </p>
+              </div>
+            )}
 
             {/* The rules this section can run — the same rows the workflow tab
                 and the job dialog resolve, so what's listed here is what's

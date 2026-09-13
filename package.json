@@ -15,9 +15,11 @@
     "preview-check": "tsx scripts/company-preview-check.ts",
     "diff-check": "tsx scripts/publish-diff-check.ts",
     "automation-check": "tsx scripts/automation-seed-check.ts",
+    "automation-scope-check": "tsx scripts/automation-scope-check.ts",
     "scheduling-check": "tsx scripts/scheduling-check.ts",
     "booking-check": "tsx --conditions=react-server --env-file=.env.local scripts/booking-endpoint-check.ts",
-    "scheduling-e2e": "tsx --conditions=react-server --env-file=.env.local scripts/scheduling-e2e.ts"
+    "scheduling-e2e": "tsx --conditions=react-server --env-file=.env.local scripts/scheduling-e2e.ts",
+    "service-role-check": "tsx scripts/service-role-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

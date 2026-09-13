@@ -55,6 +55,19 @@ export type PulseAction = {
   stageId: string | null
   stageName: string | null
   priority: "high" | "medium" | "low"
+  /**
+   * Something the automation would have done, that a person may now do.
+   *
+   * Only set when the account isn't running automations. This is the single
+   * sanctioned escape from the outbound gate — it names one candidate, on one
+   * stage, and needs a click — so it must never be attached to an action that
+   * didn't come from a recorded skip.
+   */
+  manualAction?: {
+    kind: "send_booking_link"
+    applicationId: string
+    subStageId: string
+  } | null
 }
 
 type PipelineApplication = ApplicationRow & { candidate: CandidateRow | null }
@@ -104,6 +117,20 @@ function eventSeverity(type: ActivityEventType): PulseEvent["severity"] {
   if (CRITICAL_EVENTS.has(type)) return "critical"
   if (WARNING_EVENTS.has(type)) return "warning"
   return "info"
+}
+
+/**
+ * Was this skip the account's switch, rather than a per-rule decision?
+ *
+ * Only the account switch earns a "do it yourself" button. A recruiter who
+ * paused *this rule* on *this job* meant it, and offering a one-click way past
+ * their own decision would make the pause meaningless.
+ */
+function isAccountSwitchSkip(payload: Record<string, unknown>): boolean {
+  return (
+    payload.reason_code === "ACCOUNT_AUTOMATIONS_OFF" ||
+    payload.reason_code === "ACCOUNT_AUTOMATIONS_PAUSED"
+  )
 }
 
 function actorLabel(event: JobActivityEvent): string {
@@ -257,6 +284,51 @@ export function buildPulseActions({
       stageId: event.sub_stage?.id ?? event.sub_stage_id,
       stageName: stage,
       priority: "high",
+    })
+  }
+
+  // Automations that were skipped because the account isn't running them.
+  //
+  // These are the whole point of switching an account off rather than freezing
+  // it: the platform still knows what should happen next and says so, and the
+  // recruiter decides. Only the most recent skip per application/stage is
+  // offered, and only while the candidate is still standing where it happened —
+  // someone who has since moved on is not work.
+  const skipSeen = new Set<string>()
+  for (const event of events) {
+    if (event.event_type !== "automation_skipped_by_policy") continue
+    const payload = (event.payload ?? {}) as Record<string, unknown>
+    if (!isAccountSwitchSkip(payload)) continue
+    if (payload.automation_key !== "send_booking_link") continue
+    if (!event.application_id || !event.sub_stage_id) continue
+
+    const key = `${event.application_id}:${event.sub_stage_id}`
+    if (skipSeen.has(key)) continue
+    skipSeen.add(key)
+
+    // Still parked where the skip happened? If they advanced, the link that was
+    // never sent is moot.
+    const app = active.find((a) => a.application_id === event.application_id)
+    if (!app || app.current_stage_id !== event.sub_stage_id) continue
+
+    const stage = event.sub_stage?.name ?? stageById.get(event.sub_stage_id)?.name ?? null
+    const name = candidateName(app.candidate)
+    actions.push({
+      id: `skipped-${event.id}`,
+      title: `Send ${name} a booking link`,
+      detail:
+        `Automations are off for this account, so no link was sent` +
+        `${stage ? ` when they reached ${stage}` : ""}.`,
+      candidateId: app.candidate_id,
+      candidateName: name,
+      stageId: event.sub_stage_id,
+      stageName: stage,
+      priority: "high",
+      manualAction: {
+        kind: "send_booking_link",
+        applicationId: event.application_id,
+        subStageId: event.sub_stage_id,
+      },
     })
   }
 

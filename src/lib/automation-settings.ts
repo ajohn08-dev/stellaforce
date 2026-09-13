@@ -27,6 +27,12 @@ export type {
   ResolvedAutomation,
 } from "@/lib/automation-resolve"
 export { APP_SCOPE_TO_DB, DB_SCOPE_TO_APP, resolveFromRows, scopeChain } from "@/lib/automation-resolve"
+export type { ScopeSwitch, ScopeSwitchRow } from "@/lib/automation-scope-state"
+export {
+  resolveScopeSwitch,
+  scopeSwitchLockReason,
+  scopeSwitchStateLabel,
+} from "@/lib/automation-scope-state"
 
 type ScopeLabels = {
   companyName?: string | null
@@ -64,7 +70,7 @@ export async function resolveAutomationsWithClient(
 ): Promise<ResolvedAutomation[]> {
   if (!isSupabaseConfigured) return []
 
-  const [definitionsRes, versionsRes, bindingsRes, labels] = await Promise.all([
+  const [definitionsRes, versionsRes, bindingsRes, switchesRes, labels] = await Promise.all([
     supabase
       .from("automation_definitions")
       .select("*")
@@ -78,6 +84,11 @@ export async function resolveAutomationsWithClient(
     // another template is not merely filtered later -- it is never fetched.
     supabase
       .from("automation_bindings")
+      .select("*")
+      .or(scopeFilter(ctx)),
+    // The account-wide switch. Same scope columns, so the same filter works.
+    supabase
+      .from("automation_scope_settings")
       .select("*")
       .or(scopeFilter(ctx)),
     scopeLabels(supabase, ctx),
@@ -94,6 +105,7 @@ export async function resolveAutomationsWithClient(
     definitions,
     versions: versionsRes.data ?? [],
     bindings: bindingsRes.data ?? [],
+    scopeSwitches: switchesRes.data ?? [],
     ctx,
     labels,
   })

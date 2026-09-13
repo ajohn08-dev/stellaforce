@@ -1,6 +1,6 @@
 import { HomeFilterButton } from "@/components/home/home-filter-button"
 import { HomeDateRangePicker } from "@/components/home/home-date-range-picker"
-import { HomeChatPanel } from "@/components/home/home-chat-panel"
+import { HomeAskBar } from "@/components/home/home-ask-bar"
 import { MultiSelectFilterChip } from "@/components/home/multi-select-filter-chip"
 import { ClientRecruiterMomentumCard } from "@/components/home/client-recruiter/client-recruiter-momentum-card"
 import { ClientRecruiterTodaysFocusCard } from "@/components/home/client-recruiter/client-recruiter-todays-focus-card"
@@ -55,9 +55,7 @@ export function ClientRecruiterHome() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
-        <HomeChatPanel prompts={CLIENT_RECRUITER_SUGGESTED_PROMPTS} />
-      </div>
+      <HomeAskBar prompts={CLIENT_RECRUITER_SUGGESTED_PROMPTS} />
     </div>
   )
 }
