@@ -4,6 +4,7 @@ import { CandidateSearch } from "@/components/candidates/candidate-search"
 import { CandidateFilterButton } from "@/components/candidates/candidate-filter-button"
 import { CandidateActiveFilters } from "@/components/candidates/candidate-active-filters"
 import { AddCandidateDialog } from "@/components/candidates/add-candidate-dialog"
+import { CandidateAskBar } from "@/components/candidates/candidate-ask-bar"
 import { ViewToggle } from "@/components/candidates/view-toggle"
 import { SupabaseNotice } from "@/components/supabase-notice"
 import { parseTiersParam } from "@/lib/candidate-tiers"
@@ -61,6 +62,8 @@ export default async function CandidatesPage({
           <CandidatesTable data={candidates} />
         )}
       </div>
+
+      <CandidateAskBar />
     </div>
   )
 }
