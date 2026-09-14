@@ -3,7 +3,9 @@ import { notFound } from "next/navigation"
 import { ProfileHeader } from "@/components/candidates/profile/profile-header"
 import { ProfileTabs } from "@/components/candidates/profile/profile-tabs"
 import { SetCandidateBreadcrumb } from "@/components/candidates/profile/set-candidate-breadcrumb"
-import { getCandidate } from "@/lib/data"
+import { getCurrentProfile } from "@/lib/auth"
+import { getActiveCanonicalRoles, getCandidate } from "@/lib/data"
+import { isStellaforceStaff } from "@/lib/permissions"
 
 export default async function CandidateProfilePage({
   params,
@@ -14,7 +16,15 @@ export default async function CandidateProfilePage({
   const result = await getCandidate(id)
   if (!result) notFound()
 
-  const { candidate, skills, tools, education, certifications, workHistory, addedBy, resume } = result
+  const { candidate, skills, tools, education, certifications, workHistory, addedBy, resume, canonicalRole, searchState } = result
+
+  // The search classification is an internal editorial surface: it decides who
+  // turns up in Stellaforce's own candidate search across every client. A
+  // client-side profile never sees the card, and the Server Action behind it
+  // refuses them too — the check here only keeps the control off the page.
+  const profile = await getCurrentProfile()
+  const canClassify = isStellaforceStaff(profile)
+  const canonicalRoles = canClassify ? await getActiveCanonicalRoles() : []
 
   return (
     <div
@@ -46,6 +56,10 @@ export default async function CandidateProfilePage({
           addedBy={addedBy}
           dateAdded={candidate.date_added}
           resume={resume}
+          canonicalRole={canonicalRole}
+          canonicalRoles={canonicalRoles}
+          canClassify={canClassify}
+          searchState={searchState}
         />
       </div>
     </div>

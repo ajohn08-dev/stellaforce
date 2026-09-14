@@ -58,6 +58,17 @@ policy (see RLS model at the end).
 - `client_role`: member | admin | reviewer | recruiter (client-side)
 - `url` (domain, not enum): `text` CHECK `value ~* '^https?://.+'` (new url columns only)
 
+### Title normalization (V1)
+- `role_family`: sales | customer_success | marketing | product | design | engineering | operations
+- `title_seniority`: intern | entry | mid | senior | staff | principal | manager | director | vp | c_level
+- `title_normalization_source`: rule | recruiter
+
+No `unknown`/`other` member on any of the three: unclassified is a *state* (null
+columns), not a value. No `llm` member — V1 classification is deterministic rules
+plus recruiter overrides, and no LLM path exists. No sales-segment vocabulary —
+"Enterprise"/"Strategic" stay in the raw title, which the free-text Title filter
+already searches.
+
 ### Workflow-templates feature
 - `stage_visibility`: internal | candidate_facing
 - `stage_entry_condition`: manual | automatic (used as an **array** column, default `{automatic,manual}` = try automatic, fall back to manual)
@@ -100,6 +111,20 @@ policy (see RLS model at the end).
 `last_verified`, `last_scored_at`, `embedding_vector` (vector(1536)), `added_by`
 (fk profiles, nullable), `date_added`, `last_updated` (legacy), `created_at`,
 `updated_at`.
+**`country_code`** (text, nullable, CHECK `^[A-Z]{2}$`, indexed) — derived ISO-2,
+normalized from the raw `location_country` by the enrichment reconciler. The raw
+column is never modified; it holds both `IN` and `India` today, which is why the
+country filter matches this column instead.
+
+**Title normalization (V1, all nullable):** `canonical_role_id` (fk
+canonical_roles, on delete set null), `role_family`, `seniority`,
+`title_normalization_source`, `title_normalization_confidence`
+(`confidence_level`), `normalized_from_title` (the exact raw `current_title` the
+classification was computed from — drives the re-parse/override policy),
+`title_normalized_at`. Indexed on `canonical_role_id`, `role_family`,
+`seniority`. All null = unclassified; `source` null with
+`normalized_from_title` set = the rules ran and matched nothing. **Classifies
+`current_title` only — it is never modified, and neither is `headline`.**
 
 **candidate_work_experiences** — `candidate_id` (fk), `display_order` (0=most recent,
 unique per candidate), `company_name`, `title` (not null), `employment_type`,
@@ -120,6 +145,46 @@ Unique(candidate_id, url) — upsert-safe on ingestion retry.
 **skills** / **tools** (global lookups) — `id` (pk), `name` (**case-insensitive
 unique** via `unique(lower(name))`), `skill_type` (skills only), `category`.
 Deduplicated controlled lookup shared across candidates.
+
+**candidate_search_state** — `candidate_id` (pk, fk candidates **ON DELETE
+CASCADE**), `readiness` (`search_readiness`: pending | ready | ready_with_review
+| failed), `review_reasons` (text[], sorted machine codes), `search_dirty_at`
+(the outbox flag, stamped by triggers), `reconciled_at`,
+`reconciled_watermark` (the flag value the last run observed — stops a stale run
+marking newer data clean), `claimed_at`/`claimed_by` (sweep lease),
+`attempt_count`, `last_error` (never candidate text), `enrichment_version`,
+`last_ingestion_job_id` (fk, on delete set null), `created_at`/`updated_at`.
+Indexed on readiness, version, and a partial index on `search_dirty_at`.
+**Stellaforce-only RLS on all four commands.** Deliberately **no
+`is_searchable`** — see CLAUDE.md; every candidate is always searchable.
+
+**candidate_search_readiness** (view) — the operational read: the state row plus
+derived `is_classified`, `never_reconciled`, `is_stale` and `time_to_ready`.
+Carries no candidate PII.
+
+**canonical_roles** (global lookup) — `id` (pk), `slug` (**case-insensitive
+unique** via `unique(lower(slug))`), `label`, `role_family` (not null),
+`is_active` (default true), `created_at`, `updated_at` (trigger). The role
+vocabulary a candidate's current title classifies against. A table rather than
+an enum because roles grow — a new role is a row, not a migration. **17 seeded**
+(15 in `20260913110300`, plus `channel_partner_sales` and
+`recruiting_coordinator` in the `20260913120000` coverage pass).
+
+**title_aliases** (global lookup) — `id` (pk), `alias` (**case-insensitive
+unique** via `unique(lower(alias))`), `canonical_role_id` (fk canonical_roles,
+on delete **restrict**, nullable), `implied_seniority` (nullable), `is_ambiguous`
+(default false), `created_at`, `updated_at` (trigger). Every alias is a **whole
+title**, matched by exact case-insensitive equality — never a substring.
+CHECK `title_aliases_ambiguity_ck`: a row is either mapped
+(`not is_ambiguous and canonical_role_id is not null`) or a declared ambiguity
+(`is_ambiguous and canonical_role_id is null`) — never both, never neither.
+**49 seeded** (37 + 12 from the coverage pass), 3 of them ambiguous (`pm`, `am`,
+`se`).
+
+Both lookups: **read open to any authenticated user** (they mirror
+`skills`/`tools` and hold no candidate data), **writes Stellaforce-side only**
+via `current_profile_side() = 'stellaforce'` — a client user editing the taxonomy
+would change how every other client's candidates classify.
 
 **candidate_skills** / **candidate_tools** (junctions) — `candidate_id` (fk),
 `skill_id`/`tool_id` (fk, restrict on delete), `proficiency_level`,

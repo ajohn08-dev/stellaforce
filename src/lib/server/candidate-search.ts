@@ -129,6 +129,44 @@ async function candidateIdsForSkills(
   return [...new Set((linkRows ?? []).map((r) => r.candidate_id))]
 }
 
+/**
+ * Resolve canonical-role **slugs** to ids, against the active taxonomy only.
+ *
+ * Slugs are what the URL carries (see `CandidateSearchFilters.roleSlugs`), so
+ * this is the one place a uuid enters the query. Two properties matter:
+ *
+ *   - **A retired role is not selectable.** `is_active` is filtered here as
+ *     well as in the option list, so a slug for a role someone deactivated
+ *     yesterday stops matching rather than quietly continuing to work from an
+ *     old bookmark.
+ *   - **An unknown slug narrows, it never widens.** A typo or a stale link
+ *     contributes no ids; if *nothing* resolves, the caller returns an empty
+ *     page rather than dropping the filter. Dropping it would answer a
+ *     different, broader question than the one on screen — the same rule
+ *     `candidateIdsForSkills` already follows.
+ *
+ * Returns `null` when no role filter was supplied (do not filter), and `[]`
+ * when one was supplied but resolved to nothing (no results).
+ */
+async function roleIdsForSlugs(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  slugs: string[]
+): Promise<string[] | null> {
+  if (slugs.length === 0) return null
+
+  const { data, error } = await supabase
+    .from("canonical_roles")
+    .select("id")
+    .eq("is_active", true)
+    .in("slug", slugs)
+
+  if (error) {
+    console.error("candidate search — canonical role lookup failed:", error.message)
+    return []
+  }
+  return (data ?? []).map((r) => r.id)
+}
+
 function toResult(row: CandidateSearchRow): CandidateSearchResult {
   return {
     candidateId: row.candidate_id,
@@ -165,18 +203,39 @@ export async function searchCandidates(
     return emptyCandidateSearchPage(page, pageSize)
   }
 
+  const roleIds = await roleIdsForSlugs(supabase, filters.roleSlugs)
+  // Same reasoning: a role filter that resolves to no active role matches
+  // nobody, which is not the same as not filtering at all.
+  if (roleIds !== null && roleIds.length === 0) {
+    return emptyCandidateSearchPage(page, pageSize)
+  }
+
   let query = supabase
     .from("candidates")
     .select(SELECT_COLUMNS, { count: "exact" })
 
-  // Every group below is ANDed. A null title/company/city is never a reason to
-  // exclude someone — only a *supplied* filter that fails to match is.
+  // Every group below is ANDed; within a multi-value group, `.in()` is an OR.
+  // A null title/company/city/classification is never a reason to exclude
+  // someone — only a *supplied* filter that fails to match is.
   if (filters.name) query = query.ilike("full_name", likeContains(filters.name))
   if (filters.title) query = query.ilike("current_title", likeContains(filters.title))
   if (filters.location) query = query.ilike("location_city", likeContains(filters.location))
   if (filters.minYears !== undefined) query = query.gte("years_experience", filters.minYears)
   if (filters.maxYears !== undefined) query = query.lte("years_experience", filters.maxYears)
   if (skillCandidateIds !== null) query = query.in("candidate_id", skillCandidateIds)
+
+  // The normalized filters. All three live on `candidates` itself, so unlike
+  // skills they need no id-collection step and the exact count stays a
+  // candidate count. Note this necessarily excludes unclassified candidates —
+  // the rail says so on screen rather than leaving a short result set to be
+  // read as a fact about the market.
+  if (roleIds !== null) query = query.in("canonical_role_id", roleIds)
+  if (filters.roleFamilies.length > 0) query = query.in("role_family", filters.roleFamilies)
+  if (filters.seniorities.length > 0) query = query.in("seniority", filters.seniorities)
+  // The derived ISO-2, never the raw `location_country`: the same country
+  // arrives spelled several ways, and matching the raw column would answer
+  // "in India" differently depending on which résumé produced the row.
+  if (filters.countries.length > 0) query = query.in("country_code", filters.countries)
 
   const from = (page - 1) * pageSize
   const { data, error, count } = await query

@@ -115,6 +115,10 @@ export function operationsSectionFor(access: CompanyAccess): NavSection {
  * because `(app)/candidates/[id]` also matches `/candidates/search` and two
  * groups resolving one path is a conflict Next resolves unpredictably. The
  * header, the providers and the URL all stay exactly as they are.
+ *
+ * Living under `/candidates` has one other cost, paid in `src/proxy.ts`: the
+ * `@modal/(.)[id]` interception rewrite captures this path too, and has to be
+ * suppressed by name or every soft navigation here 404s.
  */
 export const SIDEBAR_HIDDEN_ROUTES: string[] = ["/candidates/search"]
 

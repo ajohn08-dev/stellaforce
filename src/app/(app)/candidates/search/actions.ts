@@ -2,6 +2,8 @@
 
 import { getCurrentProfile } from "@/lib/auth"
 import { isStellaforceStaff } from "@/lib/permissions"
+import { getActiveCanonicalRoles } from "@/lib/data"
+import { hasAnyAiFilter, sanitizeAiFilters } from "@/lib/candidate-search"
 import {
   MAX_QUERY_LENGTH,
   parseCandidateSearchQuery,
@@ -34,6 +36,12 @@ export type AiSearchResult =
         skills: string[]
         minYears: number | null
         maxYears: number | null
+        /** Canonical role **slugs**, already checked against the active taxonomy. */
+        roleSlugs: string[]
+        roleFamilies: string[]
+        seniorities: string[]
+        /** ISO-2 codes. */
+        countries: string[]
       }
       unsupportedRequirements: string[]
     }
@@ -58,7 +66,19 @@ export async function runAiCandidateSearch(
   const trimmed = query.trim()
   if (!trimmed || trimmed.length > MAX_QUERY_LENGTH) return { status: "error" }
 
-  const outcome = await parseCandidateSearchQuery(trimmed)
+  // The role vocabulary is read here, once, and used three times: to build the
+  // model's closed output enum, to list the roles in its prompt, and to check
+  // what comes back. Reading it in one place is what stops those three drifting.
+  const roles = await getActiveCanonicalRoles()
+
+  const outcome = await parseCandidateSearchQuery(
+    trimmed,
+    roles.map((role) => ({
+      slug: role.slug,
+      label: role.label,
+      roleFamily: role.role_family,
+    }))
+  )
   if (!outcome.ok) {
     return outcome.reason === "not_configured"
       ? { status: "not_configured" }
@@ -68,35 +88,31 @@ export async function runAiCandidateSearch(
   const p = outcome.parsed
   if (p.intent === "unsupported") return { status: "unsupported" }
 
-  // Years are validated here rather than trusted: the schema guarantees an
-  // integer, not a *sensible* one. A negative or inverted range would otherwise
-  // reach the URL and be rejected by the rail's own validation, leaving the
-  // recruiter looking at an error they didn't type.
-  const minYears = p.minYears !== null && p.minYears >= 0 ? p.minYears : null
-  const maxYears = p.maxYears !== null && p.maxYears >= 0 ? p.maxYears : null
-  const rangeOk = minYears === null || maxYears === null || minYears <= maxYears
-
-  const filters = {
-    name: p.name?.trim() || null,
-    title: p.title?.trim() || null,
-    location: p.location?.trim() || null,
-    skills: p.skills.map((s) => s.trim()).filter(Boolean),
-    minYears: rangeOk ? minYears : null,
-    maxYears: rangeOk ? maxYears : null,
-  }
-
-  const hasAnyFilter =
-    !!filters.name ||
-    !!filters.title ||
-    !!filters.location ||
-    filters.skills.length > 0 ||
-    filters.minYears !== null ||
-    filters.maxYears !== null
+  // Never trust the parse. The output schema already closed the role enum, but
+  // a slug can be retired between the schema being built and this line, and
+  // year bounds are guaranteed to be integers rather than sensible ones. Both
+  // checks live in the shared pure module, so the rail, the URL parser and this
+  // action cannot disagree about what a valid filter value is.
+  const filters = sanitizeAiFilters(
+    {
+      name: p.name,
+      title: p.title,
+      location: p.location,
+      skills: p.skills,
+      minYears: p.minYears,
+      maxYears: p.maxYears,
+      canonicalRoles: p.canonicalRoles,
+      roleFamilies: p.roleFamilies,
+      seniorities: p.seniorities,
+      countries: p.countries,
+    },
+    roles.map((role) => role.slug)
+  )
 
   // An intent of candidate_search with nothing to filter on would otherwise run
   // an unfiltered all-candidate search — which looks like a working answer and
   // is not one.
-  if (!hasAnyFilter) return { status: "no_filters" }
+  if (!hasAnyAiFilter(filters)) return { status: "no_filters" }
 
   return {
     status: "filters",

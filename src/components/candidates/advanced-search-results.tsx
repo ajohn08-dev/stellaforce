@@ -17,7 +17,14 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { CandidateAvatar } from "@/components/candidate-avatar"
 import { CandidateActions } from "@/components/candidates/candidate-actions"
-import type { CandidateSearchPage, CandidateSearchResult } from "@/lib/candidate-search"
+import {
+  countryLabel,
+  roleFamilyLabel,
+  seniorityLabel,
+  type CandidateSearchFilters,
+  type CandidateSearchPage,
+  type CandidateSearchResult,
+} from "@/lib/candidate-search"
 import { cn } from "@/lib/utils"
 
 /**
@@ -48,7 +55,78 @@ import { cn } from "@/lib/utils"
 
 const LEFT_PINNED_WIDTHS = { select: 40, name: 220 }
 
-export function AdvancedSearchResults({ page }: { page: CandidateSearchPage }) {
+/**
+ * "Role: Account Executive, Channel / Partner Sales · Seniority: Senior · …"
+ *
+ * Built from the filters the server actually queried, not from the URL or the
+ * rail's unapplied state — so the line can only ever describe the result set
+ * beneath it. Filters that were not supplied are absent; nothing is invented to
+ * pad the list.
+ *
+ * A role slug with no label is a role that no longer exists or was retired; it
+ * is shown as its slug rather than dropped, because it is still narrowing the
+ * search and silently omitting it would misdescribe the results.
+ */
+function appliedFilterSummary(
+  filters: CandidateSearchFilters,
+  roleLabels: Record<string, string>
+): Array<{ label: string; value: string }> {
+  const parts: Array<{ label: string; value: string }> = []
+
+  if (filters.roleSlugs.length > 0) {
+    parts.push({
+      label: "Role",
+      value: filters.roleSlugs.map((slug) => roleLabels[slug] ?? slug).join(", "),
+    })
+  }
+  if (filters.roleFamilies.length > 0) {
+    parts.push({
+      label: "Role family",
+      value: filters.roleFamilies.map(roleFamilyLabel).join(", "),
+    })
+  }
+  if (filters.seniorities.length > 0) {
+    parts.push({
+      label: "Seniority",
+      value: filters.seniorities.map(seniorityLabel).join(", "),
+    })
+  }
+  if (filters.countries.length > 0) {
+    parts.push({ label: "Country", value: filters.countries.map(countryLabel).join(", ") })
+  }
+  if (filters.title) parts.push({ label: "Title text", value: filters.title })
+  if (filters.name) parts.push({ label: "Name", value: filters.name })
+  if (filters.location) parts.push({ label: "City", value: filters.location })
+  if (filters.skillTerms.length > 0) {
+    parts.push({ label: "Skills", value: filters.skillTerms.join(", ") })
+  }
+
+  const { minYears: lo, maxYears: hi } = filters
+  if (lo !== undefined && hi !== undefined) {
+    parts.push({ label: "Experience", value: `${lo}–${hi} years` })
+  } else if (lo !== undefined) {
+    parts.push({ label: "Experience", value: `${lo}+ years` })
+  } else if (hi !== undefined) {
+    parts.push({ label: "Experience", value: `up to ${hi} years` })
+  }
+
+  return parts
+}
+
+export function AdvancedSearchResults({
+  page,
+  filters,
+  roleLabels = {},
+  unsupportedNotice = null,
+}: {
+  page: CandidateSearchPage
+  /** What the server actually queried — the summary describes the result set. */
+  filters?: CandidateSearchFilters
+  /** Canonical role slug → label, resolved on the server. */
+  roleLabels?: Record<string, string>
+  /** What the AI parse asked for and could not apply. */
+  unsupportedNotice?: string | null
+}) {
   const router = useRouter()
   const params = useSearchParams()
   const [selected, setSelected] = React.useState<Record<string, boolean>>({})
@@ -67,8 +145,56 @@ export function AdvancedSearchResults({ page }: { page: CandidateSearchPage }) {
     })
   }
 
+  const summary = filters ? appliedFilterSummary(filters, roleLabels) : []
+  const classifiedOnly =
+    !!filters &&
+    (filters.roleSlugs.length > 0 || filters.roleFamilies.length > 0)
+
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-white">
+      {/* The applied-filter summary. One muted line, inside the existing
+          results card — not a panel: it says what the table below is, which is
+          otherwise only legible by reading the rail. */}
+      {/* A requirement that was asked for and not applied.
+          Amber and above the table, not a grey line in the rail: the whole
+          failure mode this prevents is a recruiter reading a result set as an
+          answer to the question they asked, when part of it was dropped. This
+          is the one case where results are honestly not what was requested, so
+          it outranks the filter summary and sits where the eye already is. */}
+      {unsupportedNotice && (
+        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2">
+          <p className="text-xs text-amber-900">
+            <span className="font-medium">Not applied:</span> {unsupportedNotice}.
+            These results aren&apos;t filtered by it.
+          </p>
+        </div>
+      )}
+
+      {summary.length > 0 && (
+        <div className="shrink-0 space-y-1 border-b border-border px-4 py-2">
+          <p className="text-xs text-muted-foreground">
+            {summary.map((part, i) => (
+              <React.Fragment key={part.label}>
+                {i > 0 && <span className="px-1.5 text-border">·</span>}
+                <span>
+                  {part.label}: <span className="text-foreground">{part.value}</span>
+                </span>
+              </React.Fragment>
+            ))}
+          </p>
+          {/* Only when a normalized filter is doing the narrowing. A role
+              filter can only match a candidate whose title was classified, and
+              a recruiter reading a short result set has no way to know that
+              from the count alone. */}
+          {classifiedOnly && (
+            <p className="text-xs text-muted-foreground">
+              Role filters use classified current titles. Use Title text contains
+              to include title variants or unclassified candidates.
+            </p>
+          )}
+        </div>
+      )}
+
       <Table
         className="table-fixed"
         containerClassName="min-h-0 flex-1 overflow-y-auto scrollbar-light"

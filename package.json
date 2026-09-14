@@ -19,7 +19,12 @@
     "scheduling-check": "tsx scripts/scheduling-check.ts",
     "booking-check": "tsx --conditions=react-server --env-file=.env.local scripts/booking-endpoint-check.ts",
     "scheduling-e2e": "tsx --conditions=react-server --env-file=.env.local scripts/scheduling-e2e.ts",
-    "service-role-check": "tsx scripts/service-role-check.ts"
+    "service-role-check": "tsx scripts/service-role-check.ts",
+    "title-check": "tsx scripts/title-normalization-check.ts",
+    "title-backfill": "tsx --env-file=.env.local scripts/backfill-title-normalization.ts",
+    "ai-search-check": "tsx scripts/ai-search-parse-check.ts",
+    "enrichment-check": "tsx scripts/enrichment-check.ts",
+    "enrichment-backfill": "tsx --env-file=.env.local scripts/backfill-search-enrichment.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

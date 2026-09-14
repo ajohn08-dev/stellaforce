@@ -14,6 +14,7 @@ import { getCurrentProfile } from "@/lib/auth"
 import { serverEnv } from "@/lib/env"
 import { RawIngestPayloadSchema } from "@/lib/ingest/schema"
 import { processIngestionItem } from "@/lib/server/candidate-ingest"
+import { reconcileCandidateSearchEnrichment } from "@/lib/server/candidate-search-enrichment"
 import type { CandidateTier } from "@/lib/supabase/types"
 
 /**
@@ -89,6 +90,14 @@ export async function addCandidate(formData: FormData): Promise<void> {
       location_city,
       location_state,
       timezone,
+      // Raw title/company, stored as their own columns as well as folded into
+      // `headline`. They were previously read from the form and used *only* to
+      // build the headline string, which meant a manually added candidate had a
+      // null `current_title` and was therefore invisible to Advanced Search's
+      // "Title contains" filter — and had nothing for title normalization to
+      // classify. `headline` keeps its exact previous value and meaning.
+      current_title: current_title || null,
+      current_company: current_company || null,
       headline,
       professional_summary: professional_summary || null,
       years_experience,
@@ -115,6 +124,15 @@ export async function addCandidate(formData: FormData): Promise<void> {
       is_current: true,
     })
   }
+
+  // Reconcile the candidate's derived search data before the redirect, so they
+  // are properly searchable the moment the recruiter lands back on the list —
+  // classified where a rule matches, and carrying an honest list of whatever is
+  // still missing. Deterministic only, and it never throws: an unmapped title
+  // or a missing city is a normal outcome, not a failed create.
+  await reconcileCandidateSearchEnrichment(supabase, candidate.candidate_id, {
+    reason: "create",
+  })
 
   revalidatePath("/candidates")
   redirect("/candidates")
@@ -183,6 +201,11 @@ export async function createCandidateFromParsed(
       timezone: parsed.contact_info.tz || null,
       linkedin_url: parsed.linkedin_url || null,
       portfolio_url: parsed.portfolio_url || null,
+      // See `addCandidate` above: these were folded into `headline` and then
+      // dropped, so a recruiter-confirmed title never reached the column the
+      // Title filter searches (or the normalizer reads).
+      current_title: parsed.current_title || null,
+      current_company: parsed.current_company || null,
       headline,
       years_experience: parsed.years_experience ?? null,
       professional_summary: parsed.professional_summary || null,
@@ -251,6 +274,10 @@ export async function createCandidateFromParsed(
       if (skillErr) console.error("skill insert error:", skillErr.message)
     }
   }
+
+  await reconcileCandidateSearchEnrichment(supabase, candidate.candidate_id, {
+    reason: "create",
+  })
 
   revalidatePath("/candidates")
   return { ok: true, id: candidate.candidate_id }

@@ -8,8 +8,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AskComposer } from "@/components/chat/ask-composer"
+import { FilterMultiSelect } from "@/components/candidates/filter-multi-select"
 import { cn } from "@/lib/utils"
-import { parseCandidateSearchParams } from "@/lib/candidate-search"
+import {
+  parseCandidateSearchParams,
+  roleFamilyLabel,
+  seniorityLabel,
+  ROLE_FAMILY_OPTIONS,
+  SENIORITY_OPTIONS,
+  countryLabel,
+} from "@/lib/candidate-search"
+import type { RoleFamily, TitleSeniority } from "@/lib/supabase/types"
+import type { CandidateCanonicalRole } from "@/lib/data"
 import { runAiCandidateSearch } from "@/app/(app)/candidates/search/actions"
 
 /**
@@ -55,7 +65,17 @@ import { runAiCandidateSearch } from "@/app/(app)/candidates/search/actions"
  * unrelated controls, while a column just gets taller and scrolls.
  */
 
-type FilterKey = "name" | "title" | "location" | "skills" | "minYears" | "maxYears"
+type FilterKey =
+  | "name"
+  | "title"
+  | "location"
+  | "skills"
+  | "minYears"
+  | "maxYears"
+  | "role"
+  | "family"
+  | "seniority"
+  | "country"
 
 const FILTER_KEYS: FilterKey[] = [
   "name",
@@ -64,7 +84,22 @@ const FILTER_KEYS: FilterKey[] = [
   "skills",
   "minYears",
   "maxYears",
+  "role",
+  "family",
+  "seniority",
+  "country",
 ]
+
+/**
+ * The three multi-select params. Held in the same `Record<FilterKey, string>`
+ * as the text fields, comma-joined — so `valuesFromParams`, `apply`, `clear`
+ * and `canClear` keep working on one shape, and there is still exactly one
+ * place that turns rail state into a URL.
+ */
+type MultiKey = Extract<FilterKey, "role" | "family" | "seniority" | "country">
+
+const splitMulti = (value: string): string[] =>
+  value.split(",").map((v) => v.trim()).filter(Boolean)
 
 type FilterValues = Record<FilterKey, string>
 
@@ -80,9 +115,9 @@ type RailMode = "filters" | "ai"
  * two ways to ask one question rather than two unrelated tools.
  */
 const AI_PROMPTS = [
-  "Account executives in Boston with 5+ years",
+  "Senior AEs in Boston with 5+ years",
   "Product designers who know Figma",
-  "Engineers with 3–8 years, open to remote",
+  "Sales candidates in Seattle",
 ]
 
 /** Fixed copy, so the same situation always reads the same way. */
@@ -169,17 +204,48 @@ function writePersisted(value: PersistedRail) {
  * the recruiter can see the interpretation before trusting the result set. Only
  * filters that were extracted appear; nothing is invented to fill the list.
  */
-function interpretationSummary(filters: {
-  name: string | null
-  title: string | null
-  location: string | null
-  skills: string[]
-  minYears: number | null
-  maxYears: number | null
-}): string {
+function interpretationSummary(
+  filters: {
+    name: string | null
+    title: string | null
+    location: string | null
+    skills: string[]
+    minYears: number | null
+    maxYears: number | null
+    roleSlugs: string[]
+    roleFamilies: string[]
+    seniorities: string[]
+    countries: string[]
+  },
+  roleLabel: (slug: string) => string
+): string {
   const lines: string[] = []
+  // Role first: it is the strongest claim the parse makes, and the one a
+  // recruiter most needs to see before trusting the result set.
+  if (filters.roleSlugs.length) {
+    lines.push(`Role: ${filters.roleSlugs.map(roleLabel).join(", ")}`)
+  }
+  if (filters.roleFamilies.length) {
+    lines.push(
+      `Role family: ${filters.roleFamilies
+        .map((f) => roleFamilyLabel(f as RoleFamily))
+        .join(", ")}`
+    )
+  }
+  if (filters.seniorities.length) {
+    lines.push(
+      `Seniority: ${filters.seniorities
+        .map((v) => seniorityLabel(v as TitleSeniority))
+        .join(", ")}`
+    )
+  }
+  if (filters.countries.length) {
+    lines.push(`Country: ${filters.countries.map(countryLabel).join(", ")}`)
+  }
   if (filters.name) lines.push(`Name: ${filters.name}`)
-  if (filters.title) lines.push(`Title: ${filters.title}`)
+  // "Title text", matching the field's own label — the AI parser writes the
+  // free-text title filter, never the normalized Role/Family/Seniority ones.
+  if (filters.title) lines.push(`Title text: ${filters.title}`)
   if (filters.location) lines.push(`Location: ${filters.location}`)
   if (filters.skills.length) lines.push(`Skills: ${filters.skills.join(", ")}`)
 
@@ -205,10 +271,50 @@ function valuesFromParams(params: URLSearchParams): FilterValues {
   ) as FilterValues
 }
 
-export function AdvancedSearchFilters() {
+export function AdvancedSearchFilters({
+  canonicalRoles = [],
+  countryCodes = [],
+}: {
+  /**
+   * Active roles only, resolved on the server. Passed in rather than fetched
+   * here so the rail stays a pure client component with no data access of its
+   * own — and so a retired role can't be offered as a choice.
+   */
+  canonicalRoles?: CandidateCanonicalRole[]
+  /** ISO-2 codes present on candidates, so the menu offers only useful options. */
+  countryCodes?: string[]
+}) {
   const router = useRouter()
   const params = useSearchParams()
   const paramsKey = params.toString()
+
+  /**
+   * Roles as menu options, grouped by family and ordered by the family list —
+   * so the menu reads Sales first, then Customer Success, and so on, rather
+   * than alphabetically by role label across seventeen unrelated rows.
+   *
+   * The option carries the **slug**, never the uuid: that is what goes in the
+   * URL, and an id in a shared link is both meaningless and a leaked key.
+   */
+  const roleOptions = React.useMemo(
+    () =>
+      ROLE_FAMILY_OPTIONS.flatMap(([family, familyLabel]) =>
+        canonicalRoles
+          .filter((role) => role.role_family === family)
+          .map((role) => ({
+            value: role.slug,
+            label: role.label,
+            group: familyLabel,
+          }))
+      ),
+    [canonicalRoles]
+  )
+
+  /** Slug → label for the AI tab's interpretation summary. */
+  const roleLabel = React.useCallback(
+    (slug: string) => canonicalRoles.find((r) => r.slug === slug)?.label ?? slug,
+    [canonicalRoles]
+  )
 
   /**
    * A query handed over by the ask bar on /candidates. Arriving with `?q=`
@@ -313,15 +419,22 @@ export function AdvancedSearchFilters() {
 
       const { filters: parsed, unsupportedRequirements } = result
       reply(
-        interpretationSummary(parsed),
+        interpretationSummary(parsed, roleLabel),
         unsupportedRequirements.length
           ? `Not yet included: ${unsupportedRequirements.join(", ")}.`
           : undefined
       )
 
-      // Write the parsed values into the same six params the rail uses. `page`
-      // is omitted, which resets pagination — a new filter set makes the old
-      // page number meaningless.
+      // Write the parsed values into the same params the rail uses. `page` is
+      // omitted, which resets pagination — a new filter set makes the old page
+      // number meaningless.
+      //
+      // Built from an empty set, so the parse fully replaces the previous
+      // search rather than merging with it: every param below is written from
+      // what this sentence asked for, and anything it didn't ask for is gone.
+      // The interpretation summary above lists exactly these, so what the reply
+      // claims and what the table shows are the same thing. Switching *tabs*
+      // preserves everything; running a new AI search replaces the search.
       const sp = new URLSearchParams()
       if (parsed.name) sp.set("name", parsed.name)
       if (parsed.title) sp.set("title", parsed.title)
@@ -329,6 +442,16 @@ export function AdvancedSearchFilters() {
       if (parsed.skills.length) sp.set("skills", parsed.skills.join(", "))
       if (parsed.minYears !== null) sp.set("minYears", String(parsed.minYears))
       if (parsed.maxYears !== null) sp.set("maxYears", String(parsed.maxYears))
+      if (parsed.roleSlugs.length) sp.set("role", parsed.roleSlugs.join(","))
+      if (parsed.roleFamilies.length) sp.set("family", parsed.roleFamilies.join(","))
+      if (parsed.seniorities.length) sp.set("seniority", parsed.seniorities.join(","))
+      if (parsed.countries.length) sp.set("country", parsed.countries.join(","))
+      // Anything the parse could not apply travels with the search it describes,
+      // so the results say it too — the rail's own notice is easy to miss while
+      // reading a table.
+      if (unsupportedRequirements.length) {
+        sp.set("unsupported", unsupportedRequirements.join(", "))
+      }
       // Note this also drops `q` from the URL, which is what stops a handed-over
       // query from re-running on a later navigation.
       router.push(`/candidates/search?${sp.toString()}`, { scroll: false })
@@ -339,7 +462,7 @@ export function AdvancedSearchFilters() {
     } finally {
       setPending(false)
     }
-  }, [router])
+  }, [router, roleLabel])
 
   /** A typed send: echo the message, then run it. */
   async function handleSend(text: string) {
@@ -434,6 +557,11 @@ export function AdvancedSearchFilters() {
 
   function set(key: FilterKey, value: string) {
     setValues((current) => ({ ...current, [key]: value }))
+  }
+
+  /** A multi-select's selection, stored as the comma-joined param value. */
+  function setMulti(key: MultiKey, next: string[]) {
+    set(key, [...new Set(next)].join(","))
   }
 
   return (
@@ -552,16 +680,58 @@ export function AdvancedSearchFilters() {
           value={values.name}
           onChange={(v) => set("name", v)}
         />
+        {/* The normalized trio, above the raw-text field: role is the question
+            most recruiters are actually asking, and the text search below is
+            the fallback for what classification couldn't reach. */}
+        <FilterMultiSelect
+          id="filter-role"
+          label="Role"
+          options={roleOptions}
+          selected={splitMulti(values.role)}
+          onChange={(next) => setMulti("role", next)}
+          hint="Matches any of these"
+          emptyMessage="No roles available"
+        />
+        <FilterMultiSelect
+          id="filter-family"
+          label="Role family"
+          options={ROLE_FAMILY_OPTIONS.map(([value, label]) => ({ value, label }))}
+          selected={splitMulti(values.family)}
+          onChange={(next) => setMulti("family", next)}
+          hint="Matches any of these"
+        />
+        <FilterMultiSelect
+          id="filter-seniority"
+          label="Seniority"
+          options={SENIORITY_OPTIONS.map(([value, label]) => ({ value, label }))}
+          selected={splitMulti(values.seniority)}
+          onChange={(next) => setMulti("seniority", next)}
+          hint="Matches any of these"
+        />
         <Field
           id="filter-title"
-          label="Title"
-          placeholder="e.g. Account Executive"
+          // "Title text contains", not "Title": beside a Role filter that is a
+          // classification, an unqualified "Title" reads like the same thing
+          // with a free-text box. This one is a substring match on the raw
+          // title, and it is the only filter that reaches an unclassified
+          // candidate or a variant no rule covers.
+          label="Title text contains"
+          placeholder="e.g. Enterprise"
           value={values.title}
           onChange={(v) => set("title", v)}
         />
+        <FilterMultiSelect
+          id="filter-country"
+          label="Country"
+          options={countryCodes.map((code) => ({ value: code, label: countryLabel(code) }))}
+          selected={splitMulti(values.country)}
+          onChange={(next) => setMulti("country", next)}
+          hint="Matches any of these"
+          emptyMessage="No countries on file yet"
+        />
         <Field
           id="filter-location"
-          label="Location"
+          label="City"
           placeholder="e.g. Boston"
           value={values.location}
           onChange={(v) => set("location", v)}

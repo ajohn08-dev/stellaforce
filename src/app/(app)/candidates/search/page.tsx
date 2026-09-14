@@ -9,6 +9,7 @@ import {
   emptyCandidateSearchPage,
   parseCandidateSearchParams,
 } from "@/lib/candidate-search"
+import { getActiveCanonicalRoles, getCandidateCountryCodes } from "@/lib/data"
 import { searchCandidates } from "@/lib/server/candidate-search"
 
 /**
@@ -52,16 +53,29 @@ export default async function CandidateAdvancedSearchPage({
   if (!isStellaforceStaff(profile)) notFound()
 
   const sp = await searchParams
-  const { filters, page, pageSize, hasBlockingIssue } =
+  const { filters, page, pageSize, hasBlockingIssue, unsupportedNotice } =
     parseCandidateSearchParams(sp)
 
   // An invalid year range must not run a query. The rail already explains why,
   // beside the field that caused it — so the table simply shows nothing rather
   // than repeating the message or, worse, showing stale results that no longer
   // correspond to what's on screen.
-  const results = hasBlockingIssue
-    ? emptyCandidateSearchPage(page, pageSize)
-    : await searchCandidates(filters, { page, pageSize })
+  // The Role options and the query run together: both are read server-side,
+  // and only active roles are offered so a retired one can't be picked.
+  const [results, canonicalRoles, countryCodes] = await Promise.all([
+    hasBlockingIssue
+      ? emptyCandidateSearchPage(page, pageSize)
+      : searchCandidates(filters, { page, pageSize }),
+    getActiveCanonicalRoles(),
+    getCandidateCountryCodes(),
+  ])
+
+  // Slug → label, so the applied-filter summary can name a role the way the
+  // menu did. Built here because the taxonomy is already loaded; the results
+  // component never looks anything up.
+  const roleLabels = Object.fromEntries(
+    canonicalRoles.map((role) => [role.slug, role.label])
+  )
 
   return (
     <div
@@ -75,11 +89,19 @@ export default async function CandidateAdvancedSearchPage({
       <SetAdvancedSearchBreadcrumb />
 
       <aside className="w-[280px] shrink-0 border-r border-border bg-white dark:bg-white">
-        <AdvancedSearchFilters />
+        <AdvancedSearchFilters
+          canonicalRoles={canonicalRoles}
+          countryCodes={countryCodes}
+        />
       </aside>
 
       <div className="min-h-0 min-w-0 flex-1 p-4">
-        <AdvancedSearchResults page={results} />
+        <AdvancedSearchResults
+          page={results}
+          filters={filters}
+          roleLabels={roleLabels}
+          unsupportedNotice={unsupportedNotice}
+        />
       </div>
     </div>
   )

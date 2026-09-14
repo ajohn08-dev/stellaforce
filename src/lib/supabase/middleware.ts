@@ -14,10 +14,18 @@ const PUBLIC_PATH_PREFIXES = ["/api/"]
 
 /**
  * Refreshes the Supabase auth session on every request and redirects
- * unauthenticated users to /login. Called from src/middleware.ts.
+ * unauthenticated users to /login. Called from src/proxy.ts.
+ *
+ * `requestHeaders` replaces the headers forwarded downstream, which is how
+ * `proxy.ts` drops `next-url` on the paths a `(.)` interception rewrite would
+ * otherwise swallow. Omit it and the request's own headers are passed through
+ * unchanged — the only thing this argument is for is that one suppression, so
+ * it should not grow into a general header-editing seam.
  */
-export async function updateSession(request: NextRequest) {
-  const response = NextResponse.next({ request })
+export async function updateSession(request: NextRequest, requestHeaders?: Headers) {
+  const response = requestHeaders
+    ? NextResponse.next({ request: { headers: requestHeaders } })
+    : NextResponse.next({ request })
 
   const supabase = createServerClient(
     publicEnv.supabaseUrl,

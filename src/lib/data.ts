@@ -11,9 +11,11 @@ import type {
   CandidateCertificationRow,
   CandidateEducationRow,
   CandidateRow,
+  CandidateSearchStateRow,
   CandidateSkillWithSkill,
   CandidateToolWithTool,
   CandidateWorkExperienceRow,
+  CanonicalRoleRow,
   ClientRow,
   JobOrderRow,
   JobTeamMemberRow,
@@ -178,6 +180,10 @@ export async function getCandidate(id: string): Promise<{
   workHistory: WorkHistoryEntry[]
   addedBy: AddedByProfile | null
   resume: CandidateResumeFile | null
+  /** The classified role behind `candidate.canonical_role_id`, if it has one. */
+  canonicalRole: CandidateCanonicalRole | null
+  /** Derived-search reconciliation state. Never affects what search can find. */
+  searchState: CandidateSearchStateRow | null
 } | null> {
   if (!isSupabaseConfigured) return null
   const supabase = await createClient()
@@ -243,6 +249,25 @@ export async function getCandidate(id: string): Promise<{
     }
   }
 
+  // The label for the candidate's classified role, if it has one. Read as its
+  // own query rather than an embedded join because `candidates` is selected
+  // with `*` above, and an embed there would widen that select for every caller.
+  let canonicalRole: CandidateCanonicalRole | null = null
+  if (candidateFields.canonical_role_id) {
+    const { data: role } = await supabase
+      .from("canonical_roles")
+      .select("id, slug, label, role_family, is_active")
+      .eq("id", candidateFields.canonical_role_id)
+      .maybeSingle()
+    canonicalRole = role ?? null
+  }
+
+  const { data: searchState } = await supabase
+    .from("candidate_search_state")
+    .select("*")
+    .eq("candidate_id", id)
+    .maybeSingle()
+
   return {
     candidate: candidateFields,
     skills: (skills ?? []) as CandidateSkillWithSkill[],
@@ -252,7 +277,62 @@ export async function getCandidate(id: string): Promise<{
     workHistory: (workExperiences ?? []).map(toWorkHistoryEntry),
     addedBy,
     resume,
+    canonicalRole,
+    searchState,
   }
+}
+
+/** The classified role on a candidate profile — id, label, and its family. */
+export type CandidateCanonicalRole = Pick<
+  CanonicalRoleRow,
+  "id" | "slug" | "label" | "role_family" | "is_active"
+>
+
+/**
+ * The role vocabulary the override control offers.
+ *
+ * Active roles only: a retired role stays readable on the candidates already
+ * classified with it (that is what `getCandidate` reads above), but must not be
+ * offered as a new choice.
+ */
+/**
+ * The ISO-2 codes that actually appear on candidates, for the Country filter.
+ *
+ * Present-in-data rather than the full supported list: a menu of fifty
+ * countries where forty-eight return nothing is a worse control than a menu of
+ * the three you recruit in. The AI parser still accepts any supported code —
+ * asking for a country with no candidates should return zero results, not be
+ * refused.
+ */
+export async function getCandidateCountryCodes(): Promise<string[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("candidates")
+    .select("country_code")
+    .not("country_code", "is", null)
+
+  if (error) {
+    console.error("getCandidateCountryCodes error:", error.message)
+    return []
+  }
+  return [...new Set((data ?? []).map((r) => r.country_code as string))].sort()
+}
+
+export async function getActiveCanonicalRoles(): Promise<CandidateCanonicalRole[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("canonical_roles")
+    .select("id, slug, label, role_family, is_active")
+    .eq("is_active", true)
+    .order("label", { ascending: true })
+
+  if (error) {
+    console.error("getActiveCanonicalRoles error:", error.message)
+    return []
+  }
+  return data ?? []
 }
 
 /** Every profile (both sides), for the admin "Switch User" menu — grouped/labeled by side in the UI. */

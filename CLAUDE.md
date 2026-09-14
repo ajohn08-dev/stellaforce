@@ -1188,7 +1188,20 @@ rebuilt as `dispatched_at is null and suppressed_at is null`) →
 run only where someone turned them on) → `20260913100000_candidate_visibility_rls`
 (the candidate-visibility rule below: five predicate functions, per-command
 policies across the whole candidate domain, and the deletion of the twelve
-`recruiters_all_*` policies that made it moot).
+`recruiters_all_*` policies that made it moot) → the **title normalization**
+set: `20260913110000_title_normalization_enums` (`role_family`,
+`title_seniority`, `title_normalization_source`), `_110100_title_taxonomy_tables`
+(`canonical_roles` + `title_aliases`, both lookup-read / Stellaforce-write),
+`_110200_candidates_title_normalization` (seven nullable columns + three
+indexes; touches no existing value), `_110300_seed_title_taxonomy` (15 roles,
+37 aliases, idempotent on `lower(slug)`/`lower(alias)`), and
+`_110400_drop_title_normalization_segment` (housekeeping — a sales-segment axis
+was created and then cut from V1 scope while the branch was in flight; the three
+creating migrations were rewritten to their final shape, so this is a no-op on a
+fresh database and exists only for environments that ran the earlier revision) →
+`20260913120000_seed_title_taxonomy_coverage` (forward-only coverage pass 1: two
+canonical roles — `channel_partner_sales`, `recruiting_coordinator` — and twelve
+exact aliases, taking the taxonomy to 17 roles / 49 aliases).
 
 **RLS.** **Tenant-scoped** on the workflow-template / settings / activity / AI /
 audit tables (client users see only their own client's rows + globals) and on the
@@ -1197,6 +1210,274 @@ audit tables (client users see only their own client's rows + globals) and on th
 by the `handle_new_user()` trigger). Anonymous: no access; the service-role key
 bypasses RLS for privileged work (seeding, n8n ingestion). Full table / enum /
 function / trigger / index / RLS reference: **[DB_Schema.md](DB_Schema.md)**.
+
+## Candidate title normalization (V1)
+
+**A candidate's current title, classified for search — stored beside the raw
+title, never on top of it.** `candidates.current_title`, `candidates.headline`
+and `candidate_work_experiences.title` are inputs to this feature and nothing
+else; no code path in it writes a title.
+
+**Three axes, and deliberately no fourth.** Canonical role
+(`candidates.canonical_role_id` → `canonical_roles`), role family, seniority.
+**There is no sales segment.** "Enterprise" and "Strategic" stay in the raw
+title, where the existing free-text *Title contains* filter already finds them —
+a structured segment field would have to mean something specific (deal size?
+account tier? whose definition?) and nothing in the product answers that yet.
+The normalizer *strips* those words when that is what it takes to reach a match
+("Enterprise Sales Engineer" is a Sales Engineer) and then discards them.
+
+**Unclassified is a state, not a value.** No `unknown` or `other` member exists
+on either vocabulary: a row nobody could map and a row classified as "other" look
+identical in a filter the moment `other` exists, and the first is work to do
+while the second is a decision. All-null columns mean unclassified;
+`title_normalization_source` null *with* `normalized_from_title` set means the
+rules ran and matched nothing, which is what a review sweep needs and what the
+profile card says out loud.
+
+**Matching is whole-string, never substring** — the entire safety property.
+Every `title_aliases` row is a complete title compared by exact case-insensitive
+equality. A substring matcher makes "Sales Engineer" match a "sales" rule and
+"Account Manager" match "Account Executive", and both put a real person in a
+search result they don't belong in. `npm run title-check` asserts a dozen
+negative cases, including that "Sales", "Engineer", "Manager", "Executive" and
+"Director" stay unclassified — those broad aliases are deliberately not seeded.
+
+**The rules are pure; the I/O is separate.** `src/lib/title-normalization.ts`
+has no Supabase import and no `server-only`, like `src/lib/candidate-search.ts`,
+so `npm run title-check` drives the real logic headless rather than a
+re-implementation of it. `src/lib/server/title-normalization.ts` is the I/O
+around it and **takes whichever client its caller holds** — the
+`src/lib/server/activity.ts` pattern — so it inherits the caller's scoping
+instead of escalating past it.
+
+**Classification runs in three passes, and the order is load-bearing.** The
+whole title first ("Product Manager" and "Account Manager" are roles whose names
+*end* in a seniority word; extracting first reduces them to "product" and
+"account" and classifies neither), then with the seniority word lifted out, then
+with a market qualifier lifted out too. Within the later passes qualifiers come
+out before seniority, because "mid-market" contains "mid" — strip seniority
+first and a Mid-Market AE comes back mid-level, which is a different and wrong
+claim about a person. A bare "Account Executive" is `seniority = null`, never
+`mid`: the title stated no rung.
+
+**`normalized_from_title` is what makes an override survive a re-parse.**
+`current_title` is overwritten by ingestion, so without a record of what the
+mapping was computed *from*, "did the title change?" is unanswerable. The policy:
+unchanged title → touch nothing (a re-upload of the same résumé must be a no-op);
+changed title under a `recruiter` source → **keep their values, recompute
+nothing**, and report `review_needed` (their decision was about a title the
+candidate no longer holds — that needs a human); anything else → recompute.
+There is deliberately no "recompute and compare" branch, which is how an
+override gets lost to a refactor later. **The review queue that will consume
+`review_needed` is out of scope for V1** — the signal exists, the destination
+does not.
+
+**A trailing qualifier is cut; a slash is not.** `,` and `|` end the role name
+and start a qualifier — a territory, vertical, team or tech stack — and so do
+`–`/`—` **when whitespace sits on at least one side**, because an en dash can
+also join words. Everything after the first such separator is dropped *for
+comparison only*; the raw title is untouched and the qualifier is stored nowhere.
+`/` is deliberately excluded: "Account Executive/Channel Partnerships Manager" is
+one person doing two jobs, and taking the left half would silently pick one, so
+slash titles stay unclassified. **Plain hyphen-minus is an accepted limitation**
+— it is the separator in "Major Account Executive - Financial Services" *and* the
+joiner in "Full-Stack Engineer" / "Mid-Market Account Executive", and the hyphen
+is the one character this module's word boundaries already depend on, so it is
+left unsupported rather than half-handled. `title-check` asserts the limitation
+so it can only change deliberately.
+
+**Two lookup tables, read like `skills`/`tools`, written Stellaforce-side only.**
+`canonical_roles` is a table rather than an enum because roles grow: adding
+"Solutions Architect" is a row, not a migration. `title_aliases` rows are either
+mapped or a **declared ambiguity** (`pm`, `am`, `se` — "PM" is Product, Project
+or Program Manager), enforced by CHECK, so the normalizer can decline *knowingly*
+rather than because no rule happened to exist. Client-side profiles get no
+insert/update/delete policy at all — editing the taxonomy would change how every
+other client's candidates classify.
+
+**The override is internal editorial, not candidate editing.** Any
+Stellaforce-side profile may set role/family/seniority on
+`/candidates/[id]` → Overview → *Search classification*
+(`setCandidateTitleClassification`), gated by `isStellaforceStaff` in the action
+as well as on the page — a Server Action is a POST endpoint in its own right.
+It writes all four fields in one statement (a partial update is how a candidate
+ends up with a role from one decision and a seniority from another), stamps
+`source = 'recruiter'` / `confidence = 'high'` / `normalized_from_title` /
+`title_normalized_at`, and writes one `audit_log` row (`entity_type:
+'candidate_title_classification'`) — what a recruiter *configured* about a
+record, not something that happened to a person. Picking a role decides the
+family rather than offering a second contradictable answer, and the server
+refuses a pair that disagrees.
+
+**Two creation paths were silently dropping the raw title.** `addCandidate` and
+`createCandidateFromParsed` read the form's title/company, folded them into
+`headline`, and never wrote `current_title`/`current_company` — so every
+manually added candidate was invisible to Advanced Search's *Title contains*
+filter (which queries `current_title`) and had nothing to classify. Both now
+persist them; `headline` keeps its exact previous value and meaning.
+
+**Advanced Search filters on it.** The Filters rail carries **Role** (multi-select
+over active `canonical_roles`, grouped by family), **Role family** and
+**Seniority**, as `?role=` / `?family=` / `?seniority=` — comma-separated
+**slugs and enum values, never uuids**: an id in a shared link is meaningless,
+breaks across environments, and leaks a key for no reason. OR within a group
+(`.in()`), AND across groups, all on `candidates` itself so the exact count
+stays a candidate count. A slug that resolves to no *active* role contributes
+nothing, and a role filter resolving to nothing returns an empty page rather
+than silently widening — the rule `candidateIdsForSkills` already follows.
+
+**"Title" is now "Title text contains", and it stays.** Beside a Role filter
+that is a classification, an unqualified "Title" reads like the same thing with
+a free-text box. It is the only filter that reaches an unclassified candidate or
+a variant no rule covers, which is 10 of 28 today — so whenever a Role or Role
+family filter is active the results say so: *"Role filters use classified
+current titles. Use Title text contains to include title variants or
+unclassified candidates."* A short result set is otherwise read as a fact about
+the market.
+
+**The AI tab writes the same filters.** `canonicalRoles` / `roleFamilies` /
+`seniorities` joined the parser's output, so *"find AEs in Boston"* returns
+`account_executive` + Boston rather than a substring match on "AE". The role
+field is a **closed enum built per call from the active taxonomy**
+(`buildSearchSchema`), and the prompt lists every role by slug *and* label —
+which is what lets the model recognise "AEs" without being taught synonyms, and
+what stops it inventing a slug. A static enum would drift the first time someone
+adds a role, which is the whole reason roles are a table.
+
+**The model is never the last check.** `sanitizeAiFilters`
+(`src/lib/candidate-search.ts`, pure) re-checks every value against the live
+taxonomy and the two enums, drops what it doesn't recognise rather than
+rejecting the search, and re-validates the year range. It lives beside
+`parseCandidateSearchParams` so the rail, the URL and the parser cannot disagree
+about what a valid filter value is. A parse whose *only* filter was an invalid
+role counts as empty — never as an unfiltered search.
+
+**A market qualifier lands in the title text, not in a structured field.**
+*"enterprise AEs"* → role `account_executive` **and** `title` contains
+"Enterprise": there is no segment field, so the raw-text filter is the only
+honest way to honour that half of the request, and the interpretation summary
+shows both lines. *"Former SDRs who are now AEs"* classifies the current role and
+reports the past one under *Not yet included* — the normalized fields describe a
+**current** title only.
+
+A new AI search replaces the whole filter set rather than merging with it, so
+what the reply claims and what the table shows are the same thing. Switching
+*tabs* preserves everything.
+
+⚠️ **Work experience is still not normalized**, deliberately:
+`upsertWorkExperiences` deletes and recreates every resume-sourced row on
+re-parse, so a column stored there would not survive the next upload. Former-role
+search and role-specific tenure therefore remain unsupported.
+
+**Guards:** `npm run title-check` (pure — the classification table, whole-string
+negatives, seniority extraction, the re-parse policy, and that raw titles come
+back byte-for-byte; it parses its alias fixture **out of the seed migration** so
+the rules and the seeded data cannot drift) and
+`npm run ai-search-check` (pure — the vocabularies, the post-model sanitizer
+dropping invented slugs/levels and inverted year ranges, and that the parser's
+enums still come from the shared option lists rather than a hardcoded copy) and
+`npm run title-backfill` (dry-run by default, `-- --apply` to write; batched,
+idempotent, **aggregate counts only — never a name, an email, or a raw title**).
+Its `-- --recheck` flag re-evaluates already-classified rows, which is the only
+way to see what a *new* rule set would produce: the re-parse policy skips a row
+whose title hasn't changed, so a plain dry run after a taxonomy change reports
+"all unchanged" and answers nothing. `--recheck` never reaches a recruiter
+override — that row is preserved before the flag is consulted.
+
+## Candidate search enrichment
+
+**Adding a candidate populates their derived search data, then and there.** Every
+path that writes search-relevant candidate data calls one function —
+`reconcileCandidateSearchEnrichment` (`src/lib/server/candidate-search-enrichment.ts`)
+— synchronously, before the recruiter sees the result. The four seams are
+`addCandidate`, `createCandidateFromParsed`, the `reconcile_search` stage of
+`ingestCandidateResume`, and `setCandidateTitleClassification`. It classifies
+the title through the existing normalizer and records what is still missing.
+
+**Every candidate is searchable, always.** Name, raw title text, city, skills
+and years reach every row regardless of enrichment state — nothing here gates a
+query. There is deliberately **no `is_searchable` column**: it would have stored
+`candidates.canonical_role_id is not null` a second time on a different table
+with a different writer (the override action writes that column directly), so
+the two would disagree the moment a recruiter classified someone by hand. Worse,
+the name promises far more than it means, and the next person to write a query
+would reasonably add `where is_searchable` — at which point enrichment state
+starts hiding people. `is_classified` is derived in the
+`candidate_search_readiness` view.
+
+**`candidate_search_state` is one row per candidate**, cascade-deleted with
+them. It stores what only the app can produce — `readiness`, `review_reasons`,
+the dirty/watermark pair, attempt count, last error, `enrichment_version` — and
+the view derives the rest (`is_classified`, `is_stale`, `never_reconciled`,
+`time_to_ready`). **Not a setting and not in Settings**: nothing here is a dial
+an admin turns.
+
+**Readiness has four states and only two are about the candidate.** `ready` and
+`ready_with_review` are conclusions about their data; `pending` means no run has
+happened yet and `failed` means *our* reconciliation broke — neither is a
+statement about the person, and neither changes what search can find. A résumé
+that parsed badly is `ready_with_review` with a `parse_needs_review` reason, not
+`failed`: the parse is what went wrong. Nine reason codes, each with recruiter
+wording in `REVIEW_REASON_LABELS`, rendered as an amber "Worth a look" list on
+the profile's Search classification card. `pending` and `failed` render nothing
+there.
+
+**Two policies worth knowing.** Years of experience is **validated, never
+derived** — parsed résumés carry gaps, overlaps and missing end dates, so a
+computed figure is confidently wrong often enough to be worse than a blank, and
+it would overwrite a number a recruiter typed; an implausible value is flagged
+instead. And a `current_title` that disagrees with the `is_current`
+work-experience row is **reported, never reconciled**, per the V1 decision.
+
+**Triggers stamp one timestamp and nothing else** (`mark_candidate_search_dirty`,
+SECURITY DEFINER so RLS cannot silently drop a flag). They fire on `candidates`
+(input columns only), `candidate_work_experiences`, `candidate_skills` and
+`resumes`. **No external or LLM call may ever appear in one** — a trigger runs
+inside the writer's transaction. ⚠️ **The loop-breaker:** the UPDATE trigger on
+`candidates` lists *input* columns and must never be widened to "any column",
+or the reconciler's own classification writes would re-dirty the row it just
+cleaned, forever.
+
+**The dirty flag is the outbox** — no queue, no Edge Function, no new
+infrastructure. `/api/cron/search-enrichment-sweep` (n8n Schedule → bearer auth
+→ admin client, the same shape as the three existing cron routes) drains it,
+and is the safety net rather than the main path: writes that skipped a seam,
+`ENRICHMENT_VERSION` bumps, and failures with exponential backoff capped at five
+attempts. **n8n schedules it and nothing more** — readiness is computed and
+stored by the app.
+
+**The watermark is what makes it safe.** Each run records the `search_dirty_at`
+it observed, and clears that flag only with `.eq()` on the same value: a write
+landing mid-run has already replaced it, so the row stays dirty and is swept
+again. Work is never lost, and a run that began before newer data can never mark
+that data clean. Clearing also keeps the sweep's first page full of candidates
+who actually need something.
+
+**Country is the one location axis that is normalized.** `candidates.country_code`
+is derived ISO-2, computed by the reconciler from the raw `location_country` —
+which arrives as both `IN` and `India` for the same country, so an equality
+filter on the raw column answers "engineers in India" differently depending on
+which résumé produced the row. The raw column is read and never written.
+`src/lib/country-normalization.ts` is the pure map (~48 codes plus the spellings
+résumés actually produce); an unrecognised value resolves to **null and a
+`unresolved_country` review reason**, never a guess. **Country only** — no
+geocoding, no metros, no state or region resolution: "Greater Boston", "the Bay
+Area" and "California" stay unsupported, because a wrong guess about where
+someone lives is worse than an honest gap.
+
+**A dropped requirement is now loud.** When the AI parse cannot apply something
+the recruiter asked for, it travels in the URL as `?unsupported=` and renders in
+**amber above the results table**, not as a grey line in the rail. This came
+from a real failure: a search for "software engineer in India" returned a
+candidate in New Jersey, because country was unsupported, correctly declined,
+and disclosed somewhere the recruiter was not looking. The results were
+consistent with the filters and still wrong as an answer.
+
+**Guards:** `npm run enrichment-check` (pure — every reason, the readiness
+ladder, the years and conflict policies, sorted/de-duplicated output) and
+`npm run enrichment-backfill` (dry-run by default, `-- --apply` to write;
+**aggregate counts only — never a name, an email, or a raw title**).
 
 ## Candidate visibility
 

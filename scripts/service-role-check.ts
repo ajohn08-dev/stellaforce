@@ -35,6 +35,10 @@ const ALLOWED: Record<string, string> = {
   "src/app/api/calls/postcall/route.ts": "ElevenLabs post-call webhook, HMAC-verified",
   "src/app/api/cron/agent-call-dispatch/route.ts": "cron tick, no session",
   "src/app/api/cron/scheduling-sweep/route.ts": "cron tick, no session",
+  "src/app/api/cron/search-enrichment-sweep/route.ts":
+    "cron tick, no session; reconciles derived search data for candidates whose " +
+    "in-process reconciliation was missed or failed. Reads the candidate domain " +
+    "and writes only classification + candidate_search_state — never a raw field",
   "src/app/api/cron/sla-check/route.ts": "cron tick, no session",
   "src/app/api/applications/[applicationId]/move-stage/route.ts": "bearer-authed n8n, no session",
   "src/app/api/interviews/[interviewId]/complete/route.ts": "system callback, no session",

@@ -10,6 +10,7 @@ import {
   toPgVector,
 } from "@/lib/ai/embeddings"
 import { normalizeResumePayload } from "@/lib/ingest/normalize"
+import { reconcileCandidateSearchEnrichment } from "@/lib/server/candidate-search-enrichment"
 import type { NormalizedIngestPayload, RawWebhookItem } from "@/lib/ingest/schema"
 
 /**
@@ -45,6 +46,7 @@ export type IngestStage =
   | "upsert_work_experiences"
   | "upsert_education"
   | "upsert_certifications"
+  | "reconcile_search"
   | "done"
 
 export class IngestStageError extends Error {
@@ -550,6 +552,30 @@ export async function ingestCandidateResume(
 
   await stageMark("upsert_certifications")
   await upsertCertifications(supabase, candidateId, resumeId, normalized.certifications)
+
+  // Reconcile the candidate's derived search data.
+  //
+  // Last, and deliberately **once** rather than per step: every write above has
+  // already landed, and the child-table triggers have flagged this candidate as
+  // many times as there were rows. One run here reads the finished state — the
+  // classified title, the skills, the work history, the parse status — and
+  // records what is still missing.
+  //
+  // It cannot fail the ingestion. A résumé whose job title matches no rule is an
+  // ordinary outcome: the candidate is stored, findable by every existing
+  // filter, and simply carries an `unclassified_title` review reason.
+  // `reconcileCandidateSearchEnrichment` never throws and records its own
+  // errors; the only thing tracked here is that the stage ran, using the same
+  // `stage` field every other step uses.
+  //
+  // It also enforces the override policy: if a recruiter classified this
+  // candidate by hand and the résumé now carries a different title, their
+  // values are kept and the candidate is flagged for review instead.
+  await stageMark("reconcile_search")
+  await reconcileCandidateSearchEnrichment(supabase, candidateId, {
+    reason: "resume_ingest",
+    ingestionJobId: jobId,
+  })
 
   const status = needsReview ? "needs_review" : "completed"
   await markIngestionJobStatus(supabase, jobId, {
