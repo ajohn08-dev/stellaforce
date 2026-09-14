@@ -14,12 +14,17 @@ import { FilesTab } from "@/components/candidates/profile/files-tab"
 import type { WorkHistoryEntry } from "@/lib/work-history"
 import type {
   CandidateCertificationRow,
+  CandidateSearchStateRow,
   CandidateEducationRow,
   CandidateRow,
   CandidateSkillWithSkill,
   CandidateToolWithTool,
 } from "@/lib/supabase/types"
-import type { AddedByProfile, CandidateResumeFile } from "@/lib/data"
+import type {
+  AddedByProfile,
+  CandidateCanonicalRole,
+  CandidateResumeFile,
+} from "@/lib/data"
 
 export function ProfileTabs({
   candidate,
@@ -32,6 +37,10 @@ export function ProfileTabs({
   dateAdded,
   resume,
   isAddedToJob = false,
+  canonicalRole = null,
+  canonicalRoles = [],
+  canClassify = false,
+  searchState = null,
 }: {
   candidate: CandidateRow
   skills: CandidateSkillWithSkill[]
@@ -44,6 +53,14 @@ export function ProfileTabs({
   resume: CandidateResumeFile | null
   /** Scorecard/Evaluation only apply once a candidate is attached to a job. */
   isAddedToJob?: boolean
+  /** The candidate's classified role, for the Overview tab's classification card. */
+  canonicalRole?: CandidateCanonicalRole | null
+  /** Active roles the override control may offer. */
+  canonicalRoles?: CandidateCanonicalRole[]
+  /** Stellaforce-side staff only — hides the classification card entirely for anyone else. */
+  canClassify?: boolean
+  /** Derived-search state, for the review note on the classification card. */
+  searchState?: CandidateSearchStateRow | null
 }) {
   return (
     <Tabs defaultValue="overview" className="min-h-0 flex-1 gap-0">
@@ -75,6 +92,10 @@ export function ProfileTabs({
             candidate={candidate}
             education={education}
             workHistory={workHistory}
+            canonicalRole={canonicalRole}
+            canonicalRoles={canonicalRoles}
+            canClassify={canClassify}
+            searchState={searchState}
           />
         </TabsPanel>
         {isAddedToJob && (

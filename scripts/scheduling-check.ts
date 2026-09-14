@@ -286,9 +286,27 @@ check(
   SCHEDULING_REASON_CODES.every((c) => SCHEDULING_REASONS[c]?.message),
   "every code has a recruiter-facing message"
 )
+// Named rather than counted. A count says nothing about *which* codes moved
+// when it breaks, and the interesting mistake is a genuine failure quietly
+// classified as a policy skip — that would log at `info` and never reach the
+// recruiter's Actions list.
+const POLICY_SKIPS = [
+  "AUTOMATION_OFF_BY_POLICY",
+  "AUTOMATION_PAUSED_FOR_JOB",
+  "AUTOMATION_LOCKED",
+  "ACCOUNT_AUTOMATIONS_OFF",
+  "ACCOUNT_AUTOMATIONS_PAUSED",
+]
 check(
-  SCHEDULING_REASON_CODES.filter(isPolicySkip).length === 3,
-  "three codes are policy skips, not failures"
+  SCHEDULING_REASON_CODES.filter(isPolicySkip).join(",") === POLICY_SKIPS.join(","),
+  "exactly the configuration codes are policy skips, not failures",
+  SCHEDULING_REASON_CODES.filter(isPolicySkip).join(", ")
+)
+check(
+  SCHEDULING_REASON_CODES.filter(isPolicySkip).every(
+    (c) => SCHEDULING_REASONS[c].candidateMessage === null
+  ),
+  "…and none of them says anything to a candidate — all describe our configuration"
 )
 check(
   ["CANDIDATE_BOOKING_TOKEN_INVALID", "CANDIDATE_BOOKING_TOKEN_EXPIRED", "CANDIDATE_ALREADY_BOOKED"]

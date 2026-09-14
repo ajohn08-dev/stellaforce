@@ -24,6 +24,8 @@ import {
   parseAiCompetenciesResponse,
 } from "@/lib/server/job-ai-competencies"
 import { sendCalendarConnectInvite } from "@/lib/server/calendar-invite"
+import { maybeCreateBookingRequest } from "@/lib/server/booking-request"
+import { SCHEDULING_REASONS } from "@/lib/scheduling-reason-codes"
 import { logActivity } from "@/lib/server/activity"
 import {
   completeInterviewCommand,
@@ -1330,6 +1332,72 @@ export async function completeInterview(
   if (!result.ok) return result
 
   revalidatePath(`/jobs/${result.jobId}`)
+  return { ok: true }
+}
+
+/**
+ * Send a booking link the automation would have sent, because a person said so.
+ *
+ * The one sanctioned way past the outbound gate. It is deliberately narrow: one
+ * application, one stage, one click, and it only does anything when the account
+ * is genuinely switched off — if automations are running, this is just the
+ * normal path and `maybeCreateBookingRequest` behaves as it always does.
+ *
+ * The override is constructed **here**, server-side, from the signed-in
+ * profile. A client that could supply its own `actorProfileId` could attribute
+ * the decision to someone else, which is the one thing the audit row exists to
+ * prevent.
+ */
+export async function sendBookingLinkManually(
+  applicationId: string,
+  subStageId: string
+): Promise<ActionResult> {
+  const profile = await getCurrentProfile()
+  if (!profile) return { ok: false, error: "Not signed in." }
+
+  const supabase = await createClient()
+  const { data: application } = await supabase
+    .from("applications")
+    .select("application_id, candidate_id, job_id, current_stage_id, job:job_orders(client_id)")
+    .eq("application_id", applicationId)
+    .maybeSingle()
+
+  if (!application) return { ok: false, error: "That application no longer exists." }
+
+  // Re-checked server-side: the button was rendered from a snapshot, and the
+  // candidate may have been moved since. Sending a link for a stage they have
+  // left would invite them to book an interview nobody is expecting.
+  if (application.current_stage_id !== subStageId) {
+    return { ok: false, error: "That candidate has moved to a different stage." }
+  }
+
+  const clientId = (application.job as { client_id: string } | null)?.client_id
+  if (!clientId) return { ok: false, error: "That job has no account attached." }
+
+  const result = await maybeCreateBookingRequest({
+    applicationId: application.application_id,
+    subStageId,
+    candidateId: application.candidate_id,
+    jobId: application.job_id,
+    clientId,
+    createdBy: profile.id,
+    override: {
+      actorProfileId: profile.id,
+      reason: "Sent by hand from the job's Pulse tab while automations were off.",
+    },
+  })
+
+  if (result.kind === "failed") {
+    return { ok: false, error: SCHEDULING_REASONS[result.reasonCode].message }
+  }
+  if (result.kind === "not_applicable") {
+    return { ok: false, error: "This stage isn't set up for candidate self-scheduling." }
+  }
+  if (result.kind === "skipped_by_policy") {
+    return { ok: false, error: SCHEDULING_REASONS[result.reasonCode].message }
+  }
+
+  revalidatePath(`/jobs/${application.job_id}`)
   return { ok: true }
 }
 

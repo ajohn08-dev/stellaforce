@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
+import { useSearchParams } from "next/navigation"
 import { MessageCircle } from "lucide-react"
 
-import { HomeChatPanel } from "@/components/home/home-chat-panel"
+import { AskComposer } from "@/components/chat/ask-composer"
 import { cn } from "@/lib/utils"
 import { MOCK_CHAT_HISTORY } from "@/lib/mock-chat-history"
 
@@ -24,6 +25,7 @@ const ASSISTANT_PLACEHOLDER_REPLY = "This is a UI preview — live answers aren'
 
 /** UI-only placeholder — history rail is mock data, conversation has no backend yet. */
 export default function ChatPage() {
+  const params = useSearchParams()
   const [selectedId, setSelectedId] = React.useState<string | undefined>(undefined)
   const [messages, setMessages] = React.useState<ChatMessage[]>([])
   const bottomRef = React.useRef<HTMLDivElement>(null)
@@ -39,6 +41,22 @@ export default function ChatPage() {
       { id: crypto.randomUUID(), role: "assistant", text: ASSISTANT_PLACEHOLDER_REPLY },
     ])
   }
+
+  /**
+   * A question handed over by the home ask bar, which sends here rather than
+   * answering in place. Arriving with `?q=` means it was already asked, so it
+   * opens the conversation instead of waiting to be typed again.
+   *
+   * Mount-only and guarded by a ref: a re-render must not replay the handoff,
+   * and StrictMode's double-invoke must not answer it twice.
+   */
+  const handoff = params.get("q")?.trim() ?? ""
+  const handoffRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!handoff || handoffRef.current === handoff) return
+    handoffRef.current = handoff
+    handleSend(handoff)
+  }, [handoff])
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
@@ -91,8 +109,17 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="h-40 shrink-0 pt-4">
-          <HomeChatPanel prompts={SUGGESTED_PROMPTS} onSend={handleSend} />
+        {/* Open by default — typing is the point of this page — but otherwise
+            the same composer as the home and candidates ask bars. Height is no
+            longer fixed: the shared composer is one row plus its prompts, so
+            reserving 10rem left a gap under it. */}
+        <div className="mx-auto w-[min(46rem,100%)] shrink-0 pt-4">
+          <AskComposer
+            placeholder="Ask about your pipeline, reqs, or candidates…"
+            prompts={SUGGESTED_PROMPTS}
+            onSend={handleSend}
+            affordances
+          />
         </div>
       </div>
     </div>

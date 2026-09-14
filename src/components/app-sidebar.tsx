@@ -9,6 +9,7 @@ import {
   NAV_ITEMS,
   AGENTS_NAV_SECTION,
   SETTINGS_NAV_SECTION,
+  hidesMainSidebar,
   operationsSectionFor,
   type NavItem,
   type NavSection,
@@ -104,6 +105,11 @@ export function AppSidebar({
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useSidebarState()
   const operations = operationsSectionFor(companyAccess)
+
+  // Screens that bring their own navigation render without this one. Returning
+  // null rather than hiding with CSS keeps it out of the tab order and off the
+  // accessibility tree, which a `hidden` class would not.
+  if (hidesMainSidebar(pathname)) return null
 
   return (
     <aside

@@ -14,7 +14,12 @@
  * render inside a rule's preview (`src/lib/automation-rules.ts`). As sections
  * they'd have split one automation across three destinations.
  */
-export type AutomationSectionKey = "lifecycle" | "scheduling" | "evaluation" | "runs"
+export type AutomationSectionKey =
+  | "lifecycle"
+  | "scheduling"
+  | "evaluation"
+  | "runs"
+  | "skipped"
 
 export type AutomationSectionDef = {
   key: AutomationSectionKey
@@ -47,6 +52,16 @@ export const AUTOMATION_SECTIONS: AutomationSectionDef[] = [
     key: "runs",
     label: "Automation runs",
     purpose: "Every execution — what fired, on which application, and whether it succeeded.",
+  },
+  // The question everyone asks the moment they switch automations back on.
+  // Deliberately a review queue and not a replay: firing a backlog of calls and
+  // emails at candidates whose situation has moved on is worse than the silence
+  // that preceded it.
+  {
+    key: "skipped",
+    label: "Skipped while off",
+    purpose:
+      "What the platform would have done while automations were off. Nothing is sent retroactively — send anything still worth sending yourself.",
   },
 ]
 

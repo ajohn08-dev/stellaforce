@@ -1,8 +1,9 @@
 "use client"
 
 import { Fragment } from "react"
+import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Bell, LogOut, Users, UndoDot } from "lucide-react"
+import { ArrowLeft, Bell, LogOut, Users, UndoDot } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -28,9 +29,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { logout } from "@/app/login/actions"
 import { switchToUser, returnToMyAccount } from "@/app/(app)/switch-user-actions"
+import { AutomationsOffPill } from "@/components/automations/automations-off-notice"
 import { allNavItemsFor, type NavItem } from "@/lib/nav"
 import type { CompanyAccess } from "@/lib/company-access"
-import { useBreadcrumbItems } from "@/lib/breadcrumb-context"
+import type { ScopeSwitch } from "@/lib/automation-scope-state"
+import { useBreadcrumbBack, useBreadcrumbItems } from "@/lib/breadcrumb-context"
 import { useHeaderActionsContent } from "@/lib/header-actions-context"
 import type { CurrentProfile } from "@/lib/auth"
 
@@ -81,49 +84,69 @@ export function AppHeader({
   switchableUsers = [],
   isImpersonating = false,
   companyAccess = { scope: "all" },
+  automationSwitch = null,
 }: {
   user: CurrentProfile | null
   switchableUsers?: SwitchableUser[]
   isImpersonating?: boolean
   /** Must match the sidebar's, or the page title won't match the nav entry. */
   companyAccess?: CompanyAccess
+  /** The viewer's own account, when it isn't running automations. */
+  automationSwitch?: ScopeSwitch | null
 }) {
   const pathname = usePathname()
   const navItems = allNavItemsFor(companyAccess)
   const breadcrumbItems = useBreadcrumbItems()
+  const breadcrumbBack = useBreadcrumbBack()
   const headerActions = useHeaderActionsContent()
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-6">
       {breadcrumbItems ? (
-        <Breadcrumb>
-          <BreadcrumbList>
-            {breadcrumbItems.map((item, i) => {
-              const isLast = i === breadcrumbItems.length - 1
-              return (
-                <Fragment key={i}>
-                  <BreadcrumbItem>
-                    {isLast || !item.href ? (
-                      <BreadcrumbPage className="flex items-center gap-1.5">
-                        {item.label}
-                        {item.badge && (
-                          <Badge className="border-transparent bg-muted text-muted-foreground">
-                            {item.badge}
-                          </Badge>
-                        )}
-                      </BreadcrumbPage>
-                    ) : (
-                      <BreadcrumbLink href={item.href}>
-                        {item.label}
-                      </BreadcrumbLink>
-                    )}
-                  </BreadcrumbItem>
-                  {!isLast && <BreadcrumbSeparator />}
-                </Fragment>
-              )
-            })}
-          </BreadcrumbList>
-        </Breadcrumb>
+        <div className="flex min-w-0 items-center gap-3">
+          {/* Screens that hide the main side navigation have no other way out,
+              so the exit is part of the title rather than buried in the page. */}
+          {breadcrumbBack && (
+            <>
+              <Link
+                href={breadcrumbBack.href}
+                className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft className="size-4" />
+                {breadcrumbBack.label ?? "Back"}
+              </Link>
+              <span className="h-4 w-px shrink-0 bg-border" aria-hidden />
+            </>
+          )}
+          <Breadcrumb>
+            <BreadcrumbList>
+              {breadcrumbItems.map((item, i) => {
+                const isLast = i === breadcrumbItems.length - 1
+                return (
+                  <Fragment key={i}>
+                    <BreadcrumbItem>
+                      {isLast || !item.href ? (
+                        <BreadcrumbPage className="flex items-center gap-1.5">
+                          {item.label}
+                          {item.badge && (
+                            <Badge className="border-transparent bg-muted text-muted-foreground">
+                              {item.badge}
+                            </Badge>
+                          )}
+                        </BreadcrumbPage>
+                      ) : (
+                        <BreadcrumbLink href={item.href}>
+                          {item.label}
+                        </BreadcrumbLink>
+                      )}
+                    </BreadcrumbItem>
+                    {!isLast && <BreadcrumbSeparator />}
+                  </Fragment>
+                )
+              })}
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
       ) : (
         <span className="text-sm font-medium">{currentTitle(pathname, navItems)}</span>
       )}
@@ -132,6 +155,12 @@ export function AppHeader({
         headerActions
       ) : user ? (
         <div className="flex items-center gap-2">
+          {/* Beside the bell, and only when something is stopped. Note this
+              shares the bell's fate: a page that supplies its own header
+              actions replaces this whole branch, so neither icon shows there.
+              The job workspace carries its own banner for that reason. */}
+          <AutomationsOffPill sw={automationSwitch} />
+
           <Button variant="ghost" size="icon" aria-label="Notifications">
             <Bell />
           </Button>

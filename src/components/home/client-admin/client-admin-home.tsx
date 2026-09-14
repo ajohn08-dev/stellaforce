@@ -1,5 +1,5 @@
 import { HomeDateRangePicker } from "@/components/home/home-date-range-picker"
-import { HomeChatPanel } from "@/components/home/home-chat-panel"
+import { HomeAskBar } from "@/components/home/home-ask-bar"
 import { MultiSelectFilterChip } from "@/components/home/multi-select-filter-chip"
 import { ClientHomeFilterButton } from "@/components/home/client-admin/client-home-filter-button"
 import { ClientMomentumCard } from "@/components/home/client-admin/client-momentum-card"
@@ -50,9 +50,7 @@ export function ClientAdminHome() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
-        <HomeChatPanel prompts={CLIENT_SUGGESTED_PROMPTS} />
-      </div>
+      <HomeAskBar prompts={CLIENT_SUGGESTED_PROMPTS} />
     </div>
   )
 }

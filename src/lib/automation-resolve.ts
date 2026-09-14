@@ -9,6 +9,12 @@ import {
   type AutomationRunState,
   type AutomationScope,
 } from "@/lib/automation-rules"
+import {
+  resolveScopeSwitch,
+  scopeSwitchLockReason,
+  type ScopeSwitch,
+  type ScopeSwitchRow,
+} from "@/lib/automation-scope-state"
 import type {
   ActivityEventType,
   AutomationBindingRow,
@@ -95,6 +101,15 @@ export type ResolvedAutomation = {
   stateSource: Provenance
   /** Widest → narrowest. */
   sourceChain: AutomationLayer[]
+
+  /**
+   * Set when the account-wide switch is capping this automation, whatever its
+   * own binding says. `sourceChain` is left untouched in that case, so the job
+   * dialog can still show "would be Active · Global library, but automations
+   * are off for this account" — overwriting the chain would destroy the one
+   * thing that dialog exists to explain.
+   */
+  scopeSwitch: ScopeSwitch | null
 
   /** False when the definition is archived or has no published version. */
   isApplicable: boolean
@@ -230,12 +245,18 @@ export function resolveFromRows(input: {
   definitions: AutomationDefinitionRow[]
   versions: AutomationDefinitionVersionRow[]
   bindings: AutomationBindingRow[]
+  /** The account-wide switch rows applicable to `ctx`. Empty = nothing capped. */
+  scopeSwitches?: ScopeSwitchRow[]
   ctx: AutomationResolveContext
   labels?: ScopeLabels
+  /** Injected so a paused-until row resolves deterministically in tests. */
+  now?: Date
 }): ResolvedAutomation[] {
   const { definitions, versions, bindings, ctx } = input
   const chain = scopeChain(ctx, input.labels ?? {})
   const onJob = Boolean(ctx.jobId)
+  const scopeSwitches = input.scopeSwitches ?? []
+  const now = input.now ?? new Date()
 
   const publishedByDefinition = new Map<string, AutomationDefinitionVersionRow>()
   for (const v of versions) {
@@ -284,15 +305,24 @@ export function resolveFromRows(input: {
     // No binding anywhere is not a real state, but it must resolve to something
     // rather than throw. Every seeded definition has a global binding, so this
     // is the shape of a definition added without one.
-    const effectiveState: AutomationRunState = winner?.state ?? "off"
-    const stateSource: Provenance = winner ?? layers[0]
+    const ownState: AutomationRunState = winner?.state ?? "off"
+    const ownSource: Provenance = winner ?? layers[0]
+
+    // The account-wide ceiling. It is applied AFTER the per-definition cascade
+    // rather than instead of it, so `sourceChain` keeps saying what this rule
+    // would do if the account were running.
+    const scopeSwitch = resolveScopeSwitch(scopeSwitches, chain, definition.category, now)
+
+    const effectiveState: AutomationRunState = scopeSwitch ? scopeSwitch.state : ownState
+    const stateSource: Provenance = scopeSwitch ? scopeSwitch.source : ownSource
 
     const isApplicable = definition.archived_at === null && version !== null
     const systemManaged = definition.system_managed
     const hasExecutor = definition.has_executor
-    // Two reasons a rule can't be changed, and they are different problems: a
-    // safeguard nobody may touch, and a rule that isn't wired to anything yet.
-    const isLocked = systemManaged || !hasExecutor
+    // Three reasons a rule can't be changed, and they are different problems: a
+    // safeguard nobody may touch, a rule that isn't wired to anything yet, and
+    // an account that isn't running automations at all.
+    const isLocked = systemManaged || !hasExecutor || scopeSwitch !== null
     const jobLayer = layers.find((l) => l.scope === "job") ?? null
     const changeable = onJob && isApplicable && !isLocked
 
@@ -306,15 +336,22 @@ export function resolveFromRows(input: {
       effectiveState,
       stateSource,
       sourceChain: layers,
+      scopeSwitch,
 
       isApplicable,
       hasExecutor,
       isLocked,
-      lockedReason: systemManaged
-        ? LOCKED_SYSTEM_MANAGED
-        : hasExecutor
-          ? null
-          : LOCKED_NO_EXECUTOR,
+      // Ordered by which explanation is most actionable. The account switch
+      // comes first because it is the one an admin can act on today, and
+      // because "isn't built yet" is misleading when the real reason nothing
+      // happens is that the account is switched off.
+      lockedReason: scopeSwitch
+        ? scopeSwitchLockReason(scopeSwitch)
+        : systemManaged
+          ? LOCKED_SYSTEM_MANAGED
+          : hasExecutor
+            ? null
+            : LOCKED_NO_EXECUTOR,
 
       // Always false in this pass. A dependency check needs something real to
       // read -- a missing google_calendar_connections row for a scheduling

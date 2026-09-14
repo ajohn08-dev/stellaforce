@@ -1,4 +1,5 @@
 import { HighlightCallout } from "@/components/candidates/profile/highlight-callout"
+import { TitleClassificationCard } from "@/components/candidates/profile/title-classification-card"
 import { TenureStatTiles } from "@/components/candidates/profile/tenure-stat-tiles"
 import { ExperienceEntry } from "@/components/candidates/profile/experience-entry"
 import { formatEducationLine } from "@/lib/education"
@@ -8,16 +9,30 @@ import {
   notableEmployer,
   type WorkHistoryEntry,
 } from "@/lib/work-history"
-import type { CandidateEducationRow, CandidateRow } from "@/lib/supabase/types"
+import type {
+  CandidateEducationRow,
+  CandidateRow,
+  CandidateSearchStateRow,
+} from "@/lib/supabase/types"
+import type { CandidateCanonicalRole } from "@/lib/data"
 
 export function OverviewTab({
   candidate: c,
   education,
   workHistory,
+  canonicalRole = null,
+  canonicalRoles = [],
+  canClassify = false,
+  searchState = null,
 }: {
   candidate: CandidateRow
   education: CandidateEducationRow[]
   workHistory: WorkHistoryEntry[]
+  canonicalRole?: CandidateCanonicalRole | null
+  canonicalRoles?: CandidateCanonicalRole[]
+  /** Stellaforce-side staff only. Decided on the server; re-checked in the action. */
+  canClassify?: boolean
+  searchState?: CandidateSearchStateRow | null
 }) {
   const notable = notableEmployer(workHistory)
   const recentRole = mostRecentRole(workHistory)
@@ -25,6 +40,15 @@ export function OverviewTab({
 
   return (
     <div className="space-y-8">
+      {canClassify && (
+        <TitleClassificationCard
+          candidate={c}
+          canonicalRole={canonicalRole}
+          roles={canonicalRoles}
+          searchState={searchState}
+        />
+      )}
+
       {notable && (
         <section className="space-y-2">
           <h2 className="text-sm font-medium text-muted-foreground">

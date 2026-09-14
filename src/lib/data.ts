@@ -11,9 +11,11 @@ import type {
   CandidateCertificationRow,
   CandidateEducationRow,
   CandidateRow,
+  CandidateSearchStateRow,
   CandidateSkillWithSkill,
   CandidateToolWithTool,
   CandidateWorkExperienceRow,
+  CanonicalRoleRow,
   ClientRow,
   JobOrderRow,
   JobTeamMemberRow,
@@ -178,6 +180,10 @@ export async function getCandidate(id: string): Promise<{
   workHistory: WorkHistoryEntry[]
   addedBy: AddedByProfile | null
   resume: CandidateResumeFile | null
+  /** The classified role behind `candidate.canonical_role_id`, if it has one. */
+  canonicalRole: CandidateCanonicalRole | null
+  /** Derived-search reconciliation state. Never affects what search can find. */
+  searchState: CandidateSearchStateRow | null
 } | null> {
   if (!isSupabaseConfigured) return null
   const supabase = await createClient()
@@ -243,6 +249,25 @@ export async function getCandidate(id: string): Promise<{
     }
   }
 
+  // The label for the candidate's classified role, if it has one. Read as its
+  // own query rather than an embedded join because `candidates` is selected
+  // with `*` above, and an embed there would widen that select for every caller.
+  let canonicalRole: CandidateCanonicalRole | null = null
+  if (candidateFields.canonical_role_id) {
+    const { data: role } = await supabase
+      .from("canonical_roles")
+      .select("id, slug, label, role_family, is_active")
+      .eq("id", candidateFields.canonical_role_id)
+      .maybeSingle()
+    canonicalRole = role ?? null
+  }
+
+  const { data: searchState } = await supabase
+    .from("candidate_search_state")
+    .select("*")
+    .eq("candidate_id", id)
+    .maybeSingle()
+
   return {
     candidate: candidateFields,
     skills: (skills ?? []) as CandidateSkillWithSkill[],
@@ -252,7 +277,62 @@ export async function getCandidate(id: string): Promise<{
     workHistory: (workExperiences ?? []).map(toWorkHistoryEntry),
     addedBy,
     resume,
+    canonicalRole,
+    searchState,
   }
+}
+
+/** The classified role on a candidate profile — id, label, and its family. */
+export type CandidateCanonicalRole = Pick<
+  CanonicalRoleRow,
+  "id" | "slug" | "label" | "role_family" | "is_active"
+>
+
+/**
+ * The role vocabulary the override control offers.
+ *
+ * Active roles only: a retired role stays readable on the candidates already
+ * classified with it (that is what `getCandidate` reads above), but must not be
+ * offered as a new choice.
+ */
+/**
+ * The ISO-2 codes that actually appear on candidates, for the Country filter.
+ *
+ * Present-in-data rather than the full supported list: a menu of fifty
+ * countries where forty-eight return nothing is a worse control than a menu of
+ * the three you recruit in. The AI parser still accepts any supported code —
+ * asking for a country with no candidates should return zero results, not be
+ * refused.
+ */
+export async function getCandidateCountryCodes(): Promise<string[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("candidates")
+    .select("country_code")
+    .not("country_code", "is", null)
+
+  if (error) {
+    console.error("getCandidateCountryCodes error:", error.message)
+    return []
+  }
+  return [...new Set((data ?? []).map((r) => r.country_code as string))].sort()
+}
+
+export async function getActiveCanonicalRoles(): Promise<CandidateCanonicalRole[]> {
+  if (!isSupabaseConfigured) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("canonical_roles")
+    .select("id, slug, label, role_family, is_active")
+    .eq("is_active", true)
+    .order("label", { ascending: true })
+
+  if (error) {
+    console.error("getActiveCanonicalRoles error:", error.message)
+    return []
+  }
+  return data ?? []
 }
 
 /** Every profile (both sides), for the admin "Switch User" menu — grouped/labeled by side in the UI. */
@@ -289,16 +369,42 @@ export async function getClients(): Promise<ClientRow[]> {
   return data ?? []
 }
 
+/**
+ * Job rows for the list page, each with how many candidates are actually in its
+ * pipeline.
+ *
+ * The count is an **aggregate embed**, not a second round trip and not a
+ * `length` on fetched rows: the list renders every job on the account, and
+ * pulling every application to count them would grow with the busiest customer.
+ *
+ * `active` only, matching the field it feeds (`candidates_in_pipeline`). Now
+ * that Hold and Reject exist, "candidates" and "candidates still in play" are
+ * different numbers, and this column has always claimed the second.
+ *
+ * The filter is on the embed and deliberately **not** `applications!inner(...)`:
+ * an inner join would drop every job with no active candidate, so a job with
+ * nobody in it would vanish from the jobs list rather than reading 0. Verified
+ * against the database, since that failure would look like a missing job rather
+ * than a bad count.
+ */
 export async function getJobOrders(): Promise<
-  (JobOrderRow & { client: ClientRow | null })[]
+  (JobOrderRow & { client: ClientRow | null; active_application_count: number })[]
 > {
   if (!isSupabaseConfigured) return []
   const supabase = await createClient()
   const { data } = await supabase
     .from("job_orders")
-    .select("*, client:clients(*)")
+    .select("*, client:clients(*), applications(count)")
+    .eq("applications.status", "active")
     .order("created_at", { ascending: false })
-  return (data ?? []) as (JobOrderRow & { client: ClientRow | null })[]
+
+  return ((data ?? []) as unknown as (JobOrderRow & {
+    client: ClientRow | null
+    applications: { count: number }[] | null
+  })[]).map((job) => {
+    const { applications, ...rest } = job
+    return { ...rest, active_application_count: applications?.[0]?.count ?? 0 }
+  })
 }
 
 export async function getJobOrder(id: string): Promise<

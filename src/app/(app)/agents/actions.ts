@@ -7,8 +7,12 @@ import { revalidatePath } from "next/cache"
 import { getCurrentProfile } from "@/lib/auth"
 import { serverEnv } from "@/lib/env"
 import { interviewFieldsFor } from "@/lib/interview-agent-config"
+import { checkOutbound, type OutboundGateInput } from "@/lib/server/outbound-gate"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
+
+import type { SupabaseClient } from "@supabase/supabase-js"
+import type { Database } from "@/lib/supabase/types"
 
 type TriggerAgentCallResult = { ok: true } | { ok: false; error: string }
 
@@ -55,7 +59,37 @@ type CallDispatchPayload = {
   first_message_override: string | null
 }
 
-async function dispatchCall(payload: CallDispatchPayload): Promise<TriggerAgentCallResult> {
+/**
+ * Both call paths go through here, and both must pass the account's switch.
+ *
+ * This function had **no guards at all** before: not the account switch, not
+ * `SCHEDULING_OUTBOUND_ENABLED`, not the QA-fixture check — while hitting the
+ * same n8n voice webhook as the scheduled path, which has three. The account
+ * gate is added here so neither caller can forget it; the fixture check sits in
+ * `triggerApplicationScreeningCall`, which is the only one of the two with a
+ * candidate row to check.
+ *
+ * `SCHEDULING_OUTBOUND_ENABLED` is deliberately **not** applied here. That flag
+ * exists because "a cron that dispatches on a timer is categorically more
+ * dangerous than the manual test-call button it reuses: nobody has to click"
+ * (CLAUDE.md). It defaults to false, so applying it would disable the test
+ * button in every environment — which is the button people use to verify an
+ * agent at all.
+ */
+async function dispatchCall(
+  supabase: SupabaseClient<Database>,
+  gate: { clientId: string | null; scope?: OutboundGateInput["scope"] },
+  payload: CallDispatchPayload
+): Promise<TriggerAgentCallResult> {
+  const decision = await checkOutbound(supabase, {
+    channel: "voice_call",
+    clientId: gate.clientId,
+    scope: gate.scope,
+  })
+  if (!decision.allowed) {
+    return { ok: false, error: `${decision.message} No call was placed.` }
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 15_000)
   try {
@@ -117,7 +151,10 @@ export async function triggerAgentTestCall(
   if (!agent) return { ok: false, error: "That screening agent no longer exists." }
 
   const campaignId = randomUUID()
-  return dispatchCall({
+  // A test call belongs to no customer, so the caller's own account decides.
+  // For a Stellaforce user that is null, which resolves against the global
+  // default -- the correct answer for a call placed by the platform itself.
+  return dispatchCall(supabase, { clientId: profile.client_id }, {
     to_number: toNumber,
     agent_id: agent.id,
     agent_name: agent.name,
@@ -161,7 +198,7 @@ export async function triggerApplicationScreeningCall(
     supabase
       .from("applications")
       .select(
-        "application_id, candidate_id, job_id, candidate:candidates(full_name, first_name, last_name, phone), job:job_orders(title, client_id)"
+        "application_id, candidate_id, job_id, candidate:candidates(full_name, first_name, last_name, phone, source), job:job_orders(title, client_id)"
       )
       .eq("application_id", applicationId)
       .maybeSingle(),
@@ -176,8 +213,19 @@ export async function triggerApplicationScreeningCall(
     first_name: string
     last_name: string
     phone: string | null
+    source: string | null
   } | null
   const job = application.job as { title: string; client_id: string } | null
+
+  // The QA-fixture guard `dispatchAgentCall` has had all along, and this path
+  // never did. All fourteen fixtures share one real phone number, and this
+  // function dials a candidate row rather than a number someone typed.
+  if (candidate?.source === "qa_test_fixture" && !serverEnv.schedulingAllowFixtureCalls) {
+    return {
+      ok: false,
+      error: "That candidate is a QA test fixture, and calling it would reach a real phone.",
+    }
+  }
 
   const toNumber = candidate?.phone?.trim()
   if (!toNumber || !E164_RE.test(toNumber)) {
@@ -192,7 +240,15 @@ export async function triggerApplicationScreeningCall(
     candidate?.full_name?.trim() ||
     `${candidate?.first_name ?? ""} ${candidate?.last_name ?? ""}`.trim()
 
-  return dispatchCall({
+  return dispatchCall(supabase, {
+    clientId: job?.client_id ?? null,
+    scope: {
+      application_id: application.application_id,
+      candidate_id: application.candidate_id,
+      job_id: application.job_id,
+      sub_stage_id: subStageId,
+    },
+  }, {
     to_number: toNumber,
     agent_id: agent.id,
     agent_name: agent.name,

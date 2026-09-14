@@ -9,6 +9,7 @@ import {
   formatQuestions,
   getInterviewAgentConfig,
 } from "@/lib/interview-agent-config"
+import { checkOutbound } from "@/lib/server/outbound-gate"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
@@ -293,6 +294,18 @@ export async function createInterviewRoomSession(
 
   if (!agent) {
     return { ok: false, reason: "not_found", error: "That screening agent no longer exists." }
+  }
+
+  // A room is an agent conversation, so the account's switch governs it exactly
+  // as it governs a phone call — the channel differs, what reaches the
+  // candidate does not. The caller's own account decides; for a Stellaforce
+  // user that is null, which resolves against the global default.
+  const gate = await checkOutbound(supabase, {
+    channel: "voice_call",
+    clientId: profile.client_id,
+  })
+  if (!gate.allowed) {
+    return { ok: false, reason: "not_configured", error: gate.message }
   }
 
   // Two independent prerequisites, reported separately — "add the key" and

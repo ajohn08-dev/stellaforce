@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import { AlertTriangle, ChevronDown, Clock, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -15,6 +16,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { sendBookingLinkManually } from "@/app/(app)/jobs/actions"
+import { AutomationsOffBanner } from "@/components/automations/automations-off-notice"
+import type { ScopeSwitch } from "@/lib/automation-scope-state"
 import type { PulseAction, PulseEvent, PulseStat } from "@/lib/job-pulse"
 
 type FilterOption = { id: string; name: string }
@@ -35,10 +39,13 @@ export function JobPulseTab({
   actions,
   stageOptions,
   candidateOptions,
+  automationSwitch = null,
 }: {
   stats: PulseStat[]
   events: PulseEvent[]
   actions: PulseAction[]
+  /** Set when this job's account isn't running automations. */
+  automationSwitch?: ScopeSwitch | null
   stageOptions: FilterOption[]
   candidateOptions: FilterOption[]
 }) {
@@ -75,6 +82,14 @@ export function JobPulseTab({
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 pb-10">
+      {/* This job's *account*, not the viewer's — a Stellaforce recruiter
+          working a client's job would otherwise see only their own status in
+          the header and have no idea why nothing is being sent here. */}
+      <AutomationsOffBanner
+        sw={automationSwitch}
+        scopeNote="Anything the pipeline would have done appears under Actions with a way to do it yourself."
+      />
+
       <div className="grid gap-4 sm:grid-cols-3">
         {stats.map((stat) => (
           <StatCard key={stat.label} stat={stat} />
@@ -323,11 +338,49 @@ function ActionRow({ action }: { action: PulseAction }) {
         className={cn("mt-0.5 size-4 shrink-0", PRIORITY_STYLES[action.priority])}
         aria-hidden
       />
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">{action.title}</p>
         <p className="text-sm text-muted-foreground">{action.detail}</p>
       </div>
+      {action.manualAction && <ManualActionButton action={action} />}
     </li>
+  )
+}
+
+/**
+ * Do by hand what the automation would have done.
+ *
+ * Only rendered for an action carrying a `manualAction`, which `buildPulseActions`
+ * attaches solely to a recorded account-switch skip. This is the sanctioned
+ * escape from the outbound gate, so it is one explicit click against one named
+ * candidate — never a bulk control, and never a default.
+ */
+function ManualActionButton({ action }: { action: PulseAction }) {
+  const [pending, startTransition] = React.useTransition()
+  const [done, setDone] = React.useState(false)
+  const manual = action.manualAction
+  if (!manual) return null
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="shrink-0"
+      disabled={pending || done}
+      onClick={() =>
+        startTransition(async () => {
+          const result = await sendBookingLinkManually(manual.applicationId, manual.subStageId)
+          if (!result.ok) {
+            toast.error(result.error)
+            return
+          }
+          setDone(true)
+          toast.success(`Booking link sent to ${action.candidateName ?? "the candidate"}.`)
+        })
+      }
+    >
+      {done ? "Sent" : pending ? "Sending…" : "Send it now"}
+    </Button>
   )
 }
 

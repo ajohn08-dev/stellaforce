@@ -14,11 +14,21 @@ import {
 import type { CandidateRow } from "@/lib/supabase/types"
 
 /**
- * Shortlist + preview/full-view actions — shared by grid and list views.
- * Shortlist is presentational only for now — no persisted field/table yet,
- * so it resets on reload.
+ * Shortlist + preview/full-view actions — shared by grid and list views, and by
+ * Advanced Search results.
+ *
+ * Shortlist is presentational only for now — no persisted field/table yet, so
+ * it resets on reload.
+ *
+ * Takes only `candidate_id` (all it has ever read) rather than a whole
+ * `CandidateRow`, so a caller holding a narrow projection can reuse it without
+ * being forced to fetch — and send to the browser — columns it doesn't render.
  */
-export function CandidateActions({ candidate }: { candidate: CandidateRow }) {
+export function CandidateActions({
+  candidate,
+}: {
+  candidate: Pick<CandidateRow, "candidate_id">
+}) {
   const [shortlisted, setShortlisted] = React.useState(false)
   const profileHref = `/candidates/${candidate.candidate_id}`
 

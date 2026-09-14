@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs"
 import { JobPulseTab } from "@/components/jobs/workspace/job-pulse-tab"
+import type { ScopeSwitch } from "@/lib/automation-scope-state"
 import { PipelineStagePanel } from "@/components/jobs/workspace/pipeline-stage-panel"
 import type { JobEvalContext } from "@/lib/job-adapter"
 import type { PulseAction, PulseEvent, PulseStat } from "@/lib/job-pulse"
@@ -33,6 +34,7 @@ export function JobWorkspaceTabs({
   candidateOptions,
   stages,
   jobEvalContext,
+  automationSwitch = null,
 }: {
   stats: PulseStat[]
   events: PulseEvent[]
@@ -41,6 +43,8 @@ export function JobWorkspaceTabs({
   candidateOptions: { id: string; name: string }[]
   stages: SubStage[]
   jobEvalContext: JobEvalContext
+  /** This job's *account*, which is not always the viewer's own. */
+  automationSwitch?: ScopeSwitch | null
 }) {
   const scrollerRef = React.useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
@@ -121,6 +125,7 @@ export function JobWorkspaceTabs({
 
       <TabsPanel value={PULSE_TAB} className="min-h-0 flex-1 overflow-y-auto">
         <JobPulseTab
+          automationSwitch={automationSwitch}
           stats={stats}
           events={events}
           actions={actions}

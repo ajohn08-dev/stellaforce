@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isN8nAuthorized } from "@/lib/server/n8n-auth"
+import { logActivity } from "@/lib/server/activity"
 import { decryptToken } from "@/lib/google-calendar/crypto"
 import { refreshAccessToken } from "@/lib/google-calendar/oauth"
 import { sendCalendarConnectInvite } from "@/lib/server/calendar-invite"
@@ -74,7 +75,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // activity_events requires at least one of candidate/job/application_id —
     // only log + re-invite when there's a job to scope it to.
     if (lastMembership) {
-      await admin.from("activity_events").insert({
+      // Through `logActivity` — see the note in the OAuth callback route.
+      await logActivity(admin, {
         event_type: "calendar_connection_revoked",
         job_id: lastMembership.job_id,
         actor_type: "system",

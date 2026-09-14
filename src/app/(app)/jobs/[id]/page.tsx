@@ -23,6 +23,7 @@ import {
 } from "@/lib/data"
 import { getCurrentProfile } from "@/lib/auth"
 import { resolveAutomations } from "@/lib/automation-settings"
+import { scopeStateFor } from "@/lib/server/automation-scope-state"
 import { buildJobEvalContext, toBoardStages, toMockJob } from "@/lib/job-adapter"
 import {
   buildPulseActions,
@@ -43,7 +44,12 @@ export default async function JobWorkspacePage({
   const job = await getJobOrder(id)
   if (!job) notFound()
 
-  const mockJob = toMockJob(job, { candidatesInPipeline: job.applications.length })
+  // Active only, matching the jobs list. Counting every application here and
+  // active ones there would make the same job read 15 on one screen and 14 on
+  // the other the moment somebody is rejected.
+  const mockJob = toMockJob(job, {
+    candidatesInPipeline: job.applications.filter((a) => a.status === "active").length,
+  })
   const hasCandidates = job.applications.length > 0
 
   // Draft → the 5-step setup wizard. Published jobs can also re-enter the
@@ -164,6 +170,9 @@ export default async function JobWorkspacePage({
     nowMs,
   })
   const pulseFilters = buildPulseFilterOptions(subStages, pipeline.applications)
+  // This job's account, which is not necessarily the viewer's: a Stellaforce
+  // recruiter working a client's req needs the client's status, not their own.
+  const automationSwitch = await scopeStateFor(job.client_id)
   const inPipeline = new Set(pipeline.applications.map((a) => a.candidate_id))
   const candidateOptions = candidates
     .filter((c) => !inPipeline.has(c.candidate_id))
@@ -194,6 +203,7 @@ export default async function JobWorkspacePage({
           candidateOptions={pulseFilters.candidates}
           stages={stages}
           jobEvalContext={jobEvalContext}
+          automationSwitch={automationSwitch}
         />
       </div>
     </div>

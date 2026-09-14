@@ -9,7 +9,9 @@ import {
   resolveStageSchedulingConfig,
   type StageSchedulingConfig,
 } from "@/lib/server/scheduling-config"
+import { automationSkipReason } from "@/lib/scheduling-reason-codes"
 import type { SchedulingReasonCode } from "@/lib/scheduling-reason-codes"
+import { checkOutbound, type OutboundOverride } from "@/lib/server/outbound-gate"
 
 /**
  * What happens when a candidate lands on a self-scheduling agent stage.
@@ -57,6 +59,16 @@ export async function maybeCreateBookingRequest(input: {
   /** Threaded through to the activity events so one stage entry is traceable. */
   correlationId?: string | null
   createdBy?: string | null
+  /**
+   * A person chose to send this despite the account not running automations.
+   *
+   * The *only* way past the gate, and it may be passed only from a per-item
+   * action confirmed against a named candidate — see `outbound-gate.ts`. It is
+   * deliberately not a way past a per-rule `paused`/`off` binding: that button
+   * is offered for an account-wide switch, and a recruiter who paused this rule
+   * on this job should change that rule, not route around it.
+   */
+  override?: OutboundOverride | null
 }): Promise<BookingRequestOutcome> {
   try {
     return await run(input)
@@ -75,6 +87,7 @@ async function run(input: {
   clientId: string
   correlationId?: string | null
   createdBy?: string | null
+  override?: OutboundOverride | null
 }): Promise<BookingRequestOutcome> {
   const admin = createAdminClient()
   const scope = {
@@ -122,13 +135,47 @@ async function run(input: {
     return { kind: "not_applicable", reason: "automation_not_published" }
   }
 
-  if (automation.effectiveState !== "active" || automation.isLocked) {
-    const reasonCode: SchedulingReasonCode = automation.isLocked
-      ? "AUTOMATION_LOCKED"
-      : automation.effectiveState === "paused"
-        ? "AUTOMATION_PAUSED_FOR_JOB"
-        : "AUTOMATION_OFF_BY_POLICY"
+  // The account-wide switch resolves through `resolveAutomationWithClient` too,
+  // so an account that is off fails this check without a second lookup -- the
+  // only thing that needs saying explicitly is *which* cause to name.
+  const reasonCode = automationSkipReason(automation)
 
+  // A human said send it anyway. Recorded twice on purpose: `audit_log` (via
+  // the gate) answers "who overrode the configuration", and the activity event
+  // below answers "why did this candidate get a link while the account was
+  // off" -- the second one happened to a person and belongs on their timeline.
+  const overridden = Boolean(input.override && automation.scopeSwitch)
+  if (overridden && input.override) {
+    await checkOutbound(admin, {
+      channel: "candidate_email",
+      clientId: input.clientId,
+      category: "scheduling",
+      scope: {
+        application_id: input.applicationId,
+        candidate_id: input.candidateId,
+        job_id: input.jobId,
+        sub_stage_id: input.subStageId,
+      },
+      override: input.override,
+    })
+    await logActivity(admin, {
+      event_type: "booking_link_sent",
+      ...scope,
+      actor_type: "user",
+      actor_profile_id: input.override.actorProfileId,
+      system_source: "app:booking_manual_override",
+      severity: "info",
+      payload: {
+        manual_override: true,
+        reason: input.override.reason,
+        switch_state: automation.scopeSwitch?.state ?? null,
+        switch_source: automation.scopeSwitch?.source.label ?? null,
+      },
+      idempotency_key: `booking_link_override:${input.applicationId}:${input.subStageId}`,
+    })
+  }
+
+  if (reasonCode && !overridden) {
     await logAutomationSkipped(admin, {
       automationKey: BOOKING_AUTOMATION_KEY,
       reasonCode,

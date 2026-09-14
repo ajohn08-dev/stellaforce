@@ -87,8 +87,10 @@ own three tables and their own resolver** — see **Automations** below. `activi
 unified append-only log + transactional outbox (realizes the V3 doc's
 `application_events` with wider scope), with `audit_log` + `ai_interactions` for
 governance / AI-activity. These template/settings/activity/AI/audit tables use
-**tenant-scoped RLS** (client users see only their own client's rows + globals),
-unlike the permissive `authenticated`-ALL policy on the core tables.
+**tenant-scoped RLS** (client users see only their own client's rows + globals).
+**The candidate domain is tenant-scoped too** — see **Candidate visibility**
+below; the permissive `authenticated`-ALL policy now survives only on the
+`skills` and `tools` lookup vocabularies.
 
 > **Full reference — every table, column, enum, function, trigger, index, and
 > RLS policy — is in [DB_Schema.md](DB_Schema.md).** Keep it in sync with
@@ -522,7 +524,10 @@ migrating the full app layer to V3.2 is an ongoing pass.
   alone only covers the page, and the API paths start with `api`, so they would
   be answered with a redirect to `/login` instead of JSON. See **Interview
   scheduling** below.
-- `/settings` — signed-in user's email/role
+- `/settings` — signed-in user's email/role. `/settings/platform` also carries
+  the **account-wide automation switch** (below) as a section. Deliberately not
+  its own route: `/automations` under Operations already owns that word, and a
+  second sidebar item with the same label is worse than one extra click.
 - `/search` — Filters (structured) + Semantic (stub) tabs (not in main nav)
 - `/interview-room/[agentId]` — browser interview room: a briefing/device-check
   screen, then a live audio conversation with an ElevenLabs agent presented in a
@@ -615,7 +620,9 @@ key) and `company_scope_client_id` (what it targets). One column answering both
 meant `where client_id is not null` looked like "company-scoped" while being true
 of every job row too. **All scope logic reads the generated `scope` column.**
 
-**Read surfaces:** `/automations` (global library, no context), the job
+**Read surfaces:** `/automations` (global library, no context — so its banner
+says it reflects the *default*, since an account that has decided for itself is
+unaffected; `?section=skipped` is the catch-up queue), the job
 workspace ⚡ dialog (the only place with controls), and the workflow **AI &
 Automation** tab (read-only — a control there writes a Flow-scoped binding
 affecting every job that runs it, which deserves its own confirmation rather
@@ -654,6 +661,118 @@ is frozen at publish by design. Automations are live policy: mirroring it would
 write 13 job rows per publish, make every later global fix invisible to published
 jobs, and turn every provenance badge into "Job override", destroying the one
 thing the dialog exists to show.
+
+## Automations on/off (the account-wide switch)
+
+**Whether an account is running automations at all.** Distinct from every
+binding above, which answers *what is the state of this rule here*. An admin
+switches an account off and nothing leaves the building for it — no agent calls,
+no candidate email, no hiring-team email, no n8n send — while every stage move is
+still recorded and the next action is still *shown*, with a button to do it by
+hand. Resume upload and AI parsing are unaffected: they enrich a record and reach
+nobody.
+
+**Accounts are independent, and that is the whole design.** Stellaforce is
+itself a `clients` row that owns jobs, and `job_orders.client_id` is NOT NULL —
+so there is **one kind of account**, not an internal level and a client level.
+Stellaforce can be off while Naehas runs, and the reverse. Global is a **default
+for accounts that haven't decided**, never a ceiling; an explicit account
+`active` beats a global `off`. A fail-closed union was considered and rejected:
+it makes "internal off, client on" unexpressable, and it borrows a *safety*
+interlock's semantics for what is account configuration.
+
+**`automation_scope_settings`** stores it — one sparse row per (scope, category),
+with the same four scope columns and generated `scope` as `automation_bindings`
+so `resolveFromRows` walks one chain for both. It reuses **`automation_state`**
+(`active | paused | off`) rather than inventing a `live | manual` vocabulary:
+the three-value argument already in this file — *"switched off for a fortnight
+while a hiring manager is away is a different thing from one this company never
+runs"* — applies here with more force, and `paused` carries an optional
+`resume_at`. **`off` is the shipped default** — one seeded global row, which
+every account inherits until it decides for itself. The *resolver's* fallback is
+still `active` (no rows = running); the default lives in data rather than in
+code so it can be changed by clicking **On** instead of by shipping a migration.
+
+**It is a ceiling and a lock**, which is the one place it deliberately differs
+from a binding. An inherited-`off` binding is *not* a lock (a job may turn it
+back on, `canActivateForJob`); an account switched off **is**, or a recruiter on
+one req could undo an admin's decision. `sourceChain` is left untouched, so the
+job dialog still answers *"would be Active · Global library, but automations are
+off for this account"*.
+
+**`resume_at` is honoured at resolve time, not by a sweeper.** An expired pause
+stops applying whether or not any cron ran; `scheduling-sweep` only deletes the
+dead row. If expiry depended on a tick, a cron outage would leave an account
+frozen indefinitely — the exact failure this feature cannot have.
+
+**Two enforcement seams, because the automation library doesn't cover
+everything.** The read seam is `resolveFromRows`
+(`src/lib/automation-scope-state.ts` resolves the switch; `automation-resolve.ts`
+applies it), which makes both booking gates fail closed and every UI control
+disable for free. The write seam is `checkOutbound`
+(`src/lib/server/outbound-gate.ts`) on the hops outside the library: the agent
+call, the Agents-page dispatch, calendar-connect invites, the interview room, and
+the SLA notify payload. **Exempt and stated:** `notifyResumeUploaded`, and the
+three job-AI authoring hops — a recruiter clicked "generate competencies" and the
+output lands in their own draft.
+
+**One escape, audited.** `checkOutbound` takes an `override` that may be passed
+only from a per-item action a human confirmed against a named candidate — the
+"Send it now" button on a suppressed pulse action, and its twin in the catch-up
+queue. Ambient controls (test call, resend invite, the publish-time invite loop)
+pass nothing and are blocked. An override writes an `audit_log` row
+(`entity_type: 'outbound_override'`) **and** an `activity_event` on the
+application: the asymmetry is the point — one records what an admin configured,
+the other what happened to a person.
+
+**The outbox is suppressed, not silenced.** `logActivity` stamps
+`activity_events.suppressed_at` / `suppressed_reason` when the account is off, so
+the drain becomes `dispatched_at is null AND suppressed_at is null`. The row is
+written in full and the app's own readers ignore the column, so the feed and the
+explanatory `automation_skipped_by_policy` rows render normally. **`dispatched_at`
+is not overloaded** — it means "a workflow consumed this", and making it mean
+"never dispatched" is how a dozen consumers break silently. The three routes that
+used to insert into `activity_events` directly now go through `logActivity`;
+that bypass class is gone.
+
+**Turning it back on sends nothing retroactively.** `/automations?section=skipped`
+is the catch-up queue, read from the `automation_skipped_by_policy` ledger, each
+row offering the same one-at-a-time override — and only while the candidate is
+still parked where the skip happened. An automatic replay would fire a burst of
+calls at people whose situation has moved on.
+
+**`agent-call-dispatch` does not early-return.** Calls queued before the switch
+flipped are claimed and resolved to `suppressed` through the existing machinery,
+rather than sitting `pending` and being re-claimed every minute forever.
+
+**Where it lives:** the **Automations** section of `/settings/platform`, and
+nowhere else. That page is a `?section=` rail (`src/lib/settings-sections.ts`) in
+the same shell as `/automations` and `/companies` — **Automations first** because
+it changes what the product does, **My Profile last** because it only says who
+you are; anything new goes between them. `/automations` is the rule
+*library* — what automations exist and what each does — while this is a single
+switch an admin sets and leaves alone; they meet only at the library's banner,
+which links here. It briefly had its own `/settings/automations` route and nav
+entry, which put a second item called "Automations" directly above the first.
+
+**Who may set it:** `isAccountAdmin` / `isPlatformAdmin` in
+`src/lib/permissions.ts`, deliberately **predicates and not `Capability` entries**
+— `can()` short-circuits `side === 'stellaforce'` to true, which erases the
+difference between a Stellaforce recruiter and a Stellaforce admin. Enforced in
+the server action *and* in RLS via `current_profile_is_account_admin()`.
+
+**Nothing asks why.** A free-text reason was prompted on every flip; on a switch
+people toggle routinely that is friction which gets filled with "." and tells the
+next reader nothing, so the prompt and the column are both gone — `audit_log`
+still records who changed what, when, and from which state. The confirm dialog
+survives only where it carries information: **Off** states its blast radius
+before it reaches it, **Paused** exists to offer a resume date, and **On**
+applies immediately.
+
+**Guards:** `npm run automation-scope-check` (pure — independence in both
+directions, global-as-default, the seeded `off` default, ceiling/lock, expiry,
+category precedence) and section **5b** of `npm run scheduling-e2e` (the real
+loop: skip, suppression, override, audit, and back on).
 
 ## Interview scheduling (agent interviews)
 
@@ -956,37 +1075,42 @@ Left sidebar (`src/components/app-sidebar.tsx`) + top header
 3. **Semantic search** — wire embeddings provider + pgvector RPC (TODO)
 4. **Refer/update loop** — applications, interactions, candidate_client_fit (TODO)
 
-## ⚠️ QA test fixtures — DELETE BEFORE LAUNCH
+## QA test fixtures — REMOVED (2026-09-13)
 
-Fourteen placeholder candidates exist **only** to exercise pipeline-stage flows on
-the **Product Designer** job (`308f4d06-8b28-4d3f-b824-e93ecde00db7`). They are
-**not** real people and must be removed once the flows are designed.
+The fourteen placeholder candidates that exercised pipeline-stage flows on the
+**Product Designer** job are **gone**. Deleted: 14 `candidates`, their 14
+`applications`, 42 `application_stage_evaluations` (plus Q&A and notes), 42
+`call_recordings`, and the 42 `fixture-*.mp3` objects under
+`call-recordings/applications/{application_id}/`. `candidates` went 42 → 28;
+every remaining row is a real resume upload and kept all of its child data.
+The seeding migrations stay in history and are now no-ops.
 
-**Identified by `candidates.source = 'qa_test_fixture'`** — that column is the
-deletion key; don't rely on the names. All fourteen share Anna's real phone
-(`+1-412-626-2245`) and LinkedIn URL, and use plus-addressed variants of her
-email (`ajohndesign08+qa1@gmail.com` … `+qa14`) because `candidates.email` is
-UNIQUE and all plus-addresses deliver to the same inbox. **Anything that dials
-or emails these rows will reach Anna's real phone/inbox** — keep that in mind
-when testing outbound calling.
-
-Two candidates sit on each of the seven Screen/Interview sub-stages:
-Pre-Screening, Recruiter Screen, HR Interview, Hiring Manager Interview, Who
-Interview, Technical Interview, Panel Interview. (Source/Offer/Close have none.)
-Each one also carries seeded L2 evaluations for every stage it has already
-cleared, each with Q&A, a transcript and a stand-in audio recording — see
-`20260808130000_seed_stage_evaluations_qa_fixtures` and
-`20260808140100_seed_evaluation_qa_and_transcripts` below. Deleting the
-fixtures cascades all of it; the Storage objects under
-`call-recordings/applications/{application_id}/` are the one thing that has to
-be removed by hand.
-
-To remove them — `applications` cascades on `candidates` delete, so one
-statement is enough:
+⚠️ **If fixtures are ever seeded again, the documented one-liner does not
+work.** This file used to claim `applications` cascades so
+`delete from candidates where source = 'qa_test_fixture'` was enough. It isn't:
+**`call_recordings.candidate_id` has no `ON DELETE` rule** (plain NO ACTION), so
+that statement aborts on a foreign-key violation and deletes nothing. It is the
+*only* blocker — every other child of `candidates` is CASCADE or SET NULL. The
+order that works:
 
 ```sql
+begin;
+delete from public.call_recordings
+ where candidate_id in (select candidate_id from public.candidates
+                        where source = 'qa_test_fixture');
 delete from public.candidates where source = 'qa_test_fixture';
+commit;
 ```
+
+Storage is still not covered by either statement — collect
+`call_recordings.storage_path` **before** deleting the rows, or the objects are
+orphaned with nothing left pointing at them.
+
+**One thing to know about the surviving 28:** one of them carries Anna's real
+phone (`+1-412-626-2245`), almost certainly a self-test resume upload rather
+than a real candidate. It was left in place because it has genuine parsed resume
+data and deleting it was not authorized. **Anything that dials that row reaches
+Anna's real phone.**
 
 ## Migrations
 SQL lives in `supabase/migrations/`, applied directly via the Supabase MCP
@@ -1053,14 +1177,388 @@ interview scheduling** set: `20260823211312_scheduling_extensions` (`btree_gist`
 `interview_scheduled` replacing promises with no executor),
 `_211623_call_recordings_interview_link`,
 `_211822_fix_hold_interview_slot_column_ambiguity`,
-`_215500_confirm_booking_hold_id_default_null`.
+`_215500_confirm_booking_hold_id_default_null` → the **account-wide automation
+switch**: `20260912090000_automation_scope_settings` (`automation_scope_settings`
++ `current_profile_is_account_admin()`; nothing seeded, so an empty table means
+every account still runs) and `_090100_activity_events_suppression`
+(`activity_events.suppressed_at` / `suppressed_reason`, and the outbox index
+rebuilt as `dispatched_at is null and suppressed_at is null`) →
+`20260913090000_automation_scope_settings_drop_reason` and
+`_090100_seed_automations_off_by_default` (one global `off` row, so automations
+run only where someone turned them on) → `20260913100000_candidate_visibility_rls`
+(the candidate-visibility rule below: five predicate functions, per-command
+policies across the whole candidate domain, and the deletion of the twelve
+`recruiters_all_*` policies that made it moot) → the **title normalization**
+set: `20260913110000_title_normalization_enums` (`role_family`,
+`title_seniority`, `title_normalization_source`), `_110100_title_taxonomy_tables`
+(`canonical_roles` + `title_aliases`, both lookup-read / Stellaforce-write),
+`_110200_candidates_title_normalization` (seven nullable columns + three
+indexes; touches no existing value), `_110300_seed_title_taxonomy` (15 roles,
+37 aliases, idempotent on `lower(slug)`/`lower(alias)`), and
+`_110400_drop_title_normalization_segment` (housekeeping — a sales-segment axis
+was created and then cut from V1 scope while the branch was in flight; the three
+creating migrations were rewritten to their final shape, so this is a no-op on a
+fresh database and exists only for environments that ran the earlier revision) →
+`20260913120000_seed_title_taxonomy_coverage` (forward-only coverage pass 1: two
+canonical roles — `channel_partner_sales`, `recruiting_coordinator` — and twelve
+exact aliases, taking the taxonomy to 17 roles / 49 aliases).
 
-**RLS.** Permissive `authenticated`-ALL on core tables; **tenant-scoped** on the
-workflow-template / settings / activity / AI / audit tables (client users see
-only their own client's rows + globals); `profiles` is SELECT-only (rows written
+**RLS.** **Tenant-scoped** on the workflow-template / settings / activity / AI /
+audit tables (client users see only their own client's rows + globals) and on the
+**candidate domain** (below). Permissive `authenticated`-ALL survives only on the
+`skills` / `tools` lookup vocabularies. `profiles` is SELECT-only (rows written
 by the `handle_new_user()` trigger). Anonymous: no access; the service-role key
 bypasses RLS for privileged work (seeding, n8n ingestion). Full table / enum /
 function / trigger / index / RLS reference: **[DB_Schema.md](DB_Schema.md)**.
+
+## Candidate title normalization (V1)
+
+**A candidate's current title, classified for search — stored beside the raw
+title, never on top of it.** `candidates.current_title`, `candidates.headline`
+and `candidate_work_experiences.title` are inputs to this feature and nothing
+else; no code path in it writes a title.
+
+**Three axes, and deliberately no fourth.** Canonical role
+(`candidates.canonical_role_id` → `canonical_roles`), role family, seniority.
+**There is no sales segment.** "Enterprise" and "Strategic" stay in the raw
+title, where the existing free-text *Title contains* filter already finds them —
+a structured segment field would have to mean something specific (deal size?
+account tier? whose definition?) and nothing in the product answers that yet.
+The normalizer *strips* those words when that is what it takes to reach a match
+("Enterprise Sales Engineer" is a Sales Engineer) and then discards them.
+
+**Unclassified is a state, not a value.** No `unknown` or `other` member exists
+on either vocabulary: a row nobody could map and a row classified as "other" look
+identical in a filter the moment `other` exists, and the first is work to do
+while the second is a decision. All-null columns mean unclassified;
+`title_normalization_source` null *with* `normalized_from_title` set means the
+rules ran and matched nothing, which is what a review sweep needs and what the
+profile card says out loud.
+
+**Matching is whole-string, never substring** — the entire safety property.
+Every `title_aliases` row is a complete title compared by exact case-insensitive
+equality. A substring matcher makes "Sales Engineer" match a "sales" rule and
+"Account Manager" match "Account Executive", and both put a real person in a
+search result they don't belong in. `npm run title-check` asserts a dozen
+negative cases, including that "Sales", "Engineer", "Manager", "Executive" and
+"Director" stay unclassified — those broad aliases are deliberately not seeded.
+
+**The rules are pure; the I/O is separate.** `src/lib/title-normalization.ts`
+has no Supabase import and no `server-only`, like `src/lib/candidate-search.ts`,
+so `npm run title-check` drives the real logic headless rather than a
+re-implementation of it. `src/lib/server/title-normalization.ts` is the I/O
+around it and **takes whichever client its caller holds** — the
+`src/lib/server/activity.ts` pattern — so it inherits the caller's scoping
+instead of escalating past it.
+
+**Classification runs in three passes, and the order is load-bearing.** The
+whole title first ("Product Manager" and "Account Manager" are roles whose names
+*end* in a seniority word; extracting first reduces them to "product" and
+"account" and classifies neither), then with the seniority word lifted out, then
+with a market qualifier lifted out too. Within the later passes qualifiers come
+out before seniority, because "mid-market" contains "mid" — strip seniority
+first and a Mid-Market AE comes back mid-level, which is a different and wrong
+claim about a person. A bare "Account Executive" is `seniority = null`, never
+`mid`: the title stated no rung.
+
+**`normalized_from_title` is what makes an override survive a re-parse.**
+`current_title` is overwritten by ingestion, so without a record of what the
+mapping was computed *from*, "did the title change?" is unanswerable. The policy:
+unchanged title → touch nothing (a re-upload of the same résumé must be a no-op);
+changed title under a `recruiter` source → **keep their values, recompute
+nothing**, and report `review_needed` (their decision was about a title the
+candidate no longer holds — that needs a human); anything else → recompute.
+There is deliberately no "recompute and compare" branch, which is how an
+override gets lost to a refactor later. **The review queue that will consume
+`review_needed` is out of scope for V1** — the signal exists, the destination
+does not.
+
+**A trailing qualifier is cut; a slash is not.** `,` and `|` end the role name
+and start a qualifier — a territory, vertical, team or tech stack — and so do
+`–`/`—` **when whitespace sits on at least one side**, because an en dash can
+also join words. Everything after the first such separator is dropped *for
+comparison only*; the raw title is untouched and the qualifier is stored nowhere.
+`/` is deliberately excluded: "Account Executive/Channel Partnerships Manager" is
+one person doing two jobs, and taking the left half would silently pick one, so
+slash titles stay unclassified. **Plain hyphen-minus is an accepted limitation**
+— it is the separator in "Major Account Executive - Financial Services" *and* the
+joiner in "Full-Stack Engineer" / "Mid-Market Account Executive", and the hyphen
+is the one character this module's word boundaries already depend on, so it is
+left unsupported rather than half-handled. `title-check` asserts the limitation
+so it can only change deliberately.
+
+**Two lookup tables, read like `skills`/`tools`, written Stellaforce-side only.**
+`canonical_roles` is a table rather than an enum because roles grow: adding
+"Solutions Architect" is a row, not a migration. `title_aliases` rows are either
+mapped or a **declared ambiguity** (`pm`, `am`, `se` — "PM" is Product, Project
+or Program Manager), enforced by CHECK, so the normalizer can decline *knowingly*
+rather than because no rule happened to exist. Client-side profiles get no
+insert/update/delete policy at all — editing the taxonomy would change how every
+other client's candidates classify.
+
+**The override is internal editorial, not candidate editing.** Any
+Stellaforce-side profile may set role/family/seniority on
+`/candidates/[id]` → Overview → *Search classification*
+(`setCandidateTitleClassification`), gated by `isStellaforceStaff` in the action
+as well as on the page — a Server Action is a POST endpoint in its own right.
+It writes all four fields in one statement (a partial update is how a candidate
+ends up with a role from one decision and a seniority from another), stamps
+`source = 'recruiter'` / `confidence = 'high'` / `normalized_from_title` /
+`title_normalized_at`, and writes one `audit_log` row (`entity_type:
+'candidate_title_classification'`) — what a recruiter *configured* about a
+record, not something that happened to a person. Picking a role decides the
+family rather than offering a second contradictable answer, and the server
+refuses a pair that disagrees.
+
+**Two creation paths were silently dropping the raw title.** `addCandidate` and
+`createCandidateFromParsed` read the form's title/company, folded them into
+`headline`, and never wrote `current_title`/`current_company` — so every
+manually added candidate was invisible to Advanced Search's *Title contains*
+filter (which queries `current_title`) and had nothing to classify. Both now
+persist them; `headline` keeps its exact previous value and meaning.
+
+**Advanced Search filters on it.** The Filters rail carries **Role** (multi-select
+over active `canonical_roles`, grouped by family), **Role family** and
+**Seniority**, as `?role=` / `?family=` / `?seniority=` — comma-separated
+**slugs and enum values, never uuids**: an id in a shared link is meaningless,
+breaks across environments, and leaks a key for no reason. OR within a group
+(`.in()`), AND across groups, all on `candidates` itself so the exact count
+stays a candidate count. A slug that resolves to no *active* role contributes
+nothing, and a role filter resolving to nothing returns an empty page rather
+than silently widening — the rule `candidateIdsForSkills` already follows.
+
+**"Title" is now "Title text contains", and it stays.** Beside a Role filter
+that is a classification, an unqualified "Title" reads like the same thing with
+a free-text box. It is the only filter that reaches an unclassified candidate or
+a variant no rule covers, which is 10 of 28 today — so whenever a Role or Role
+family filter is active the results say so: *"Role filters use classified
+current titles. Use Title text contains to include title variants or
+unclassified candidates."* A short result set is otherwise read as a fact about
+the market.
+
+**The AI tab writes the same filters.** `canonicalRoles` / `roleFamilies` /
+`seniorities` joined the parser's output, so *"find AEs in Boston"* returns
+`account_executive` + Boston rather than a substring match on "AE". The role
+field is a **closed enum built per call from the active taxonomy**
+(`buildSearchSchema`), and the prompt lists every role by slug *and* label —
+which is what lets the model recognise "AEs" without being taught synonyms, and
+what stops it inventing a slug. A static enum would drift the first time someone
+adds a role, which is the whole reason roles are a table.
+
+**The model is never the last check.** `sanitizeAiFilters`
+(`src/lib/candidate-search.ts`, pure) re-checks every value against the live
+taxonomy and the two enums, drops what it doesn't recognise rather than
+rejecting the search, and re-validates the year range. It lives beside
+`parseCandidateSearchParams` so the rail, the URL and the parser cannot disagree
+about what a valid filter value is. A parse whose *only* filter was an invalid
+role counts as empty — never as an unfiltered search.
+
+**A market qualifier lands in the title text, not in a structured field.**
+*"enterprise AEs"* → role `account_executive` **and** `title` contains
+"Enterprise": there is no segment field, so the raw-text filter is the only
+honest way to honour that half of the request, and the interpretation summary
+shows both lines. *"Former SDRs who are now AEs"* classifies the current role and
+reports the past one under *Not yet included* — the normalized fields describe a
+**current** title only.
+
+A new AI search replaces the whole filter set rather than merging with it, so
+what the reply claims and what the table shows are the same thing. Switching
+*tabs* preserves everything.
+
+⚠️ **Work experience is still not normalized**, deliberately:
+`upsertWorkExperiences` deletes and recreates every resume-sourced row on
+re-parse, so a column stored there would not survive the next upload. Former-role
+search and role-specific tenure therefore remain unsupported.
+
+**Guards:** `npm run title-check` (pure — the classification table, whole-string
+negatives, seniority extraction, the re-parse policy, and that raw titles come
+back byte-for-byte; it parses its alias fixture **out of the seed migration** so
+the rules and the seeded data cannot drift) and
+`npm run ai-search-check` (pure — the vocabularies, the post-model sanitizer
+dropping invented slugs/levels and inverted year ranges, and that the parser's
+enums still come from the shared option lists rather than a hardcoded copy) and
+`npm run title-backfill` (dry-run by default, `-- --apply` to write; batched,
+idempotent, **aggregate counts only — never a name, an email, or a raw title**).
+Its `-- --recheck` flag re-evaluates already-classified rows, which is the only
+way to see what a *new* rule set would produce: the re-parse policy skips a row
+whose title hasn't changed, so a plain dry run after a taxonomy change reports
+"all unchanged" and answers nothing. `--recheck` never reaches a recruiter
+override — that row is preserved before the flag is consulted.
+
+## Candidate search enrichment
+
+**Adding a candidate populates their derived search data, then and there.** Every
+path that writes search-relevant candidate data calls one function —
+`reconcileCandidateSearchEnrichment` (`src/lib/server/candidate-search-enrichment.ts`)
+— synchronously, before the recruiter sees the result. The four seams are
+`addCandidate`, `createCandidateFromParsed`, the `reconcile_search` stage of
+`ingestCandidateResume`, and `setCandidateTitleClassification`. It classifies
+the title through the existing normalizer and records what is still missing.
+
+**Every candidate is searchable, always.** Name, raw title text, city, skills
+and years reach every row regardless of enrichment state — nothing here gates a
+query. There is deliberately **no `is_searchable` column**: it would have stored
+`candidates.canonical_role_id is not null` a second time on a different table
+with a different writer (the override action writes that column directly), so
+the two would disagree the moment a recruiter classified someone by hand. Worse,
+the name promises far more than it means, and the next person to write a query
+would reasonably add `where is_searchable` — at which point enrichment state
+starts hiding people. `is_classified` is derived in the
+`candidate_search_readiness` view.
+
+**`candidate_search_state` is one row per candidate**, cascade-deleted with
+them. It stores what only the app can produce — `readiness`, `review_reasons`,
+the dirty/watermark pair, attempt count, last error, `enrichment_version` — and
+the view derives the rest (`is_classified`, `is_stale`, `never_reconciled`,
+`time_to_ready`). **Not a setting and not in Settings**: nothing here is a dial
+an admin turns.
+
+**Readiness has four states and only two are about the candidate.** `ready` and
+`ready_with_review` are conclusions about their data; `pending` means no run has
+happened yet and `failed` means *our* reconciliation broke — neither is a
+statement about the person, and neither changes what search can find. A résumé
+that parsed badly is `ready_with_review` with a `parse_needs_review` reason, not
+`failed`: the parse is what went wrong. Nine reason codes, each with recruiter
+wording in `REVIEW_REASON_LABELS`, rendered as an amber "Worth a look" list on
+the profile's Search classification card. `pending` and `failed` render nothing
+there.
+
+**Two policies worth knowing.** Years of experience is **validated, never
+derived** — parsed résumés carry gaps, overlaps and missing end dates, so a
+computed figure is confidently wrong often enough to be worse than a blank, and
+it would overwrite a number a recruiter typed; an implausible value is flagged
+instead. And a `current_title` that disagrees with the `is_current`
+work-experience row is **reported, never reconciled**, per the V1 decision.
+
+**Triggers stamp one timestamp and nothing else** (`mark_candidate_search_dirty`,
+SECURITY DEFINER so RLS cannot silently drop a flag). They fire on `candidates`
+(input columns only), `candidate_work_experiences`, `candidate_skills` and
+`resumes`. **No external or LLM call may ever appear in one** — a trigger runs
+inside the writer's transaction. ⚠️ **The loop-breaker:** the UPDATE trigger on
+`candidates` lists *input* columns and must never be widened to "any column",
+or the reconciler's own classification writes would re-dirty the row it just
+cleaned, forever.
+
+**The dirty flag is the outbox** — no queue, no Edge Function, no new
+infrastructure. `/api/cron/search-enrichment-sweep` (n8n Schedule → bearer auth
+→ admin client, the same shape as the three existing cron routes) drains it,
+and is the safety net rather than the main path: writes that skipped a seam,
+`ENRICHMENT_VERSION` bumps, and failures with exponential backoff capped at five
+attempts. **n8n schedules it and nothing more** — readiness is computed and
+stored by the app.
+
+**The watermark is what makes it safe.** Each run records the `search_dirty_at`
+it observed, and clears that flag only with `.eq()` on the same value: a write
+landing mid-run has already replaced it, so the row stays dirty and is swept
+again. Work is never lost, and a run that began before newer data can never mark
+that data clean. Clearing also keeps the sweep's first page full of candidates
+who actually need something.
+
+**Country is the one location axis that is normalized.** `candidates.country_code`
+is derived ISO-2, computed by the reconciler from the raw `location_country` —
+which arrives as both `IN` and `India` for the same country, so an equality
+filter on the raw column answers "engineers in India" differently depending on
+which résumé produced the row. The raw column is read and never written.
+`src/lib/country-normalization.ts` is the pure map (~48 codes plus the spellings
+résumés actually produce); an unrecognised value resolves to **null and a
+`unresolved_country` review reason**, never a guess. **Country only** — no
+geocoding, no metros, no state or region resolution: "Greater Boston", "the Bay
+Area" and "California" stay unsupported, because a wrong guess about where
+someone lives is worse than an honest gap.
+
+**A dropped requirement is now loud.** When the AI parse cannot apply something
+the recruiter asked for, it travels in the URL as `?unsupported=` and renders in
+**amber above the results table**, not as a grey line in the rail. This came
+from a real failure: a search for "software engineer in India" returned a
+candidate in New Jersey, because country was unsupported, correctly declined,
+and disclosed somewhere the recruiter was not looking. The results were
+consistent with the filters and still wrong as an answer.
+
+**Guards:** `npm run enrichment-check` (pure — every reason, the readiness
+ladder, the years and conflict policies, sorted/de-duplicated output) and
+`npm run enrichment-backfill` (dry-run by default, `-- --apply` to write;
+**aggregate counts only — never a name, an email, or a raw title**).
+
+## Candidate visibility
+
+**Who may see which candidate, stated in the database rather than in whichever
+query gets written next.**
+
+> **Stellaforce-side profile** → the whole global candidate brain, every client,
+> including candidates a client entered.
+> **Client-side profile** → **reads** candidates its own client entered, plus
+> candidates submitted to its jobs; **writes** only the candidates its own client
+> entered.
+
+**Read and write are deliberately different predicates.** A client reviewing a
+candidate Stellaforce submitted to their req must be able to *see* that
+candidate — scoping reads to ownership alone would render `/jobs/[id]` empty for
+every client profile, since those candidates were entered by a Stellaforce
+recruiter. They must equally not be able to *edit* the master record in the
+global brain. One predicate could not be both.
+
+**Ownership is `candidates.added_by → profiles.client_id`**, which every write
+path already sets (`addCandidate`, `createCandidateFromParsed`,
+`ingestCandidateResume`). A null `added_by`, or one belonging to a Stellaforce
+profile, means **no client owns the row** — it is the Stellaforce collection, and
+no client-side user reads it unless it has been submitted to one of their jobs.
+That is fail-closed by construction, and it is why a missing `added_by` leaks
+nothing. There is deliberately **no `candidates.client_id`**: the candidate brain
+is global, and a column would force one row to belong to exactly one client.
+
+**Five functions, one rule.** `current_profile_can_read_candidate_row(candidate_id,
+added_by)` and `current_profile_can_write_candidate_row(added_by)` take
+`added_by` as a **value**, so the policy on `candidates` cannot recurse into its
+own predicate; `current_profile_can_read_candidate(candidate_id)` /
+`_write_candidate(candidate_id)` are the wrappers the child tables use, since
+they carry only `candidate_id`; `profile_client_id(profile_id)` resolves
+ownership. All are `STABLE SECURITY DEFINER SET search_path = ''`, matching
+`current_profile_side()` / `current_profile_client_id()`.
+
+**Scoped across the whole domain, because the rule is otherwise bypassable.**
+PostgREST will serve `candidate_skills` or `candidate_work_experiences`
+directly, so locking `candidates` alone secures nothing. Covered:
+`candidates`, `candidate_work_experiences`, `candidate_skills`,
+`candidate_tools`, `candidate_education`, `candidate_certifications`,
+`candidate_links`, `resumes`, `interactions` (visibility follows the candidate),
+plus `applications`, `placements`, `candidate_client_fit` (keyed on `client_id`
+directly). **`skills` and `tools` stay permissive** — global vocabularies of
+names holding no candidate data; scoping them would fragment the lookup
+`findOrCreateLookupRows` depends on and protect nothing.
+
+**The old policies had to be dropped, not supplemented.** Every one of these
+tables carried `recruiters_all_*` as `FOR ALL TO authenticated USING (true) WITH
+CHECK (true)` — RLS *enabled*, predicate not restricting. Permissive policies are
+**OR'd**, so leaving even one in place would have silently restored the old
+behaviour while the new policy sat beside it looking correct.
+
+**The predicates are not on the public API.** Every function in `public` is
+reachable as `POST /rest/v1/rpc/<name>` and is granted EXECUTE to PUBLIC by
+default, which made `profile_client_id(<uuid>)` an anon-callable lookup of any
+profile's client and `current_profile_can_read_candidate(<uuid>)` an existence
+oracle for candidate ids. A policy expression is evaluated with the privileges of
+the **querying** role, so `authenticated` must keep EXECUTE or every policy fails
+closed — `anon` and `PUBLIC` lose it instead
+(`20260913100100_candidate_visibility_grants`, and `_100200_tenant_helper_grants`
+for the three older `current_profile_*` helpers). `handle_new_user()` is left
+alone deliberately: revoking is near-certainly safe on a trigger function, and
+"near-certainly" is not the standard for the signup path.
+
+⚠️ **The service-role key bypasses all of this**, so resume ingestion, the n8n
+callbacks, seeding and backfills are unaffected — and a Server Action that
+reaches for `admin.ts` instead of the request-scoped client opts out of the rule
+entirely. RLS cannot catch that: to Postgres, an escalating Server Action and
+n8n are the same caller. So the list is written down instead —
+**`npm run service-role-check`** (`scripts/service-role-check.ts`) fails on any
+`createAdminClient` call site not allowlisted with a stated reason, on any stale
+entry, and specifically on `src/lib/data.ts` growing a second admin client or
+pointing its existing one at the candidate domain. That file is the read layer;
+its one admin call reads `google_calendar_connections` and returns a derived
+boolean. A new entry is not a failure — adding one deliberately, with a sentence
+saying why, is the point; what it catches is the one added by accident.
+`src/lib/server/activity.ts` is the pattern to copy: it takes whichever client
+its caller holds rather than creating one, so it inherits the caller's scoping
+instead of escalating past it.
 
 ## Auth
 Supabase Auth, email/password only, no public sign-up — Stellaforce-side

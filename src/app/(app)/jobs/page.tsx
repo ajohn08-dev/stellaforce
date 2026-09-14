@@ -18,7 +18,9 @@ export default async function JobsPage({
   const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined)
 
   const [jobOrders, clients] = await Promise.all([getJobOrders(), getClients()])
-  const allJobs = jobOrders.map((j) => toMockJob(j))
+  const allJobs = jobOrders.map((j) =>
+    toMockJob(j, { candidatesInPipeline: j.active_application_count })
+  )
   const clientOptions = clients.map((c) => ({ id: c.client_id, name: c.client_name }))
 
   const statuses = parseStatusesParam(get("statuses") ?? null)

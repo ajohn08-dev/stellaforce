@@ -56,7 +56,19 @@ const created = {
   interviewIds: [] as string[],
   bindingIds: [] as string[],
   eventIds: [] as string[],
+  scopeSwitchIds: [] as string[],
+  auditIds: [] as string[],
 }
+
+/**
+ * A real profile to attribute this run's override to.
+ *
+ * `audit_log.actor_profile_id` is a foreign key, so a synthetic uuid would fail
+ * the insert — and the gate deliberately swallows an audit failure rather than
+ * blocking a send a person asked for, so the row would simply be missing and
+ * the assertion below would report the wrong problem.
+ */
+let actorProfileId = ""
 
 /** Set once the fixture is chosen. Every delete is scoped to it or to `created`. */
 let ownedApplicationId = ""
@@ -176,6 +188,23 @@ async function main() {
     })
     .eq("id", subStageId)
   check(true, "stage configured as a self-scheduling agent interview")
+
+  // Automations ship **off** by default (one seeded global row), so this script
+  // has to opt its own account in — every section before 5b is about what
+  // happens when automations *do* run, and inheriting the default would make
+  // them all assert the wrong thing. Stated here rather than assumed: the
+  // precondition is now a real one.
+  const { data: e2eOptIn } = await db
+    .from("automation_scope_settings")
+    .insert({
+      state: "active",
+      tenant_client_id: app!.client_id,
+      company_scope_client_id: app!.client_id,
+    })
+    .select("id")
+    .single()
+  created.scopeSwitchIds.push(e2eOptIn!.id)
+  check(Boolean(e2eOptIn), "this account opted in to automations for the run")
 
   // ── 1. The gate allows it, and a request + token appear ───────────────────
   section("1. Booking request")
@@ -566,6 +595,146 @@ async function main() {
     console.log("  – this job runs no workflow template; workflow-scope proof skipped")
   }
 
+  // ── 5b. The account-wide switch ──────────────────────────────────────────
+  //
+  // A different decision from any binding above: not "this rule is off here"
+  // but "this account isn't running automations at all". It has to stop the
+  // send, name itself as the reason, suppress the event from the outbox without
+  // hiding it from the timeline, and still let a human send it by hand.
+  section("5b. The account switch")
+  await clearRequests()
+  await db.from("automation_bindings").delete().in("id", created.bindingIds)
+  created.bindingIds = []
+
+  const { data: anyProfile } = await db
+    .from("profiles")
+    .select("id")
+    .eq("side", "stellaforce")
+    .limit(1)
+    .maybeSingle()
+  actorProfileId = anyProfile?.id ?? ""
+
+  // Section 5 already skipped this same (automation, application, stage), and
+  // `logAutomationSkipped` dedupes on exactly that — deliberately, so one stage
+  // entry firing several lifecycle events produces one skip. Left in place, the
+  // assertions below would read section 5's row, which was written while the
+  // account was still running and is therefore correctly un-suppressed.
+  await db
+    .from("activity_events")
+    .delete()
+    .eq("event_type", "automation_skipped_by_policy")
+    .eq("application_id", app!.application_id)
+
+  // Flip the run's own opt-in row to `off` rather than inserting a second one:
+  // the partial unique index allows exactly one row per account per category,
+  // which is the constraint that makes "is this account running" answerable.
+  await db
+    .from("automation_scope_settings")
+    .update({ state: "off" })
+    .eq("id", e2eOptIn!.id)
+
+  const accountOff = await maybeCreateBookingRequest({
+    applicationId: app!.application_id,
+    subStageId,
+    candidateId: app!.candidate_id,
+    jobId: app!.job_id,
+    clientId: app!.client_id,
+    correlationId: `${PREFIX}-account-off`,
+  })
+  check(
+    accountOff.kind === "skipped_by_policy" &&
+      accountOff.reasonCode === "ACCOUNT_AUTOMATIONS_OFF",
+    "an account switched off → skipped, naming the account and not the rule",
+    accountOff.kind === "skipped_by_policy" ? accountOff.reasonCode : accountOff.kind
+  )
+
+  const { count: noAccountRows } = await db
+    .from("interview_scheduling_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("application_id", app!.application_id)
+    .in("status", ["pending", "sent"])
+  check(noAccountRows === 0, "…no request row, so no token was ever minted")
+
+  const { data: accountSkip } = await db
+    .from("activity_events")
+    .select("id, severity, payload, suppressed_at, suppressed_reason, dispatched_at")
+    .eq("event_type", "automation_skipped_by_policy")
+    .eq("application_id", app!.application_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (accountSkip) created.eventIds.push(accountSkip.id)
+
+  check(accountSkip?.severity === "info", "…logged at info: the system obeyed, nothing broke")
+  check(
+    accountSkip?.suppressed_at !== null && accountSkip?.suppressed_reason === "automations_off",
+    "…and stamped suppressed, so the outbox drain skips it",
+    String(accountSkip?.suppressed_reason)
+  )
+  check(
+    accountSkip?.dispatched_at === null,
+    "…without touching dispatched_at, which belongs to the dispatcher alone"
+  )
+
+  // The event is suppressed for n8n and fully readable in the product — that
+  // distinction is the entire reason for a second column.
+  const { count: visibleToApp } = await db
+    .from("activity_events")
+    .select("id", { count: "exact", head: true })
+    .eq("application_id", app!.application_id)
+    .eq("event_type", "automation_skipped_by_policy")
+  check((visibleToApp ?? 0) > 0, "…while staying visible to the timeline the recruiter reads")
+
+  // The one sanctioned way past the gate.
+  const manual = await maybeCreateBookingRequest({
+    applicationId: app!.application_id,
+    subStageId,
+    candidateId: app!.candidate_id,
+    jobId: app!.job_id,
+    clientId: app!.client_id,
+    correlationId: `${PREFIX}-manual`,
+    override: { actorProfileId, reason: "e2e override" },
+  })
+  check(manual.kind === "created", "a human override sends it anyway", manual.kind)
+  if (manual.kind === "created") created.requestIds.push(manual.requestId)
+
+  const { data: overrideAudit } = await db
+    .from("audit_log")
+    .select("id, action, entity_type")
+    .eq("entity_type", "outbound_override")
+    .eq("entity_id", app!.application_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  check(
+    overrideAudit?.action === "sent_despite_switch",
+    "…and the override is in audit_log, attributed to a person",
+    overrideAudit?.action ?? "missing"
+  )
+  if (overrideAudit) created.auditIds.push(overrideAudit.id)
+
+  // Back on — an update, not a delete. Deleting would drop the account to the
+  // seeded global `off`, so the assertion below would be testing the default
+  // rather than the thing it claims to test.
+  await db
+    .from("automation_scope_settings")
+    .update({ state: "active" })
+    .eq("id", e2eOptIn!.id)
+
+  const backOn = await maybeCreateBookingRequest({
+    applicationId: app!.application_id,
+    subStageId,
+    candidateId: app!.candidate_id,
+    jobId: app!.job_id,
+    clientId: app!.client_id,
+    correlationId: `${PREFIX}-back-on`,
+  })
+  check(
+    backOn.kind === "already_exists" || backOn.kind === "created",
+    "turning the account back on restores normal behaviour",
+    backOn.kind
+  )
+
   // ── 6. The human-interviewer boundary ────────────────────────────────────
   // v2 of the rule covers any interview stage, not only an AI one. What it does
   // NOT cover is a stage with nobody to interview, or a panel — and each has to
@@ -810,6 +979,10 @@ async function main() {
   await db.from("job_workflow_sub_stages").update(originalStage!).eq("id", subStageId)
   await clearRequests()
   for (const id of created.bindingIds) await db.from("automation_bindings").delete().eq("id", id)
+  for (const id of created.scopeSwitchIds) {
+    await db.from("automation_scope_settings").delete().eq("id", id)
+  }
+  for (const id of created.auditIds) await db.from("audit_log").delete().eq("id", id)
   await db
     .from("activity_events")
     .delete()

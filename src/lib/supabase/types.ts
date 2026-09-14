@@ -31,6 +31,8 @@ export type Database = {
           reverses_event_id: string | null
           severity: Database["public"]["Enums"]["event_severity"]
           sub_stage_id: string | null
+          suppressed_at: string | null
+          suppressed_reason: string | null
           system_source: string | null
         }
         Insert: {
@@ -49,6 +51,8 @@ export type Database = {
           reverses_event_id?: string | null
           severity?: Database["public"]["Enums"]["event_severity"]
           sub_stage_id?: string | null
+          suppressed_at?: string | null
+          suppressed_reason?: string | null
           system_source?: string | null
         }
         Update: {
@@ -67,6 +71,8 @@ export type Database = {
           reverses_event_id?: string | null
           severity?: Database["public"]["Enums"]["event_severity"]
           sub_stage_id?: string | null
+          suppressed_at?: string | null
+          suppressed_reason?: string | null
           system_source?: string | null
         }
         Relationships: [
@@ -921,6 +927,87 @@ export type Database = {
           },
         ]
       }
+      automation_scope_settings: {
+        Row: {
+          category: string | null
+          company_scope_client_id: string | null
+          created_at: string
+          id: string
+          job_id: string | null
+          resume_at: string | null
+          scope: Database["public"]["Enums"]["settings_scope"]
+          set_by: string | null
+          state: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id: string | null
+          updated_at: string
+          workflow_template_id: string | null
+        }
+        Insert: {
+          category?: string | null
+          company_scope_client_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          resume_at?: string | null
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          set_by?: string | null
+          state: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id?: string | null
+          updated_at?: string
+          workflow_template_id?: string | null
+        }
+        Update: {
+          category?: string | null
+          company_scope_client_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          resume_at?: string | null
+          scope?: Database["public"]["Enums"]["settings_scope"]
+          set_by?: string | null
+          state?: Database["public"]["Enums"]["automation_state"]
+          tenant_client_id?: string | null
+          updated_at?: string
+          workflow_template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_scope_settings_company_scope_client_id_fkey"
+            columns: ["company_scope_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "automation_scope_settings_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_orders"
+            referencedColumns: ["job_id"]
+          },
+          {
+            foreignKeyName: "automation_scope_settings_set_by_fkey"
+            columns: ["set_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_scope_settings_tenant_client_id_fkey"
+            columns: ["tenant_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["client_id"]
+          },
+          {
+            foreignKeyName: "automation_scope_settings_workflow_template_id_fkey"
+            columns: ["workflow_template_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_recordings: {
         Row: {
           agent_id: string | null
@@ -1346,6 +1433,72 @@ export type Database = {
           },
         ]
       }
+      candidate_search_state: {
+        Row: {
+          attempt_count: number
+          candidate_id: string
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          enrichment_version: number
+          last_error: string | null
+          last_ingestion_job_id: string | null
+          readiness: Database["public"]["Enums"]["search_readiness"]
+          reconciled_at: string | null
+          reconciled_watermark: string | null
+          review_reasons: string[]
+          search_dirty_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          candidate_id: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          enrichment_version?: number
+          last_error?: string | null
+          last_ingestion_job_id?: string | null
+          readiness?: Database["public"]["Enums"]["search_readiness"]
+          reconciled_at?: string | null
+          reconciled_watermark?: string | null
+          review_reasons?: string[]
+          search_dirty_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          candidate_id?: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          enrichment_version?: number
+          last_error?: string | null
+          last_ingestion_job_id?: string | null
+          readiness?: Database["public"]["Enums"]["search_readiness"]
+          reconciled_at?: string | null
+          reconciled_watermark?: string | null
+          review_reasons?: string[]
+          search_dirty_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_search_state_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: true
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "candidate_search_state_last_ingestion_job_id_fkey"
+            columns: ["last_ingestion_job_id"]
+            isOneToOne: false
+            referencedRelation: "ingestion_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_skills: {
         Row: {
           ai_literacy_signal: Json | null
@@ -1524,6 +1677,8 @@ export type Database = {
           avatar_url: string | null
           candidate_id: string
           candidate_tier: Database["public"]["Enums"]["candidate_tier"] | null
+          canonical_role_id: string | null
+          country_code: string | null
           created_at: string
           current_company: string | null
           current_title: string | null
@@ -1550,14 +1705,24 @@ export type Database = {
           location_country: string | null
           location_raw: string | null
           location_state: string | null
+          normalized_from_title: string | null
           phone: string | null
           portfolio_url: string | null
           professional_summary: string | null
           resume_path: string | null
+          role_family: Database["public"]["Enums"]["role_family"] | null
+          seniority: Database["public"]["Enums"]["title_seniority"] | null
           source: string | null
           source_metadata: Json | null
           tier_rationale: string | null
           timezone: string | null
+          title_normalization_confidence:
+            | Database["public"]["Enums"]["confidence_level"]
+            | null
+          title_normalization_source:
+            | Database["public"]["Enums"]["title_normalization_source"]
+            | null
+          title_normalized_at: string | null
           updated_at: string
           years_experience: number | null
         }
@@ -1566,6 +1731,8 @@ export type Database = {
           avatar_url?: string | null
           candidate_id?: string
           candidate_tier?: Database["public"]["Enums"]["candidate_tier"] | null
+          canonical_role_id?: string | null
+          country_code?: string | null
           created_at?: string
           current_company?: string | null
           current_title?: string | null
@@ -1592,14 +1759,24 @@ export type Database = {
           location_country?: string | null
           location_raw?: string | null
           location_state?: string | null
+          normalized_from_title?: string | null
           phone?: string | null
           portfolio_url?: string | null
           professional_summary?: string | null
           resume_path?: string | null
+          role_family?: Database["public"]["Enums"]["role_family"] | null
+          seniority?: Database["public"]["Enums"]["title_seniority"] | null
           source?: string | null
           source_metadata?: Json | null
           tier_rationale?: string | null
           timezone?: string | null
+          title_normalization_confidence?:
+            | Database["public"]["Enums"]["confidence_level"]
+            | null
+          title_normalization_source?:
+            | Database["public"]["Enums"]["title_normalization_source"]
+            | null
+          title_normalized_at?: string | null
           updated_at?: string
           years_experience?: number | null
         }
@@ -1608,6 +1785,8 @@ export type Database = {
           avatar_url?: string | null
           candidate_id?: string
           candidate_tier?: Database["public"]["Enums"]["candidate_tier"] | null
+          canonical_role_id?: string | null
+          country_code?: string | null
           created_at?: string
           current_company?: string | null
           current_title?: string | null
@@ -1634,14 +1813,24 @@ export type Database = {
           location_country?: string | null
           location_raw?: string | null
           location_state?: string | null
+          normalized_from_title?: string | null
           phone?: string | null
           portfolio_url?: string | null
           professional_summary?: string | null
           resume_path?: string | null
+          role_family?: Database["public"]["Enums"]["role_family"] | null
+          seniority?: Database["public"]["Enums"]["title_seniority"] | null
           source?: string | null
           source_metadata?: Json | null
           tier_rationale?: string | null
           timezone?: string | null
+          title_normalization_confidence?:
+            | Database["public"]["Enums"]["confidence_level"]
+            | null
+          title_normalization_source?:
+            | Database["public"]["Enums"]["title_normalization_source"]
+            | null
+          title_normalized_at?: string | null
           updated_at?: string
           years_experience?: number | null
         }
@@ -1653,7 +1842,44 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "candidates_canonical_role_id_fkey"
+            columns: ["canonical_role_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_roles"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      canonical_roles: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          role_family: Database["public"]["Enums"]["role_family"]
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          role_family: Database["public"]["Enums"]["role_family"]
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          role_family?: Database["public"]["Enums"]["role_family"]
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       clients: {
         Row: {
@@ -3288,6 +3514,50 @@ export type Database = {
           },
         ]
       }
+      title_aliases: {
+        Row: {
+          alias: string
+          canonical_role_id: string | null
+          created_at: string
+          id: string
+          implied_seniority:
+            | Database["public"]["Enums"]["title_seniority"]
+            | null
+          is_ambiguous: boolean
+          updated_at: string
+        }
+        Insert: {
+          alias: string
+          canonical_role_id?: string | null
+          created_at?: string
+          id?: string
+          implied_seniority?:
+            | Database["public"]["Enums"]["title_seniority"]
+            | null
+          is_ambiguous?: boolean
+          updated_at?: string
+        }
+        Update: {
+          alias?: string
+          canonical_role_id?: string | null
+          created_at?: string
+          id?: string
+          implied_seniority?:
+            | Database["public"]["Enums"]["title_seniority"]
+            | null
+          is_ambiguous?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "title_aliases_canonical_role_id_fkey"
+            columns: ["canonical_role_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tools: {
         Row: {
           category: string | null
@@ -3540,6 +3810,39 @@ export type Database = {
       }
     }
     Views: {
+      candidate_search_readiness: {
+        Row: {
+          attempt_count: number | null
+          candidate_id: string | null
+          enrichment_version: number | null
+          is_classified: boolean | null
+          is_stale: boolean | null
+          last_error: string | null
+          last_ingestion_job_id: string | null
+          never_reconciled: boolean | null
+          readiness: Database["public"]["Enums"]["search_readiness"] | null
+          reconciled_at: string | null
+          review_reasons: string[] | null
+          search_dirty_at: string | null
+          time_to_ready: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_search_state_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: true
+            referencedRelation: "candidates"
+            referencedColumns: ["candidate_id"]
+          },
+          {
+            foreignKeyName: "candidate_search_state_last_ingestion_job_id_fkey"
+            columns: ["last_ingestion_job_id"]
+            isOneToOne: false
+            referencedRelation: "ingestion_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       interview_scheduling_request_status: {
         Row: {
           agent_concurrency_limit: number | null
@@ -3766,7 +4069,24 @@ export type Database = {
           scheduled_call_id: string
         }[]
       }
+      current_profile_can_read_candidate: {
+        Args: { p_candidate_id: string }
+        Returns: boolean
+      }
+      current_profile_can_read_candidate_row: {
+        Args: { p_added_by: string; p_candidate_id: string }
+        Returns: boolean
+      }
+      current_profile_can_write_candidate: {
+        Args: { p_candidate_id: string }
+        Returns: boolean
+      }
+      current_profile_can_write_candidate_row: {
+        Args: { p_added_by: string }
+        Returns: boolean
+      }
       current_profile_client_id: { Args: never; Returns: string }
+      current_profile_is_account_admin: { Args: never; Returns: boolean }
       current_profile_side: {
         Args: never
         Returns: Database["public"]["Enums"]["profile_side"]
@@ -3781,6 +4101,7 @@ export type Database = {
           starts_at: string
         }[]
       }
+      profile_client_id: { Args: { p_profile_id: string }; Returns: string }
     }
     Enums: {
       activity_event_type:
@@ -3875,6 +4196,14 @@ export type Database = {
       profile_side: "stellaforce" | "client"
       question_source: "manual" | "structured" | "ai_assisted"
       rating_scale: "star" | "ten-point" | "hundred-point"
+      role_family:
+        | "sales"
+        | "customer_success"
+        | "marketing"
+        | "product"
+        | "design"
+        | "engineering"
+        | "operations"
       scheduled_call_status:
         | "pending"
         | "claimed"
@@ -3893,11 +4222,24 @@ export type Database = {
         | "expired"
         | "canceled"
         | "failed"
+      search_readiness: "pending" | "ready" | "ready_with_review" | "failed"
       settings_scope: "global" | "client" | "workflow" | "job"
       skill_type: "technical" | "functional" | "behavioral"
       stage_entry_condition: "manual" | "automatic"
       stage_format: "phone" | "video" | "onsite" | "async"
       stage_visibility: "internal" | "candidate_facing"
+      title_normalization_source: "rule" | "recruiter"
+      title_seniority:
+        | "intern"
+        | "entry"
+        | "mid"
+        | "senior"
+        | "staff"
+        | "principal"
+        | "manager"
+        | "director"
+        | "vp"
+        | "c_level"
       user_role: "recruiter" | "manager" | "admin"
       workflow_template_status: "draft" | "published"
       workplace_type: "on-site" | "hybrid" | "remote"
@@ -3916,12 +4258,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3945,11 +4287,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3970,11 +4312,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3995,11 +4337,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4012,11 +4354,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4124,6 +4466,15 @@ export const Constants = {
       profile_side: ["stellaforce", "client"],
       question_source: ["manual", "structured", "ai_assisted"],
       rating_scale: ["star", "ten-point", "hundred-point"],
+      role_family: [
+        "sales",
+        "customer_success",
+        "marketing",
+        "product",
+        "design",
+        "engineering",
+        "operations",
+      ],
       scheduled_call_status: [
         "pending",
         "claimed",
@@ -4145,11 +4496,25 @@ export const Constants = {
         "canceled",
         "failed",
       ],
+      search_readiness: ["pending", "ready", "ready_with_review", "failed"],
       settings_scope: ["global", "client", "workflow", "job"],
       skill_type: ["technical", "functional", "behavioral"],
       stage_entry_condition: ["manual", "automatic"],
       stage_format: ["phone", "video", "onsite", "async"],
       stage_visibility: ["internal", "candidate_facing"],
+      title_normalization_source: ["rule", "recruiter"],
+      title_seniority: [
+        "intern",
+        "entry",
+        "mid",
+        "senior",
+        "staff",
+        "principal",
+        "manager",
+        "director",
+        "vp",
+        "c_level",
+      ],
       user_role: ["recruiter", "manager", "admin"],
       workflow_template_status: ["draft", "published"],
       workplace_type: ["on-site", "hybrid", "remote"],
@@ -4290,6 +4655,10 @@ export type AutomationDefinitionVersionRow =
   SchemaTables["automation_definition_versions"]["Row"]
 export type AutomationBindingRow = SchemaTables["automation_bindings"]["Row"]
 export type AutomationBindingInsert = SchemaTables["automation_bindings"]["Insert"]
+export type AutomationScopeSettingRow =
+  SchemaTables["automation_scope_settings"]["Row"]
+export type AutomationScopeSettingInsert =
+  SchemaTables["automation_scope_settings"]["Insert"]
 
 // ── Agents / call recordings (screening-agent registry + interview/call log) ─
 export type AgentRow = SchemaTables["agents"]["Row"]
@@ -4318,3 +4687,23 @@ export type ScheduledAgentCallRow = SchemaTables["scheduled_agent_calls"]["Row"]
 /** The recruiter-facing projection — `token_hash` is deliberately absent. */
 export type InterviewSchedulingRequestStatusRow =
   Database["public"]["Views"]["interview_scheduling_request_status"]["Row"]
+
+// ── Title normalization (candidate-level current-title classification) ───────
+// The raw title columns (`candidates.current_title`, `candidates.headline`,
+// `candidate_work_experiences.title`) are untouched by this feature; these
+// types describe the classification stored beside them.
+export type RoleFamily = SchemaEnums["role_family"]
+export type TitleSeniority = SchemaEnums["title_seniority"]
+export type TitleNormalizationSource = SchemaEnums["title_normalization_source"]
+
+export type CanonicalRoleRow = SchemaTables["canonical_roles"]["Row"]
+export type TitleAliasRow = SchemaTables["title_aliases"]["Row"]
+
+// ── Candidate search enrichment ──────────────────────────────────────────────
+// Derived-search reconciliation state. Never gates a query: every candidate is
+// searchable on name, raw title text, city, skills and years regardless.
+export type SearchReadiness = SchemaEnums["search_readiness"]
+export type CandidateSearchStateRow = SchemaTables["candidate_search_state"]["Row"]
+/** The operational projection — derived columns, and no candidate PII. */
+export type CandidateSearchReadinessRow =
+  Database["public"]["Views"]["candidate_search_readiness"]["Row"]

@@ -81,8 +81,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .lt("expires_at", graceCutoff)
     .select("id")
 
+  // ── 3. Elapsed automation pauses ──────────────────────────────────────────
+  // Tidying only. `resolveScopeSwitch` already ignores a pause whose `resume_at`
+  // has passed, so an account resumes on the stroke of its own deadline whether
+  // or not this cron ever runs — deleting the row just stops the settings page
+  // showing a pause that ended. Deliberately NOT the mechanism: if expiry
+  // depended on this tick, a cron outage would leave an account frozen.
+  const { data: resumed } = await admin
+    .from("automation_scope_settings")
+    .delete()
+    .eq("state", "paused")
+    .not("resume_at", "is", null)
+    .lt("resume_at", new Date().toISOString())
+    .select("id")
+
   return NextResponse.json(
-    { ok: true, expired, holds_purged: purged?.length ?? 0 },
+    {
+      ok: true,
+      expired,
+      holds_purged: purged?.length ?? 0,
+      automation_pauses_resumed: resumed?.length ?? 0,
+    },
     { status: 200 }
   )
 }

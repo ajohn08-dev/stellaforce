@@ -10,17 +10,29 @@ import {
 
 export type BreadcrumbSegment = { label: string; href?: string; badge?: string }
 
+/**
+ * An explicit way out, rendered as "← Back" to the left of the trail.
+ *
+ * For screens you enter rather than browse to — Advanced Search is the first —
+ * where the main side navigation is hidden and a breadcrumb trail alone would
+ * leave no obvious exit.
+ */
+export type BreadcrumbBack = { href: string; label?: string }
+
 type BreadcrumbContextValue = {
   items: BreadcrumbSegment[] | null
+  back: BreadcrumbBack | null
   setItems: (items: BreadcrumbSegment[] | null) => void
+  setBack: (back: BreadcrumbBack | null) => void
 }
 
 const BreadcrumbContext = createContext<BreadcrumbContextValue | null>(null)
 
 export function BreadcrumbProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<BreadcrumbSegment[] | null>(null)
+  const [back, setBack] = useState<BreadcrumbBack | null>(null)
   return (
-    <BreadcrumbContext.Provider value={{ items, setItems }}>
+    <BreadcrumbContext.Provider value={{ items, back, setItems, setBack }}>
       {children}
     </BreadcrumbContext.Provider>
   )
@@ -39,14 +51,31 @@ export function useBreadcrumbItems() {
   return useBreadcrumbContext().items
 }
 
-/** Call from a page to set the header's breadcrumb trail. Clears itself on unmount so the next page doesn't inherit it. */
-export function useSetBreadcrumb(items: BreadcrumbSegment[]) {
-  const { setItems } = useBreadcrumbContext()
+/** Read by AppHeader — null means this page offers no explicit way back. */
+export function useBreadcrumbBack() {
+  return useBreadcrumbContext().back
+}
+
+/**
+ * Call from a page to set the header's breadcrumb trail, and optionally a
+ * "← Back" link before it. Clears both on unmount so the next page doesn't
+ * inherit them.
+ */
+export function useSetBreadcrumb(
+  items: BreadcrumbSegment[],
+  back?: BreadcrumbBack
+) {
+  const { setItems, setBack } = useBreadcrumbContext()
   const key = JSON.stringify(items)
+  const backKey = JSON.stringify(back ?? null)
 
   useEffect(() => {
     setItems(items)
-    return () => setItems(null)
+    setBack(back ?? null)
+    return () => {
+      setItems(null)
+      setBack(null)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
+  }, [key, backKey])
 }
