@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, Lock, Plus, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
@@ -194,46 +194,51 @@ export function WorkflowStep({
     setStages((prev) => prev.map((s) => (s.id === id ? updater(s) : s)))
   }
 
+  const lockedTemplate = templates.find((t) => t.id === selectedTemplateId)
+  const lockedTemplateLabel = lockedTemplate
+    ? `${lockedTemplate.name}${lockedTemplate.status === "draft" ? " (draft)" : ""}`
+    : "No workflow template"
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex shrink-0 items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">{label}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
         <Field label="Workflow Template" className="w-64 shrink-0">
-          <Select
-            value={selectedTemplateId}
-            onValueChange={selectWorkflowTemplate}
-            disabled={templateLocked}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a workflow template">
-                {(id: string) => {
-                  const t = templates.find((x) => x.id === id)
-                  if (!t) return id
-                  return `${t.name}${t.status === "draft" ? " (draft)" : ""}`
-                }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {templates.length === 0 && (
-                <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                  No templates yet — create one in Workflows.
-                </div>
-              )}
-              {templates.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                  {t.status === "draft" ? " (draft)" : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {templateLocked && (
-            <p className="text-xs text-muted-foreground">
-              Locked — a candidate is already in this job&apos;s pipeline.
-            </p>
+          {templateLocked ? (
+            // A candidate is already in the pipeline, so the template is frozen.
+            // The lock icon carries that on its own — no explanatory subtext.
+            <div className="flex h-8 w-full items-center gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-sm whitespace-nowrap opacity-50 select-none dark:bg-input/30">
+              <Lock className="size-4 shrink-0 text-muted-foreground" />
+              <span className="line-clamp-1">{lockedTemplateLabel}</span>
+            </div>
+          ) : (
+            <Select value={selectedTemplateId} onValueChange={selectWorkflowTemplate}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a workflow template">
+                  {(id: string) => {
+                    const t = templates.find((x) => x.id === id)
+                    if (!t) return id
+                    return `${t.name}${t.status === "draft" ? " (draft)" : ""}`
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {templates.length === 0 && (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    No templates yet — create one in Workflows.
+                  </div>
+                )}
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                    {t.status === "draft" ? " (draft)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </Field>
       </div>
@@ -246,21 +251,27 @@ export function WorkflowStep({
         </p>
       ) : (
         <>
-          <StageChipRow
-            stages={stages}
-            selectedStageId={selectedStageId}
-            onSelect={setSelectedStageId}
-          />
+          <div className="shrink-0">
+            <StageChipRow
+              stages={stages}
+              selectedStageId={selectedStageId}
+              onSelect={setSelectedStageId}
+            />
+          </div>
 
           {selectedStage && (
-            <StageConfigForm
-              key={selectedStage.id}
-              jobId={jobId}
-              stage={selectedStage}
-              competencies={competencies}
-              members={members}
-              onChange={(updater) => updateStage(selectedStage.id, updater)}
-            />
+            // The only scrolling region on this step. pr-1 keeps the scrollbar
+            // off the cards' right border.
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <StageConfigForm
+                key={selectedStage.id}
+                jobId={jobId}
+                stage={selectedStage}
+                competencies={competencies}
+                members={members}
+                onChange={(updater) => updateStage(selectedStage.id, updater)}
+              />
+            </div>
           )}
         </>
       )}

@@ -198,15 +198,8 @@ export function JobDraftSpace({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="shrink-0">
-            {isPublished && (
-              <button
-                type="button"
-                onClick={() => router.push(`/jobs/${job.job_id}`)}
-                className="mb-3 text-sm text-muted-foreground hover:text-foreground"
-              >
-                ← Back to pipeline
-              </button>
-            )}
+            {/* No "← Back to pipeline" link: Done already returns to the
+                pipeline, and a second exit in the same row was redundant. */}
             <div className="flex items-center justify-between pb-6">
               <Button
                 variant="outline"
@@ -247,7 +240,16 @@ export function JobDraftSpace({
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* The Workflow step owns its own scrolling: its header and stage
+              chips stay fixed like every other step's header, and only the
+              stage detail below them scrolls. */}
+          <div
+            className={
+              STEPS[stepIndex].key === "workflow"
+                ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                : "min-h-0 flex-1 overflow-y-auto"
+            }
+          >
             {STEPS[stepIndex].key === "role-definition" ? (
               <RoleDefinitionStep initial={roleInitial} onChange={setRoleValues} />
             ) : STEPS[stepIndex].key === "evaluation-criteria" ? (
